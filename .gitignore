@@ -1,0 +1,29 @@
+node_modules/
+test/yvee-bun/client/
+test-results/
+playwright-report/
+blob-report/
+.DS_Store
+.vscode
+bun.lockb
+types
+
+
+# AI agent runtime files
+.ai/reports/
+.ai/logs/
+.ai/cache/
+.ai/tmp/
+.ai/sessions/
+.ai/worktrees/
+
+# Temporary task delegation
+.ai/TASK.md
+.ai/REPORT.md
+
+# Local AI configuration
+.ai/*.local.*
+
+# Private AI development documentation
+.ai/
+MASTERPLAN.md

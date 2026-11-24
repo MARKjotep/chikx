@@ -1,0 +1,47 @@
+{
+  "name": "chikx",
+  "version": "0.0.1",
+  "description": "",
+  "keywords": [
+    "typescript",
+    "css"
+  ],
+  "author": "Marky <markjotep@gmail.com>",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "init": "bun update && mkdir -p ./src ./dist  ./types && {  [ ! -f ./src/index.ts ] && touch ./src/index.ts; }",
+    "test": "bun test",
+    "test:browser": "playwright test",
+    "test:types": "tsc --noEmit -p tsconfig.consumer.json",
+    "demo": "bun run test/yvee-bun/server.ts",
+    "build": "bun builder.ts",
+    "prepublishOnly": "bun test && bun run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MARKjotep/chikx.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MARKjotep/chikx/issues"
+  },
+  "homepage": "https://github.com/MARKjotep/chikx#readme",
+  "dependencies": {},
+  "devDependencies": {},
+  "peerDependencies": {},
+  "directories": {
+    "test": "test"
+  },
+  "type": "module"
+}
