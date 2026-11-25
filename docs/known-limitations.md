@@ -8,9 +8,10 @@ lists language features in more detail.
 
 | Gap | Effect | Status |
 |---|---|---|
-| Editor formatting | `chikx format` works in the CLI, but the VS Code extension does not register a document formatting provider yet; `editor.formatOnSave` cannot format Chikx. | Not wired |
+| Editor formatting | Format Document (⌥⇧F) and `chikx.editor.formatOnSave` run the compiler's canonical whole-document formatter; parse errors leave the document unchanged. Range formatting and format-on-type are not available because `format` is a document-level parse→print pass. | Document-level only |
 | Editor CSS intelligence | The extension does not project Chikx onto `vscode-css-languageservice`. Property hover is empty and property/value completions are curated lists, not a full CSS database. | Deferred by design |
 | Cross-module rename | Rename refuses namespace members and classes; only single-file `$token` rename works. Class rename across JSX does not exist. | Deferred |
+| Keyframe name intelligence | `$keyframes.<member>` is not offered by completion, has no hover and is not renamed by the editor; only the compiler expands it (ADR-0015). | Deferred |
 | LSP server | Only the VS Code extension is provided; there is no language server for other editors. | Deferred |
 
 ## 2. Release and packaging gaps
@@ -55,9 +56,10 @@ is no legacy extension alias, dual registration or migration path in v0.1.
 | No hashing/file-scoped naming | Only `none` and `prefix` strategies exist (ADR-0010). |
 | No top-level conditional blocks | Rejected by design (D3); write conditions inside rules. |
 | One media expression per alias | Comma lists and some `not`/`only` combinations are rejected rather than emitted. Native media lists pass through. |
-| Runtime tokens per entrypoint | Imported runtime tokens are emitted in each consuming entrypoint and deduplicated within it; conflicting definitions across outputs produce a warning and can duplicate custom properties. |
+| Runtime tokens per entrypoint | Imported runtime tokens are emitted in each consuming entrypoint. Within one build, duplicate custom-property names resolve in merge order (entry last; later module wins) with no diagnostic (ADR-0016). Collision handling across separate outputs/entrypoints is not implemented yet. |
 | Simple `:global` only | `:global(.class)` is supported; complex global selectors are not. |
 | Export collisions are fatal | `foo-bar` and `fooBar` cannot both be exported from one file (`CHIKX4001`). |
+| Keyframe references need a rule-merge import | `$keyframes.<name>` sees the file's own top-level keyframes plus those of `@use "…" styles` modules. A token-only import's keyframes are not referenceable (`CHIKX2001`) because that module's CSS is not emitted; the `@variables { spin: spin; }` fallback still works. String-named keyframes, keyframes nested in a rule or inside another at-rule block (such as `@media`), and non-identifier preludes are native-only. Two merged modules may define the same name — both blocks are emitted and native cascade order decides (ADR-0015). |
 | Native CSS coverage is tested, not complete | Supported at-rules and selectors are listed in [compatibility.md](compatibility.md); exotic combinations may be rejected or pass through untested. |
 
 ## 5. Editor limitations

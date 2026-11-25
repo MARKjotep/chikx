@@ -187,7 +187,7 @@ bun run test:browser  # Playwright computed-style cascade gate (Chromium require
 bun run benchmark     # masterplan §9 measurements -> docs/performance.md
 ```
 
-`bun run verify` currently passes with 573 tests across 35 files, including a real VS Code
+`bun run verify` currently passes with 679 tests across 41 files, including a real VS Code
 extension-host smoke suite. Browser coverage: 75/75 Playwright tests recorded on Chromium, Firefox and
 WebKit, checking viewport boundaries, light/dark, reduced motion, hover/focus/disabled, specificity,
 safe grouping and pretty-vs-minified parity.
@@ -198,7 +198,8 @@ safe grouping and pretty-vs-minified parity.
 chikx/
   README.md / SPECIFICATION.md / CHANGELOG.md / LICENSE
   docs/                  grammar, cascade, configuration, compatibility, performance, ADRs
-  examples/              basic, responsive, variables, jsx, custom-output (built output committed)
+  examples/              basic, responsive, variables, jsx, custom-output, overrides
+                         (built output committed)
   packages/
     compiler/            lexer, parser, resolver, transformer, generators (zero runtime deps)
     cli/                 build, check, watch, clean, config, output planner writer
@@ -221,7 +222,7 @@ pure and filesystem-independent through an injected host.
 - [docs/performance.md](docs/performance.md) — measured benchmark numbers and machine context.
 - [docs/known-limitations.md](docs/known-limitations.md) — operational gaps and release blockers.
 - [docs/decisions/](docs/decisions/) — ADRs.
-- [examples/](examples/) — five working examples with committed output.
+- [examples/](examples/) — six working examples with committed output.
 
 ## License
 
