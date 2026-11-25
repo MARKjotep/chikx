@@ -73,7 +73,7 @@ const fixtures = collectFixtures(fixturesRoot)
 
 describe("formatter idempotence", () => {
   test("format(format(x)) equals format(x) for every fixture input", () => {
-    expect(fixtures).toHaveLength(48);
+    expect(fixtures).toHaveLength(54);
     for (const fixture of fixtures) {
       const file = `${fixture.id}/input.cssx`;
       const once = format(fixture.source, file);
@@ -156,6 +156,36 @@ describe("canonical layout", () => {
         "",
       ].join("\n"),
     );
+  });
+
+  test("@use … styles keeps the rule-merge clause (and a literal `styles` alias stays an alias)", () => {
+    // Regression for CSSX-A22/A24: `printUse` used to drop `UseImport.styles`,
+    // silently downgrading a rule-merge import to a token-only one (ADR-0014).
+    const source = [
+      '@use "./x.cssx" as m styles;',
+      '@use "./x.cssx" styles;',
+      '@use "./x.cssx" as styles;',
+      ".button { color: red; }",
+      "",
+    ].join("\n");
+
+    const result = format(source, "src/imports.cssx");
+    expect(result.diagnostics).toEqual([]);
+    expect(result.formatted).toBe(
+      [
+        '@use "./x.cssx" as m styles;',
+        "",
+        '@use "./x.cssx" styles;',
+        "",
+        '@use "./x.cssx" as styles;',
+        "",
+        ".button {",
+        "  color: red;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    expect(format(result.formatted, "src/imports.cssx").formatted).toBe(result.formatted);
   });
 
   test("comments in native preludes are not duplicated and block comments survive", () => {

@@ -267,7 +267,10 @@ class Printer {
 
   private printUse(item: UseImport, level: number): Chunk {
     const alias = item.alias === undefined ? "" : ` as ${item.alias}`;
-    return { lines: [`${pad(level)}@use "${item.path}"${alias};`], block: false };
+    // `styles` is semantic, not cosmetic: dropping it would downgrade a
+    // rule-merge import to a token-only one (ADR-0014, SPECIFICATION.md §6.3).
+    const styles = item.styles === true ? " styles" : "";
+    return { lines: [`${pad(level)}@use "${item.path}"${alias}${styles};`], block: false };
   }
 
   private printVariables(block: VariablesBlock, level: number): Chunk {
