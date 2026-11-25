@@ -1,0 +1,27 @@
+{
+  "name": "@chikx/cli",
+  "version": "0.1.0",
+  "description": "Chikx command line interface: build, check, watch, format and clean.",
+  "type": "module",
+  "license": "MIT",
+  "dependencies": {
+    "@chikx/compiler": "workspace:*"
+  },
+  "bin": {
+    "chikx": "src/index.ts"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json"
+  }
+}

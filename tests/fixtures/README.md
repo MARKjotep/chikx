@@ -1,0 +1,150 @@
+# Chikx golden fixtures
+
+One directory per fixture. Fixtures are the executable form of `SPECIFICATION.md` and the
+`docs/decisions/` ADRs; they are parsed and compiled by later phases, never by hand. This catalog is
+frozen by task A02 (P0) so the lexer (A03), parser (A04), media/IR (A05/A06), resolver (A07/A08),
+class map (A09) and output planner (A10) can start against fixed inputs.
+
+## Layout
+
+```text
+tests/fixtures/<group>/<fixture>/
+  input.cssx              # required entry source, valid unless the fixture is named an error case
+  *.cssx                  # optional sibling modules imported by input.cssx
+  chikx.config.json        # optional local project configuration (schema frozen in P5)
+  source-path.txt          # optional virtual entry path used instead of `input.cssx`
+  expected/
+    css                    # golden CSS; filled in P2
+    map.js                 # golden JS class map; filled in P3/P4
+    map.d.ts               # golden TypeScript declarations; filled in P4
+    diagnostics.json       # diagnostics expectations (see below)
+```
+
+- The entry file is `input.cssx` at the fixture root. Its virtual source path is
+  `<fixture-id>/input.cssx` relative to the workspace root. A fixture that needs a different source
+  location ships `source-path.txt` containing one workspace-relative POSIX path; the harness reads
+  it and uses that path instead. Only `output/nested-source` does this today.
+- Sibling `.cssx` files are token-only modules resolved exactly as the fixture's `@use` specifiers
+  say; they are not independent entries.
+- `chikx.config.json` is read only for project-configuration fixtures. The document schema is frozen
+  in phase P5; today it mirrors SPECIFICATION.md §10 with every documented key.
+- All paths in fixtures and expectations are POSIX with forward slashes. Fixtures never contain
+  absolute paths.
+
+## Golden artifact status
+
+`expected/css`, `expected/map.js` and `expected/map.d.ts` are intentionally empty placeholders. They
+are filled in when the owning phase lands — CSS in P2, JS class maps in P3/P4, declarations in P4 —
+and are reviewed by the lead before being treated as golden. Do not "fix" a fixture by editing an
+expected artifact to match buggy output; fix the compiler or escalate the contract.
+
+`expected/diagnostics.json` is authored now **only** where the expectation follows from the frozen
+syntax/lexical rules and the diagnostic registry in
+`packages/compiler/src/types/diagnostics.ts`:
+
+- `null` — no expectation authored yet; the harness must treat the fixture as diagnostic-unchecked.
+- `[]` — explicit expectation of no diagnostics; used only for lexical fixtures whose inertness is
+  pinned by SPECIFICATION.md §3.1.
+- a JSON array — the complete expected diagnostic set (see next section).
+
+Semantic fixtures (`variables/*` errors, `runtime/collision-with-compile-time`, naming and output
+fixtures) keep `null` until their phase lands; their intended outcome is recorded in the table
+below.
+
+## Diagnostics format and matching policy
+
+```json
+[
+  {
+    "code": "CHIKX1001",
+    "severity": "error",
+    "messageContains": "conditional block",
+    "span": { "line": 1, "col": 1 }
+  }
+]
+```
+
+- `code` — a reserved code from `DIAGNOSTIC_CODES` (CHIKX1001, CHIKX1002, CHIKX1003, CHIKX2001,
+  CHIKX3001, CHIKX4001, CHIKX5001). Subcodes added later are also accepted once registered.
+- `severity` — exact match against `"error"` or `"warning"`.
+- `messageContains` — required, non-empty phrase that must occur in the diagnostic message,
+  case-insensitive. Keep it short; wording beyond this phrase is not frozen. Syntax fixtures use the
+  wording of the registry summaries so A04 has a single target.
+- `span` — a **position**, not a span: 1-based `line` and 1-based `col` in the fixture source,
+  derived by the harness from the reported offsets. Line/column are never stored in the AST
+  (`Span` holds offsets only). The position must satisfy `start <= position <= end` of the actual
+  diagnostic span, where the end is inclusive for this check so zero-width end-of-file diagnostics
+  match.
+- Matching is a one-to-one multiset comparison: every expectation must match a distinct actual
+  diagnostic with the same code and severity, and an unmatched extra diagnostic fails the fixture
+  (except warnings that the registry defines as policy outcomes for that fixture, which are always
+  listed).
+
+Syntax diagnostics are statement-scoped: CHIKX1002 spans the declaration missing its terminator and
+CHIKX1003 spans the malformed statement, so those fixtures point at the statement start. CHIKX1001
+construct diagnostics point at the offending construct (`@md` for a top-level conditional block,
+`@ultrawide` for an unknown modifier, the setting key for setup errors); `errors/unclosed-block`
+points at end of file, where an unclosed block is reported.
+
+## Fixture index
+
+| Fixture | Pins |
+|---|---|
+| `canonical/button` | SPECIFICATION.md §2 verbatim, plus the `theme.cssx` token module (`$theme.primary`). |
+| `lexical/at-in-string` | `@` inside strings is literal content, including combined aliases. |
+| `lexical/url-at` | `@` inside quoted and unquoted `url(...)` is literal. |
+| `lexical/calc` | A modifier-looking token inside function arguments (`calc(100% - @md 20px)`) is **not** recognized; it stays literal CSS. |
+| `lexical/comments-escapes` | Comments, quoted `@`/`/*`, and an escaped colon in a class token stay inert. |
+| `lexical/no-whitespace-modifier` | `12px@md` has no preceding whitespace, so `@md` is literal value content; no modifier, no diagnostic. |
+| `lexical/at-mid-value` | One fixture pins both sides: `@` inside the URL string is literal while the whitespace-preceded `@md` after it is a recognized modifier. |
+| `lexical/final-no-semicolon` | ADR-0011: a plain CSS final declaration (`padding: 10px`) without a trailing semicolon before `}` is accepted with no diagnostics. |
+| `media/inline-variants` | SPECIFICATION.md §3.2 card example: inline variants, `@xl+dark`, block conditions, `@media-types`. |
+| `media/combined-and` | Combined aliases are AND; includes `2xl` and width+orientation. |
+| `media/block-conditions` | Nested conditional blocks combine conditions; `@print` inside a rule. |
+| `media/custom-alias-override` | File `@media-types` overrides built-in `md` and adds `tablet`. |
+| `media/duplicate-aliases` | Duplicate aliases in one modifier (`@md+md`) normalize. |
+| `nesting/descendant-bare` | D1: bare `.icon` is a descendant, including multi-level descendant chains. |
+| `nesting/pseudo-combinators` | `&:hover`, `&::before`, `& > .icon`, `& + .button`, `&:nth-child(2n)`. |
+| `nesting/multiple-amp` | Multiple `&` references, including a parent reference that is not first (`.row &`). |
+| `important/per-segment` | D2: important on base only, variant only, both, and on adjacent variant segments. |
+| `errors/top-level-conditional` | D3: one CHIKX1001 at `@md`; the following rule still parses. |
+| `errors/unknown-modifier` | CHIKX3001 for `@ultrawide`; the affected declaration is omitted. |
+| `errors/unclosed-block` | CHIKX1001 at end of file. |
+| `errors/unknown-setup-key` | CHIKX1001 for `theme:`; duplicate `prefix` is a separate fixture. |
+| `errors/duplicate-setting` | CHIKX1001 for a repeated `prefix` key inside one block (tap the merged-`@setup` rule). |
+| `errors/missing-semicolon` | CHIKX1002 for `color: red` followed by another declaration; recovery resumes at the next statement. |
+| `errors/semicolonless-modifier` | CHIKX1002 for a final declaration carrying a recognized modifier (`padding: 10px @md 20px`) with no semicolon before `}` (ADR-0011). |
+| `errors/malformed-value` | CHIKX1003 for `calc(100% - 20px;` (unbalanced parenthesis). |
+| `variables/basic` | Local tokens, token-sequence substitution and forward references. |
+| `variables/local-overrides-imported` | A local `gap` overrides an unqualified imported `gap`; imported `radius` still resolves. |
+| `variables/ambiguous-import` | Two unqualified imports export `spacing`; intended CHIKX2001 error (diagnostics authored in P3). |
+| `variables/cycle` | `a.cssx` ↔ `b.cssx` cycle; intended CHIKX2001 error. |
+| `variables/undefined-ref` | `$missing` is undefined; intended CHIKX2001 error. |
+| `variables/namespaced-members` | `$layout.spacing` and `$layout.margin` stay independent of local names. |
+| `runtime/basic` | SPECIFICATION.md §3.4 runtime custom property plus reference. |
+| `runtime/with-variant` | Runtime tokens with `@dark`, `@md` and `@dark+md` overrides. |
+| `runtime/collision-with-compile-time` | Compile-time and runtime `primary` collide; intended CHIKX2001 error. |
+| `global/escape` | `:global(.external-icon)` is neither renamed nor exported, at top level and nested. |
+| `naming/prefix` | `ui` prefix applies to nested classes and camelCase export aliases. |
+| `naming/empty-prefix` | An explicit empty prefix leaves names unchanged. |
+| `naming/camel-collision` | `foo-bar` and `fooBar` collide; intended CHIKX4001 error. |
+| `naming/reserved-js-identifier` | `.default` and `.delete` stay in the quoted-key map, omit named exports and warn (CHIKX4001 warning) in P4. |
+| `output/no-setup` | Defaults: CSS and map beside the source, declarations enabled, no source map. |
+| `output/only-css-dir` | Only `css-dir` is overridden; map output uses the default directory. |
+| `output/only-map-dir` | Only `map-dir` is overridden; CSS output uses the default directory. |
+| `output/only-names` | Only `css-name`/`map-name` are overridden; effective directories are retained. |
+| `output/dirs-and-names` | Both directories and both names; `classes.js` yields `classes.d.ts`, `theme.css` yields `theme.css.map`. |
+| `output/nested-source` | Uses `source-path.txt` (`src/pages/dashboard.cssx`) to pin project-relative subdirectory preservation. |
+| `output/disabled-emit` | `emit-map: false`; types are auto-suppressed with a documented warning (SPECIFICATION.md §8). |
+| `output/custom-import-css-false` | `import-css: false`; JS map omits the CSS side-effect import. |
+| `config/project-json` | Every `chikx.config.json` key from SPECIFICATION.md §10 beside `input.cssx`, which uses them. |
+
+## Authoring rules
+
+1. Fixtures are normative inputs. Do not add new syntax here without a spec section or ADR.
+2. If an input depends on a reading the frozen spec does not settle, do not guess: record the
+   ambiguity in the task report and leave the expectation unauthored (`null`) until the lead rules.
+3. Keep fixtures minimal; one behavior per directory unless a fixture explicitly pins two sides of
+   the same boundary (`lexical/at-mid-value`).
+4. Expected artifacts must be deterministic: no timestamps, absolute paths or platform separators.
+5. Goldens are refreshed only after the lead reviews the compiler change that produced them.

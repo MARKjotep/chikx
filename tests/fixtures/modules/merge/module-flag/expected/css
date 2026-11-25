@@ -1,0 +1,7 @@
+.ui-card {
+  padding: 8px;
+}
+
+.app-page {
+  display: block;
+}

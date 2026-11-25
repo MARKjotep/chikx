@@ -1,0 +1,39 @@
+# @chikx/cli
+
+The Chikx command line interface: `chikx build`, `chikx watch`, `chikx check`, `chikx format` and
+`chikx clean`. It uses the same `@chikx/compiler` as the API and the VS Code extension.
+
+Source files use the `.cssx` extension (ADR-0013). The command, configuration file
+(`chikx.config.json`) and diagnostic codes (`CHIKX####`) keep the Chikx name.
+
+## Install
+
+```sh
+npm install --global @chikx/cli
+# or run it without installing
+npx @chikx/cli build
+```
+
+The published `bin` entry is `src/index.ts`, which relies on Bun's TypeScript loader. On Node.js,
+invoke the built entry point directly: `node node_modules/@chikx/cli/dist/index.js build`.
+
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `chikx build [file]` | Build one entry or the project from `chikx.config.json`. |
+| `chikx watch [file]` | Rebuild affected entries on change. |
+| `chikx check [file]` | Validate without writing. |
+| `chikx format [file] [--check]` | Format source files or verify formatting. |
+| `chikx clean` | Delete manifest-owned, unmodified generated files. |
+
+Exit codes: `0` success, `1` compile/validation error, `2` invocation or configuration error.
+
+## Documentation
+
+The repository `README.md`, `docs/configuration.md`, `docs/release.md` and `CHANGELOG.md` describe
+configuration, precedence, output safety and known gaps.
+
+## License
+
+MIT. See `LICENSE` in this package.

@@ -1,0 +1,99 @@
+<p align="center"><img src="media/icon.png" alt="Chikx chick logo" width="128" height="128"></p>
+
+# Chikx for VS Code
+
+Language support for [Chikx](../../README.md), the CSS-first, property-centric stylesheet language.
+The extension uses the same `@chikx/compiler` as the CLI and build tools; it adds no runtime
+dependency to your project.
+
+Chikx source files use the `.cssx` extension; the language ID stays `chikx`, and `.cssx` files get a
+chick file icon in both light and dark themes ([ADR-0013](../../docs/decisions/ADR-0013-cssx-file-extension.md)).
+
+## Features
+
+- **Language registration** — `.cssx` files, language ID `chikx`, comments, brackets, auto-closing
+  pairs and indentation.
+- **Syntax highlighting** — a standalone TextMate grammar (`source.chikx`) covering directives,
+  media aliases, `$tokens` and namespace members, selectors, properties, values, `!important` and
+  native at-rules. CSS-compatible patterns reuse standard `.css` scopes, so existing themes work.
+- **Diagnostics** — tolerant parse plus an in-memory compile, debounced at 150 ms with stale document
+  versions discarded; stable `CHIKX####` codes and exact spans. Imported-file problems are logged
+  rather than shown at the wrong offsets.
+- **Completions** — property names, common values, `@` media aliases (built-in, project config and
+  file `@media-types`), `$` tokens and namespace members, `@setup` keys, `@use "` import paths,
+  nested selectors and pseudo-classes.
+- **Navigation and insight** — hover for resolved token values, media conditions and generated class
+  names; definition and references for tokens; single-file `$token` rename; color provider; outline.
+- **Commands** (all under the `Chikx` category) — Compile File, Build Project, Preview Compiled CSS,
+  Open Generated CSS, Open Class Map, Check Project.
+- **Preview** compiles in memory to a read-only `chikx-preview:` document and never writes.
+- **Status bar and output channel** — idle/success/error/stale state and a log of paths and problems.
+
+## Settings
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `chikx.compileOnSave` | `false` | Compile the saved file and write its outputs. Off by default; requires a trusted workspace. |
+| `chikx.previewSplitEditor` | `true` | Open preview beside the editor instead of replacing it. |
+
+Compile/Build write through the compiler's `planOutputs` (validated destinations, temp-file plus
+rename) and are blocked in Restricted Mode. Diagnostics, completion, hover, preview and Check Project
+are read-only and work in Restricted Mode. No watcher is started by the extension: use one writer
+(the CLI watcher or `compileOnSave`, not both).
+
+Multi-root workspaces resolve the nearest `chikx.config.json` per document within its workspace
+folder. Cross-module rename and class rename across JSX are not supported yet; use the generated
+class map as the source of truth.
+
+## Build and test
+
+```sh
+bun run typecheck                     # tsc --noEmit (moduleResolution: "bundler")
+bun run build                         # bun build → dist/extension.js + out/ shim
+bun test tests/extension              # providers, TextMate scopes, extension host
+```
+
+`main` is `out/extension.js`, a two-line shim written by `scripts/write-entry.mjs`; the CommonJS
+bundle (`vscode` external) is `dist/extension.js` because the repository Biome configuration ignores
+`dist` but not `out`. Release packaging runs through the root `bun run release:check`.
+
+Provider logic is pure and tested without the `vscode` module: `src/analysis.ts`,
+`src/intelligence.ts` and `src/service.ts` take `{ text, path, version }` and use injectable timers.
+The extension-host smoke suite (`tests/extension/host.test.ts`) runs `@vscode/test-electron` when a
+VS Code build is cached under `node_modules/.vscode-test-chikx` (or when
+`CHIKX_EXTENSION_HOST_DOWNLOAD=1` allows a one-off download); otherwise it skips with that exact
+reason rather than faking a pass.
+
+VS Code 1.147 renamed the macOS launcher from `Electron` to `Code`. `@vscode/test-electron 2.5.2`
+does not handle that rename, so the orchestrator resolves the executable itself and passes
+`vscodeExecutablePath`; see the framework record under
+[`.ai/framework/vscode-test-electron/`](../../.ai/framework/vscode-test-electron/).
+
+## Grammar scopes
+
+| Construct | Scope |
+|---|---|
+| Media alias (`@md`, `@2xl`, `@xl+dark`) | `entity.name.function.chikx` (inside `meta.variant.chikx`) |
+| Directive (`@setup`, `@use`, `@variables`, `@runtime`, `@media-types`) | `keyword.control.directive.chikx` |
+| `as` in `@use` | `keyword.other.chikx` |
+| Class / id / tag / pseudo-class / pseudo-element | `entity.other.attribute-name.class.css`, `.id.css`, `entity.name.tag.css`, `.pseudo-class.css`, `.pseudo-element.css` |
+| Parent `&` / combinators | `entity.other.attribute-name.parent-selector.css` / `keyword.operator.combinator.css` |
+| Property / value constant | `support.type.property-name.css` / `support.constant.property-value.css` |
+| `$var`, `$ns.member` | `variable.other.chikx`, member `variable.other.member.chikx` |
+| Number and unit | `constant.numeric.css` + `keyword.other.unit.css` |
+| `!important` | `keyword.other.important.css` |
+| Native at-rules | `keyword.control.at-rule.css` + `meta.at-rule.<name>.css` |
+| Punctuation | `punctuation.section.block.css`, `punctuation.definition.group.css`, `punctuation.terminator.rule.css` |
+
+## Known gaps
+
+- No document formatting provider yet (`chikx format` works in the CLI).
+- No CSS language-service projection: property hover is empty and value/property completions are
+  curated lists.
+- Preview documents are keyed by basename, so two same-named files share one preview URI (reopening
+  refreshes it).
+- Cross-module rename is refused with guidance; class rename across JSX is future work.
+
+## License
+
+MIT © Marky.

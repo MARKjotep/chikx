@@ -1,0 +1,22 @@
+{
+  "name": "@chikx/compiler",
+  "version": "0.1.0",
+  "description": "Chikx lexer, parser, resolver, transformer and CSS/JS generators. Zero runtime dependencies.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json"
+  }
+}

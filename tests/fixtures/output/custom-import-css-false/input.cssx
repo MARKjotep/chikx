@@ -1,0 +1,2 @@
+@setup { import-css: false; }
+.button { color: red; }

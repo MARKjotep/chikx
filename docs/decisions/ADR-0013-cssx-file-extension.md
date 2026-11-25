@@ -1,0 +1,49 @@
+# ADR-0013: `.cssx` is the source file extension
+
+## Status
+
+Accepted (2026-11-25) — project owner decision. Amends ADR-0001 for the source file extension only;
+every other public name stays Chikx.
+
+Related: ADR-0001 (public name), masterplan change record 2026-11-24 (superseded for the extension
+only), `docs/release.md`.
+
+## Context
+
+ADR-0001 renamed the project to Chikx and chose `.chikx` for source files alongside `@chikx/*`
+packages, the `chikx` CLI, the VS Code language ID `chikx` and the `CHIKX####` diagnostic family.
+After using the language, the owner prefers `.cssx` for files: it reads immediately as "CSS + X",
+matches the property-centric idea, and keeps editor file lists free of a name that reads like a
+personal fork.
+
+The extension is the only public artifact being reverted. Language ID, aliases, TextMate scopes,
+packages, CLI command, configuration filename and diagnostics keep the Chikx name, so no consumer
+has to translate between two product identities.
+
+## Decision
+
+- Source files use the `.cssx` extension.
+- The VS Code extension contributes `extensions: [".cssx"]` for language ID `chikx`; the display
+  aliases stay `Chikx`/`chikx` and the grammar scope stays `source.chikx`.
+- Unchanged: `@chikx/*` packages, the `chikx` CLI command, `chikx.config.json`, `CHIKX####`
+  diagnostics and all prose naming.
+- The CLI bookkeeping file becomes `.cssx-manifest.json` (and the compiler's temporary-file suffix
+  `.cssx-tmp`) so the whole source-artifact family shares one extension token. Both are internal,
+  unreleased and not configuration keys.
+- No `.chikx` alias, dual extension registration or migration path ships in v0.1.
+
+## Rationale
+
+- Owner preference is the deciding factor; the cost is mechanical and contained.
+- One extension token (`.cssx`) for sources, their manifest and temp files avoids mixed naming in
+  ignore rules and documentation.
+- Reversible: reverting is a rename and a documentation edit, with no API or grammar change.
+
+## Consequences
+
+- `grep -r "\.chikx"` now finds only historical records (this ADR, ADR-0001's history, changelog and
+  archived task reports); functional code and docs use `.cssx`.
+- Existing `.chikx` files are not recognised by v0.1 tooling. The project is unreleased, so no
+  migration note is needed beyond this decision.
+- ADR-0001's package/command/language-ID/diagnostic decisions remain in force; only its source
+  extension clause is amended.

@@ -1,0 +1,17 @@
+{
+  "include": ["src/**/*.cssx"],
+  "exclude": ["node_modules", "dist"],
+  "output": {
+    "cssDir": "dist/styles",
+    "mapDir": "dist/maps",
+    "emitCss": true,
+    "emitMap": true,
+    "emitTypes": true,
+    "sourceMap": false,
+    "importCss": true,
+    "minify": false
+  },
+  "classes": { "strategy": "prefix", "prefix": "ui" },
+  "media": { "md": "(min-width: 768px)", "xl": "(min-width: 1280px)" },
+  "compiler": { "strict": true, "mediaGrouping": "safe" }
+}

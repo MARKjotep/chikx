@@ -1,0 +1,5 @@
+{
+  "include": ["src/**/*.cssx"],
+  "exclude": ["generated"],
+  "compiler": { "strict": true, "mediaGrouping": "safe" }
+}

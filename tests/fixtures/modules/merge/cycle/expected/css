@@ -1,0 +1,11 @@
+.b-beta {
+  color: blue;
+}
+
+.a-alpha {
+  color: red;
+}
+
+.app-root {
+  color: black;
+}

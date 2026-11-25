@@ -1,0 +1,93 @@
+{
+  "name": "chikx",
+  "displayName": "Chikx",
+  "description": "Chikx language support for VS Code: syntax highlighting, diagnostics, completions, hover, navigation and project commands.",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "chikx",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chikx/chikx.git"
+  },
+  "homepage": "https://github.com/chikx/chikx#readme",
+  "bugs": {
+    "url": "https://github.com/chikx/chikx/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Programming Languages"],
+  "keywords": ["chikx", "cssx", "css", "stylesheet", "syntax highlighting", "completions"],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:chikx",
+    "onCommand:chikx.compileFile",
+    "onCommand:chikx.buildProject",
+    "onCommand:chikx.previewCompiledCss",
+    "onCommand:chikx.openGeneratedCss",
+    "onCommand:chikx.openClassMap",
+    "onCommand:chikx.checkProject"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "chikx",
+        "aliases": ["Chikx", "chikx"],
+        "extensions": [".cssx"],
+        "icon": {
+          "light": "./media/file-icon.svg",
+          "dark": "./media/file-icon-dark.svg"
+        },
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "chikx",
+        "scopeName": "source.chikx",
+        "path": "./syntaxes/chikx.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      { "command": "chikx.compileFile", "title": "Compile File", "category": "Chikx" },
+      { "command": "chikx.buildProject", "title": "Build Project", "category": "Chikx" },
+      {
+        "command": "chikx.previewCompiledCss",
+        "title": "Preview Compiled CSS",
+        "category": "Chikx"
+      },
+      { "command": "chikx.openGeneratedCss", "title": "Open Generated CSS", "category": "Chikx" },
+      { "command": "chikx.openClassMap", "title": "Open Class Map", "category": "Chikx" },
+      { "command": "chikx.checkProject", "title": "Check Project", "category": "Chikx" }
+    ],
+    "configuration": {
+      "title": "Chikx",
+      "properties": {
+        "chikx.compileOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Compile the saved Chikx file and write its outputs. Off by default; requires a trusted workspace."
+        },
+        "chikx.previewSplitEditor": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open Preview Compiled CSS beside the current editor instead of replacing it."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "bun build src/extension.ts --outdir dist --external vscode --format cjs --target node && node scripts/write-entry.mjs",
+    "watch": "node scripts/write-entry.mjs && bun build src/extension.ts --outdir dist --external vscode --format cjs --target node --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.4.1",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2"
+  }
+}

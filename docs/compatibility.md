@@ -1,0 +1,97 @@
+# Compatibility matrix (v0.1)
+
+Chikx is a CSS-first language, but it is **not** a claim of full CSS compatibility. Masterplan §11:
+"avoid claiming full CSS compatibility until tested". This page lists what is implemented and
+verified in v0.1, what is deliberately limited, and what is not supported yet.
+
+Legend: **Tested** names the suite that exercises the behaviour. Untested behaviour is marked as
+such rather than assumed.
+
+## 1. Language features
+
+| Feature | v0.1 status | Notes | Evidence |
+|---|---|---|---|
+| Base declarations and CSS values | ✅ Supported | Values are preserved as balanced CSS token sequences, including `calc()`, `url()`, functions, strings, comments and escapes. | `tests/compiler/**`, golden fixtures |
+| Inline media variants (`padding: 8px @md 16px`) | ✅ Supported | Expand to independent CSS declarations in authored order. | `tests/compiler/media.test.ts` |
+| Combined aliases (`@xl+dark`) | ✅ Supported | Logical AND; duplicate aliases normalised. | `tests/compiler/media.test.ts` |
+| Rule-scoped conditional blocks (`@md { … }`) | ✅ Supported | Nest and combine conditions. | `tests/compiler/lowering.test.ts` |
+| Top-level conditional blocks | ❌ Rejected | `CHIKX1001` "conditional block outside rule"; no CSS emitted for the block. | `tests/compiler/**` |
+| File `@media-types` aliases | ✅ Supported | Merged over project and built-in aliases; one expression per alias. | `tests/compiler/media.test.ts` |
+| Comma-list alias definitions | ❌ Rejected | `CHIKX3001`; native media lists inside a native `@media` prelude still pass through. | `tests/compiler/media.test.ts` |
+| Nested selectors | ✅ Supported | `&:hover`, `&::before`, `&:nth-child(2n)`, `& > .icon`, `& + .button`, `&.is-active`, bare descendant (D1). Flattened to flat CSS. | `tests/compiler/selectors.test.ts` |
+| Mixed-specificity parent lists | ✅ Supported | Uses `:is(...)` where native nesting requires it; pseudo-element lists that cannot be represented are rejected rather than mis-flattened. | `tests/compiler/selectors.test.ts` |
+| Compile-time variables | ✅ Supported | Token-sequence substitution; forward references; cycles and undefined tokens are `CHIKX2001`. | `tests/compiler/**` |
+| `@use` imports | ✅ Supported | Relative, workspace-contained, tokens only, namespaced or unqualified, no transitive re-export, no network/executable imports. | `tests/compiler/**` |
+| Runtime variables (`@runtime`) | ✅ Supported | Emit `:root` custom properties, conditional overrides and `var(--prefix-name)` references. | `tests/browser/specs/themes.pw.ts`, `examples/variables` |
+| Class prefixing (`prefix` strategy) | ✅ Supported | Prefix applies to local classes, including nested references. Empty prefix leaves names unchanged. | `tests/compiler/**`, browser pages |
+| `:global(.external)` escape | ✅ Supported (simple classes) | Removed from renaming and exports; emitted unchanged. Complex global selectors are not supported. | `tests/compiler/**` |
+| Class maps + `.d.ts` | ✅ Supported | Quoted original keys, camelCase named exports, literal string types, readonly map. | `tests/compiler/**`, `examples/jsx` |
+| Export collisions (`foo-bar` / `fooBar`) | ✅ Rejected | `CHIKX4001`; no silent merge/omission. | `tests/compiler/**` |
+| `__proto__` class key | ✅ Safe | Null-prototype map and computed-key handling. | `tests/compiler/**` |
+| Minified output | ✅ Supported (opt-in) | Compacts generated whitespace; computed styles equal pretty output in all browser scenarios. | `tests/browser/specs/parity.pw.ts` |
+| Safe grouping | ✅ Supported (default) | Merges adjacent compatible runs only; computed styles equal `mediaGrouping: "none"`. | `tests/browser/specs/grouping.pw.ts` |
+| CSS source maps | ✅ Supported (opt-in) | `source-map: true` writes a v3 `<css-name>.map` with `sourcesContent` and a `sourceMappingURL` comment; no map when CSS emission is off. | `tests/compiler/sourcemap.test.ts`, `mapgen.test.ts`, `examples/custom-output` |
+| Formatter | ✅ CLI only | `chikx format [file]` reprints sources canonically in place; `--check` reports without writing and exits 1 on changes; `--dry-run` reports. Parse errors never rewrite a file. The VS Code extension does not yet expose a formatting provider. | `tests/integration/format-cli.test.ts` |
+| Mixins / `@group` / `@apply` | ❌ Deferred | Not in the grammar. Requires a future ADR. | SPECIFICATION §13 |
+| Arbitrary expressions | ❌ Deferred | Variables substitute tokens, not computed expressions. | SPECIFICATION §13 |
+| Container aliases | ❌ Deferred | `@container` itself passes through natively; Chikx aliases for containers do not exist. | SPECIFICATION §13 |
+| Inline pseudo-state modifiers | ❌ Deferred | Write `&:hover { … }` (supported) rather than a modifier alias such as `@hover`. | SPECIFICATION §13 |
+| Hashing / file-scoped naming | ❌ Deferred | Only `none` and `prefix` strategies exist. | ADR-0010 |
+| Attribute-based theme conditions | ❌ Deferred | Use `@media-types` with a media expression, or native selectors. | SPECIFICATION §13 |
+| Explicit token defaults / shared runtime bundles | ❌ Deferred | Runtime tokens emit per consuming entrypoint. | SPECIFICATION §6.2 |
+| Top-level conditional blocks | ❌ Deferred | D3 may be revisited by a future ADR. | ADR-0004 |
+| `chikx.config.ts` | ❌ Not supported | Declarative JSON only; no executable project config. | SPECIFICATION §10 |
+
+## 2. Native at-rules
+
+Native CSS at-rules keep their native meaning. Chikx wrappers never rewrite their preludes.
+
+| At-rule | Status | Notes |
+|---|---|---|
+| `@media` | ✅ Pass-through | Native lists (`@media screen, print`) pass through unchanged; Chikx conditions AND with the enclosing native prelude. |
+| `@supports` | ✅ Pass-through | Conditions never alter Chikx alias resolution. |
+| `@layer` | ✅ Pass-through | Block and statement forms; grouping never crosses a layer boundary. |
+| `@container` | ✅ Pass-through | Native container queries; no Chikx container aliases. |
+| `@keyframes` | ✅ Pass-through, restricted | Keyframe steps pass through; inline modifiers and conditional blocks inside are rejected (`CHIKX3001`). |
+| `@font-face` | ✅ Pass-through, restricted | Descriptor declarations pass through; Chikx transformations inside are rejected. |
+| `@property` | ✅ Pass-through, restricted | Descriptors pass through; Chikx transformations inside are rejected. |
+| `@page` | ✅ Pass-through | Classic declaration blocks pass through without diagnostics. |
+| `@import`, `@charset`, statement `@layer` | ✅ Pass-through | Emitted as statements where they appear. |
+
+Unsupported Chikx transformations inside restricted contexts are **rejected with a diagnostic**, not
+silently altered.
+
+## 3. Tooling and environments
+
+| Area | Status | Notes |
+|---|---|---|
+| Compiler runtime | ✅ Node ≥ 20 and Bun | Verified on Node `24.22.3` and Bun `1.4.5`. Zero runtime dependencies. |
+| CLI build/check/watch/clean | ✅ Supported | Exit codes 0/1/2; atomic writes; manifest-owned clean; debounced watch with reverse import graph. |
+| CLI `format` | ✅ Supported | Canonical source reprint with `--check` and `--dry-run`; parse errors leave the file untouched. No editor formatting provider yet. |
+| Node package entry | ✅ Node-compatible | `dist/index.js` is Node ESM; the package `bin` currently points at `src/index.ts` (Bun-native) — see known limitations. |
+| VS Code extension | ✅ Implemented | Language ID `chikx`, TextMate grammar, language configuration, diagnostics, completions, hover, definition/references/rename, colors, outline, six commands, preview. Tested on VS Code `1.147.0`; the manifest declares `^1.85.0`, older versions are untested. |
+| Compile on save | ⚠️ Off by default | Opt-in `chikx.compileOnSave`, requires a trusted workspace; no watcher is started by the extension. |
+| Restricted Mode | ✅ Read-only features only | Diagnostics, completion, hover, preview and check work; writing commands are blocked. |
+| CSS language-server projection | ❌ Not implemented | The extension does not project Chikx onto `vscode-css-languageservice`; property hover is intentionally empty and property/value completions are curated lists. |
+| Cross-module / cross-file rename (CLI or editor) | ❌ Not implemented | Single-file `$token` rename is supported; namespace members and class rename across JSX are refused. |
+| Class rename across JSX | ❌ Not implemented | Generated names change on prefix changes; update consumers manually. |
+| Browser cascade verification | ✅ Chromium, Firefox, WebKit | 75/75 Playwright tests recorded pass, 25 per engine (CSSX-BROWSER-01). |
+
+## 4. Known semantic limits worth stating plainly
+
+- **No full CSS compatibility claim.** Chikx accepts native CSS constructs it has tested; exotic
+  selector or at-rule combinations outside the test suite may fail rather than pass through.
+  Unsupported input is diagnosed where the compiler understands it; it is not guaranteed to be
+  diagnosed everywhere.
+- **No cascade repair.** Authored order is preserved, including a later base overriding an earlier
+  conditional (see [cascade.md](cascade.md)).
+- **Output paths** in project mode repeat the workspace-relative source path (for example
+  `dist/styles/src/deep/widget.css`). File-level `@setup` directories are exact.
+- **Tokenizer coverage** is tested against `url("image@2x.png")`, strings containing `@dark`,
+  `calc()`, comments and escapes; it is not a formal proof of all CSS lexical edge cases.
+
+## See also
+
+- [known-limitations.md](known-limitations.md) — the same gaps with operational impact.
+- [grammar.md](grammar.md), [cascade.md](cascade.md), [configuration.md](configuration.md).
+- [SPECIFICATION.md](../SPECIFICATION.md) §13 (Deferred).

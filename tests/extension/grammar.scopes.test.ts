@@ -1,0 +1,168 @@
+/**
+ * Rendered-scope tests for the Chikx TextMate grammar.
+ *
+ * The grammar is tokenized with the same engine VS Code uses (`vscode-textmate` +
+ * `vscode-oniguruma`, dev dependencies of `packages/vscode`). When the WASM toolchain cannot be
+ * loaded, these tests are skipped with a recorded reason; they are never softened into fake
+ * assertions. Fixture text comes from `tests/fixtures/` where possible.
+ */
+
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { REPO_ROOT, type Renderer, type ScopedToken, createRenderer } from "./grammar-harness";
+
+const renderer = await createRenderer();
+const scopeSuite = renderer ? describe : describe.skip;
+
+function activeRenderer(): Renderer {
+  if (!renderer) {
+    throw new Error("scope renderer unavailable");
+  }
+  return renderer;
+}
+
+function tokenize(source: string): ScopedToken[] {
+  return activeRenderer().tokenize(source);
+}
+
+function fixture(relativePath: string): string {
+  return readFileSync(join(REPO_ROOT, "tests", "fixtures", relativePath), "utf8");
+}
+
+function tokensFor(tokens: ScopedToken[], text: string): ScopedToken[] {
+  return tokens.filter((token) => token.text === text);
+}
+
+function expectScoped(tokens: ScopedToken[], text: string, scope: string): void {
+  const matches = tokensFor(tokens, text);
+  expect(matches.length).toBeGreaterThan(0);
+  for (const token of matches) {
+    expect(token.scopes).toContain(scope);
+  }
+}
+
+function expectNeverScoped(tokens: ScopedToken[], text: string, scope: string): void {
+  for (const token of tokensFor(tokens, text)) {
+    expect(token.scopes).not.toContain(scope);
+  }
+}
+
+scopeSuite("rendered scopes — canonical fixture", () => {
+  test("@setup is a directive and @md/@xl are theme-yellow media aliases", () => {
+    const tokens = tokenize(fixture("canonical/button/input.cssx"));
+    expectScoped(tokens, "@setup", "keyword.control.directive.chikx");
+    expectNeverScoped(tokens, "@setup", "entity.name.function.chikx");
+
+    expectScoped(tokens, "@md", "entity.name.function.chikx");
+    expectScoped(tokens, "@md", "meta.variant.chikx");
+    expectScoped(tokens, "@xl", "entity.name.function.chikx");
+    expectScoped(tokens, "@dark", "entity.name.function.chikx");
+    expectNeverScoped(tokens, "@dark", "keyword.control.at-rule.css");
+  });
+
+  test("selectors, properties, values and variables use category scopes", () => {
+    const tokens = tokenize(fixture("canonical/button/input.cssx"));
+    expectScoped(tokens, ".button", "entity.other.attribute-name.class.css");
+    expectScoped(tokens, "display", "support.type.property-name.css");
+    expectScoped(tokens, "flex", "support.constant.property-value.css");
+    expectScoped(tokens, "$spacing", "variable.other.chikx");
+    expectScoped(tokens, "$theme", "variable.other.chikx");
+    expectScoped(tokens, "primary", "variable.other.member.chikx");
+    expectScoped(tokens, "12", "constant.numeric.css");
+    expectScoped(tokens, "px", "keyword.other.unit.css");
+    expectScoped(tokens, "#1e40af", "constant.other.color.rgb-value.hex.css");
+  });
+
+  test("string contents stay inert (no alias or variable scopes)", () => {
+    const tokens = tokenize(fixture("canonical/button/input.cssx"));
+    expectScoped(tokens, "./theme.cssx", "string.quoted.double.css");
+    expectNeverScoped(tokens, "./theme.cssx", "entity.name.function.chikx");
+    expectNeverScoped(tokens, "./theme.cssx", "variable.other.chikx");
+    expectNeverScoped(tokens, "./theme.cssx", "keyword.control.directive.chikx");
+  });
+});
+
+scopeSuite("rendered scopes — media, nesting and global fixtures", () => {
+  test("combined and custom aliases are yellow while directives stay magenta", () => {
+    const tokens = tokenize(fixture("media/inline-variants/input.cssx"));
+    expectScoped(tokens, "@media-types", "keyword.control.directive.chikx");
+    expectNeverScoped(tokens, "@media-types", "entity.name.function.chikx");
+    expectScoped(tokens, "@xl+dark", "entity.name.function.chikx");
+    expectScoped(tokens, "@compact", "entity.name.function.chikx");
+    expectScoped(tokens, "@xl", "entity.name.function.chikx");
+    expectScoped(tokens, "compact", "entity.name.function.chikx");
+  });
+
+  test("parent references, combinators, pseudo-classes and pseudo-elements are distinct", () => {
+    const tokens = tokenize(fixture("nesting/pseudo-combinators/input.cssx"));
+    expectScoped(tokens, "&", "entity.other.attribute-name.parent-selector.css");
+    expectScoped(tokens, ">", "keyword.operator.combinator.css");
+    expectScoped(tokens, "+", "keyword.operator.combinator.css");
+    expectScoped(tokens, ":hover", "entity.other.attribute-name.pseudo-class.css");
+    expectScoped(tokens, "::before", "entity.other.attribute-name.pseudo-element.css");
+    expectScoped(tokens, ":nth-child", "entity.other.attribute-name.pseudo-class.css");
+    expectScoped(tokens, "2n", "constant.numeric.css");
+  });
+
+  test(":global keeps a pseudo-class scope and re-enters selector context", () => {
+    const tokens = tokenize(fixture("global/escape/input.cssx"));
+    expectScoped(tokens, ":global", "entity.other.attribute-name.pseudo-class.chikx");
+    expectScoped(tokens, ".external-icon", "entity.other.attribute-name.class.css");
+  });
+});
+
+scopeSuite("rendered scopes — synthetic coverage", () => {
+  test(".ui-button, ids, type selectors and attribute selectors", () => {
+    const tokens = tokenize(
+      [
+        '#app .ui-button > button[data-kind="primary"]::after { color: red; }',
+        ".ui-button { color: red; }",
+      ].join("\n"),
+    );
+    expectScoped(tokens, ".ui-button", "entity.other.attribute-name.class.css");
+    expectScoped(tokens, "#app", "entity.other.attribute-name.id.css");
+    expectScoped(tokens, "button", "entity.name.tag.css");
+    expectScoped(tokens, "::after", "entity.other.attribute-name.pseudo-element.css");
+    expectScoped(tokens, "data-kind", "entity.other.attribute-name.css");
+  });
+
+  test("native at-rules and preludes use css at-rule and property/constant scopes", () => {
+    const tokens = tokenize(
+      "@media (min-width: 768px) and (prefers-color-scheme: dark) { .a { color: red; } }",
+    );
+    expectScoped(tokens, "@media", "keyword.control.at-rule.css");
+    expectScoped(tokens, "@media", "meta.at-rule.media.css");
+    expectNeverScoped(tokens, "@media", "entity.name.function.chikx");
+    expectScoped(tokens, "min-width", "support.type.property-name.css");
+    expectScoped(tokens, "768", "constant.numeric.css");
+    expectScoped(tokens, "dark", "support.constant.property-value.css");
+    expectNeverScoped(tokens, "dark", "entity.name.function.chikx");
+  });
+
+  test("!important, calc() and units keep their standard css scopes", () => {
+    const tokens = tokenize(".a { width: calc(100% - 8px); padding: 10px @md 20px !important; }");
+    expectScoped(tokens, "calc", "support.function.calc.css");
+    expectScoped(tokens, "!important", "keyword.other.important.css");
+    expectScoped(tokens, "10", "constant.numeric.css");
+    expectScoped(tokens, "px", "keyword.other.unit.css");
+  });
+
+  test("@ and $ inside strings and comments stay inert", () => {
+    const tokens = tokenize(
+      ["/* @md $x { } */", '.a { content: "@md $x { }"; }', "// @xl"].join("\n"),
+    );
+    expectScoped(tokens, "@md $x { }", "string.quoted.double.css");
+    expectNeverScoped(tokens, "@md $x { }", "entity.name.function.chikx");
+    expectNeverScoped(tokens, "@md $x { }", "variable.other.chikx");
+    expectScoped(tokens, " @md $x { } ", "comment.block.chikx");
+    expectScoped(tokens, "// @xl", "comment.line.double-slash.chikx");
+  });
+
+  test("unterminated constructs fall through without hanging", () => {
+    const tokens = tokenize(".a { color: red; .b { padding: 1px");
+    expect(tokens.length).toBeGreaterThan(0);
+    expectScoped(tokens, ".a", "entity.other.attribute-name.class.css");
+    expectScoped(tokens, ".b", "entity.other.attribute-name.class.css");
+  });
+});
