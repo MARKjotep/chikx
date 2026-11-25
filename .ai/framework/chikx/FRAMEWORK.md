@@ -53,11 +53,11 @@ internal (`parse()` wraps tokenize + parseTokens).
 | `packages/cli/src/` | 17 `.ts` modules + `compiler-api.d.ts`: `args`, `compiler` (loader), `config`, `formatter` (loader), `glob`, `index` (`main`, exit codes), `manifest`, `paths`, `project`, `report`, `setup`, `writer`, `commands/{build,check,clean,format,watch}`. |
 | `packages/language-service/` | Stub (`src/index.ts` is `export {}`); providers live in the VS Code package. No LSP yet. |
 | `packages/vscode/` | `syntaxes/chikx.tmLanguage.json`, `language-configuration.json`, `src/{extension,controller,analysis,intelligence,adapter,config,glob,output,paths,project,service,providers/*}`, `test/` extension-host suite, `dist/`+`out/` build output, `chikx-0.1.0.vsix`. |
-| `tests/fixtures/` | 48 `input.cssx` goldens in 12 groups + `cli/` project fixtures + `modules/merge/` 7 goldens using `entry.cssx`. |
-| `tests/compiler/` | 24 files: unit + golden suite (lexer, parser, lowering, media, modules, merge, naming, output, planner, runtime, selectors, sourcemap, substitute, formatter, pipeline, contract). |
+| `tests/fixtures/` | 54 `input.cssx` goldens in 13 groups + `cli/` project fixtures + 13 `entry.cssx` goldens (7 `modules/merge/`, 3 `keyframes/`, 3 `runtime/`). |
+| `tests/compiler/` | 25 files: unit + golden suite (`compile`, `contract`, `emitter`, `formatter`, `golden`, `keyframes`, `lexer`, `lexer.fixtures`, `lexer.invariants`, `lowering`, `mapgen`, `media`, `merge`, `modules`, `naming`, `output`, `parser`, `pipeline`, `planner`, `resolver`, `runtime`, `selectors`, `sourcemap`, `substitute`, `variables.golden`). |
 | `tests/browser/` | Playwright 3-engine computed-style gate (`harness/` scenarios + build, `server.ts`, `specs/*.pw.ts`). |
 | `tests/integration/`, `tests/extension/` | CLI build/config/watch/format + Node smoke; grammar/scope, provider and extension-host suites. |
-| `examples/` | `basic`, `responsive`, `variables`, `jsx`, `custom-output` (all built by `release:check`). |
+| `examples/` | `basic`, `responsive`, `variables`, `jsx`, `custom-output`, `overrides` — six worked examples, all built by `release:check`. |
 
 ## 3. Compile pipeline (exact order)
 
@@ -77,7 +77,7 @@ options` and calls `compileEntry`.
 | 3 | entry: `lower` → `substitute` → `renameClasses` | A05/A08/A09 | Same passes with the entry prefix. |
 | 4 | `mergeClassTables([...moduleTables, entryTable])` | naming (A09/A16) | One union table; same name+same emitted unifies, same name+different emitted = CHIKX4001 (first wins, build fails). |
 | 5 | `stylesheetIr([...module rules, ...entry rules])` | ir | Imported-first cascade order. |
-| 6 | `emitRuntimeTokens(combinedIr, graph, entryKey, { prefix, media?, ruleModules? })` | variables (A08) | Prepends `:root` custom properties and conditional `:root` overrides; rewrites remaining runtime refs to `var(--…)`; dedupes by property, conflicts = CHIKX2001 first-wins. |
+| 6 | `emitRuntimeTokens(combinedIr, graph, entryKey, { prefix, media?, ruleModules? })` | variables (A08/A20) | Prepends `:root` custom properties and conditional `:root` overrides; rewrites remaining runtime refs to `var(--…)`; dedupes by property in merge order — style modules in DFS `@use` order, then other token modules, entry last — so the entry overrides imports and later modules override earlier ones; no conflict diagnostic (ADR-0016). |
 | 7 | `groupRuns(ir, mediaGrouping ?? "safe")` | lowering (A05) | Merges only **adjacent** runs with identical selector text, ancestors, condition and native-rule context. `none` returns the input instance. |
 | 8 | `flattenIr(ir)` | selectors (A06) | Nested selectors → flat lists (descendant, `&`, `:is()`); failures are CHIKX1001 and the rule emits no CSS. |
 | 9 | `planOutputs({sourceFile, setup, workspaceRoot, projectConfig?}, {host})` | output (A10) | Resolves/validates every destination before emission; errors are CHIKX5001 and the plan is empty. |
@@ -196,8 +196,11 @@ Built-ins: `sm` 640, `md` 768, `lg` 1024, `xl` 1280, `2xl` 1536 (min-width); `da
   inline variants become conditional `:root` overrides grouped by resolved query (base first), and
   references become `var(--<prefix>-<name>)`.
 - Runtime tokens visible to the entry (own + imported + referenced members of rule modules) are
-  emitted per consuming entrypoint, deduped by property name; two definitions for one name =
-  CHIKX2001 first-wins. Native `var()` remains valid.
+  emitted per consuming entrypoint, deduped by custom-property name in merge order: style-imported
+  modules first in canonical DFS `@use` post-order, other reachable token modules next, entry last.
+  A later definition replaces an earlier one with no diagnostic, so the entry's `@runtime` overrides
+  an imported module's same-named property and a later module overrides an earlier module
+  (ADR-0016). Native `var()` remains valid.
 
 ### 5.6 Selectors and naming
 
@@ -254,7 +257,7 @@ unmodified files.
 | `CHIKX1002` | syntax | error | `parser/` | Missing semicolon on a Chikx-syntax declaration (has modifier or `$`). Plain CSS final declarations may omit it (ADR-0011). | Rejected declaration omitted, next statement parsed. |
 | `CHIKX1003` | syntax | error | `parser/` | Unbalanced parentheses/brackets in a value or condition; unrecoverable statement. | Statement-scoped recovery. |
 | `CHIKX2001` | variables/modules | error | `resolver/graph.ts`, `resolver/scopes.ts` | Missing/unreadable module, empty specifier, workspace/symlink escape, unresolved import, cycle, duplicate local, compile+runtime name clash, ambiguous unqualified import, duplicate namespace. | Edge/node dropped; graph still returns records; first definition wins. |
-| `CHIKX2001` | variables/modules | error | `variables/expand.ts`, `substitute.ts`, `runtime.ts` | Undefined token/namespace/member, bare namespace, reference cycle, over-deep chain, conflicting runtime definitions. | Declaration segment omitted (first runtime definition wins). |
+| `CHIKX2001` | variables/modules | error | `variables/expand.ts`, `substitute.ts`, `runtime.ts` | Undefined token/namespace/member, bare namespace, reference cycle, over-deep chain. Same-name runtime definitions are **not** an error: they resolve in merge order, entry last (ADR-0016). | Declaration segment omitted; later runtime definition wins. |
 | `CHIKX3001` | media | error | `lowering/media.ts`, `lower.ts`, `variables/runtime.ts` | Unknown alias, invalid/uncombinable alias definition, Chikx modifier/conditional inside `@keyframes`/`@font-face`/`@property`-style restricted contexts, bad runtime condition. | Condition dropped; affected declaration/block omitted. |
 | `CHIKX4001` | naming | error (warning for omitted named exports) | `naming/rewrite.ts`, `table.ts`, `mapgen.ts`, `merge.ts` | Invalid prefix or prefixed identifier, camelCase alias collision, merged-table same-name/different-emitted conflict; warning for reserved/invalid named export. | Class stays unprefixed / exports omitted, output still deterministic. |
 | `CHIKX5001` | output | error | `output/index.ts`, `output/validate.ts` | Unsafe or inconsistent output plan (see §5.8). | Empty plan; caller must not write. |
@@ -296,10 +299,10 @@ Routing rule: find the code, then the producer module above; that module owns th
 | `bun install` | Workspace links (Bun workspaces; `packages/*`). |
 | `bun run typecheck` | `tsc --noEmit` for compiler, CLI, language-service **and vscode** (4 projects). |
 | `bun run lint` | Biome (recommended rules, 2-space, 100 cols, double quotes). Ignores `.ai`, `docs`, `dist`, lockfile, `opencode.jsonc`, root `AGENTS.md`. |
-| `bun test` / `bun run test` | 612 tests / 37 files (unit, goldens, merge/module suites, CLI integration incl. Node smoke, extension providers/host). |
+| `bun test` / `bun run test` | 679 tests / 41 files (unit, goldens, merge/module suites, CLI integration incl. Node smoke, extension providers/host). |
 | `bun run verify` | `typecheck && lint && test` — the required gate for every change. |
 | `bun run test:browser` | `playwright test`: 75 computed-style tests = 25 × Chromium/Firefox/WebKit (recorded in `docs/cascade.md` §5); Chromium required, other engines auto-detected. |
-| `bun run release:check` | `verify` + browser + compiler/CLI builds + package-metadata assertions + `npm pack --dry-run` (both tarballs contain `package.json`, `README.md`, `LICENSE`, `dist/**`) + 5 example builds + VS Code build + `vsce package`. |
+| `bun run release:check` | `verify` + browser + compiler/CLI builds + package-metadata assertions + `npm pack --dry-run` (both tarballs contain `package.json`, `README.md`, `LICENSE`, `dist/**`) + 6 example builds + VS Code build + `vsce package`. |
 | `bun run benchmark` | Deterministic 100/1000-file benchmark; medians recorded in `docs/performance.md`. |
 
 CLI surface (`chikx`), exit codes contractual:
@@ -391,8 +394,15 @@ expected/actual (bugs) or acceptance criteria (features), evidence, workaround a
 ## 11. Current state (2026-11-25)
 
 - **v0.1.0**; all plan phases **P0–P7 plus A16 are 🟢** (lead-verified; `.ai/PROGRESS.md`).
-- `bun run verify` green: 612 tests / 37 files; typecheck includes the VS Code project; Biome clean.
+- `bun run verify` green: 679 tests / 41 files; typecheck includes the VS Code project; Biome clean.
 - Browser gate: 75 passed (25 × Chromium/Firefox/WebKit) per `docs/cascade.md`; Chromium is required.
+- **ADR-0015** (built-in `$keyframes.<name>` namespace) and **ADR-0016** (runtime-token merge-order
+  override) landed 2026-11-25: runtime duplicates now resolve entry-last instead of CHIKX2001
+  first-wins, and `$keyframes.<name>` is visible through `styles` imports.
+- Six worked examples — `basic`, `responsive`, `variables`, `jsx`, `custom-output` and `overrides`
+  (the ADR-0016 runtime-token override showcase) — all built by `release:check`.
+- The formatter preserves the `@use … styles` rule-merge clause instead of downgrading it to a
+  token-only import (CSSX-A24).
 - Extension packaged: `packages/vscode/chikx-0.1.0.vsix` (built by `release:check`).
 - **Not published** to npm/Marketplace and the repository has **no commits** (both pending owner
   decisions). Do not commit, push or publish without authorization.

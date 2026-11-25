@@ -74,12 +74,9 @@ function cachedExecutable(
 }
 
 function ensureBuild(): void {
-  if (
-    existsSync(join(EXTENSION_ROOT, "out", "extension.js")) &&
-    existsSync(join(EXTENSION_ROOT, "dist", "extension.js"))
-  ) {
-    return;
-  }
+  // Rebuild unconditionally: a stale `dist/extension.js` would let the host
+  // suite pass against code that no longer exists in the working tree now that
+  // the suite exercises formatting and save behaviour added after A20.
   // tsc is typecheck-only for the extension; the loadable bundle is produced by
   // Bun. Under `bun test`, process.execPath is the Bun binary.
   const build = spawnSync(
