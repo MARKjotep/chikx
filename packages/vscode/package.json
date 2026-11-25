@@ -70,6 +70,11 @@
           "default": false,
           "description": "Compile the saved Chikx file and write its outputs. Off by default; requires a trusted workspace."
         },
+        "chikx.editor.formatOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Format the whole Chikx document with the canonical compiler formatter before saving. Off by default; Format Document (⌥⇧F) and editor.formatOnSave work independently."
+        },
         "chikx.previewSplitEditor": {
           "type": "boolean",
           "default": true,

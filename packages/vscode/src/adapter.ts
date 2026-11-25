@@ -31,6 +31,14 @@ export function toEditorRange(range: AnalysisRange): vscode.Range {
   );
 }
 
+/** Convert an editor range to a pure range. */
+export function toAnalysisRange(range: vscode.Range): AnalysisRange {
+  return {
+    start: { line: range.start.line, character: range.start.character },
+    end: { line: range.end.line, character: range.end.character },
+  };
+}
+
 /** Convert a compiler problem to an editor diagnostic. */
 export function toEditorDiagnostic(problem: AnalysisProblem): vscode.Diagnostic {
   const diagnostic = new vscode.Diagnostic(

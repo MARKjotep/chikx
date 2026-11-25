@@ -37,6 +37,7 @@ export class ChikxCompletionProvider implements vscode.CompletionItemProvider {
       const item = new vscode.CompletionItem(suggestion.label, toCompletionKind(suggestion.kind));
       item.insertText = suggestion.insertText;
       item.filterText = suggestion.label;
+      if (suggestion.sortText !== undefined) item.sortText = suggestion.sortText;
       if (suggestion.detail !== undefined) item.detail = suggestion.detail;
       if (suggestion.documentation !== undefined) {
         item.documentation = new vscode.MarkdownString(suggestion.documentation);

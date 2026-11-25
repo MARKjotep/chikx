@@ -47,6 +47,8 @@ export interface CompletionSuggestion {
   readonly detail?: string;
   readonly documentation?: string;
   readonly insertText: string;
+  /** Optional editor sort key; lower sorts first (Chikx directives before natives). */
+  readonly sortText?: string;
 }
 
 /** Completion outcome with the range the editor should replace. */
@@ -319,6 +321,129 @@ const DIRECTIVES: readonly { readonly name: string; readonly documentation: stri
     { name: "media-types", documentation: "File-local media alias definitions." },
   ]);
 
+/**
+ * Native CSS at-rules Chikx passes through unchanged (SPECIFICATION.md §3.4,
+ * §3.5). The compiler matches this list in `parser/rule.ts` `NATIVE_AT_RULES`,
+ * which the public barrel does not export, so the editor mirrors it here.
+ *
+ * `nested` marks the conditional group rules CSS Nesting accepts inside a
+ * style rule; every other native at-rule is offered at top level only.
+ */
+interface NativeAtRule {
+  readonly name: string;
+  readonly nested: boolean;
+  readonly documentation: string;
+}
+
+const NATIVE_AT_RULES: readonly NativeAtRule[] = Object.freeze([
+  {
+    name: "keyframes",
+    nested: false,
+    documentation:
+      "Defines animation keyframes (`@keyframes spin { from { … } to { … } }`); used by `animation-name`.",
+  },
+  {
+    name: "media",
+    nested: true,
+    documentation:
+      "Conditional group rule matching a native media query (`@media (min-width: 768px) { … }`).",
+  },
+  {
+    name: "font-face",
+    nested: false,
+    documentation: "Declares a downloadable font face (`@font-face { font-family: …; src: … }`).",
+  },
+  {
+    name: "import",
+    nested: false,
+    documentation:
+      "Native CSS `@import`; Chikx `@use` is the token/module import and emits no `@import`.",
+  },
+  {
+    name: "property",
+    nested: false,
+    documentation:
+      'Registers a typed custom property (`@property --brand { syntax: "<color>"; … }`).',
+  },
+  {
+    name: "supports",
+    nested: true,
+    documentation:
+      "Conditional group rule matching a feature query (`@supports (display: grid) { … }`).",
+  },
+  {
+    name: "layer",
+    nested: true,
+    documentation: "Declares a cascade layer or layer block (`@layer base { … }`).",
+  },
+  {
+    name: "container",
+    nested: true,
+    documentation:
+      "Conditional group rule matching a container query (`@container (min-width: 30rem) { … }`).",
+  },
+  {
+    name: "page",
+    nested: false,
+    documentation: "Styles paged-media output (`@page :first { … }`).",
+  },
+  {
+    name: "charset",
+    nested: false,
+    documentation: "Declares the stylesheet encoding; must be the very first statement.",
+  },
+  {
+    name: "counter-style",
+    nested: false,
+    documentation: "Defines a custom counter style (`@counter-style thumbs { … }`).",
+  },
+  {
+    name: "document",
+    nested: false,
+    documentation: "Legacy engine-specific document wrapper; passed through unchanged.",
+  },
+  {
+    name: "font-feature-values",
+    nested: false,
+    documentation: "Defines `font-variant-alternates` keywords for a font family.",
+  },
+  {
+    name: "font-palette-values",
+    nested: false,
+    documentation: "Defines a custom color palette for a color font.",
+  },
+  {
+    name: "namespace",
+    nested: false,
+    documentation: "Declares an XML namespace prefix; must precede style rules.",
+  },
+  {
+    name: "nest",
+    nested: true,
+    documentation: "Legacy explicit nesting at-rule; plain Chikx nesting needs no `@nest`.",
+  },
+  {
+    name: "position-try",
+    nested: false,
+    documentation: "Defines a position-try fallback set for anchored positioning.",
+  },
+  {
+    name: "scope",
+    nested: true,
+    documentation: "Scopes a group of rules to a selector subtree (`@scope (.card) { … }`).",
+  },
+  {
+    name: "starting-style",
+    nested: true,
+    documentation: "Supplies starting styles for entry transitions (`@starting-style { … }`).",
+  },
+  {
+    name: "view-transition",
+    nested: false,
+    documentation: "Defines view-transition pseudo-element styles (`@view-transition { … }`).",
+  },
+]);
+
 /** Setup key documentation shown as completion documentation. */
 const SETUP_DOCS: Readonly<Record<string, string>> = Object.freeze({
   prefix: "Class name prefix (e.g. `ui` produces `ui-button`).",
@@ -396,6 +521,52 @@ function statementStart(text: string, offset: number): number {
     if (char === ";" || char === "{" || char === "}") return index;
   }
   return -1;
+}
+
+/**
+ * Whether `at` begins a statement: only whitespace separates it from the
+ * previous `;`, `{` or `}` boundary. Inside a rule body this tells a real
+ * at-rule statement apart from a modifier alias in a declaration value.
+ */
+function atStatementStart(text: string, at: number): boolean {
+  return text.slice(statementStart(text, at) + 1, at).trim() === "";
+}
+
+/**
+ * Brace nesting depth at `offset`, ignoring braces inside strings and comments.
+ *
+ * Directive completion classifies top level from the authored text instead of
+ * parser spans, so recovery-pending statements (an omitted semicolon, an
+ * unclosed construct) cannot suppress the top-level directive list.
+ */
+function braceDepthAt(text: string, offset: number): number {
+  let depth = 0;
+  let index = 0;
+  while (index < offset) {
+    const char = text[index];
+    if (char === '"' || char === "'") {
+      index = skipString(text, index);
+      continue;
+    }
+    if (char === "\\") {
+      index += 2;
+      continue;
+    }
+    if (char === "/" && text[index + 1] === "*") {
+      const close = text.indexOf("*/", index + 2);
+      index = close < 0 ? text.length : close + 2;
+      continue;
+    }
+    if (char === "/" && text[index + 1] === "/") {
+      const close = text.indexOf("\n", index + 2);
+      index = close < 0 ? text.length : close + 1;
+      continue;
+    }
+    if (char === "{") depth += 1;
+    else if (char === "}") depth = Math.max(0, depth - 1);
+    index += 1;
+  }
+  return depth;
 }
 
 interface SpanLike {
@@ -483,8 +654,7 @@ export function contextAt(
   const { word } = scanBackWord(text, offset);
 
   if (word.startsWith("@")) {
-    const rule = findEnclosingRule(analysis, offset);
-    return { kind: "directive", word: word.slice(1), inSelector: rule !== undefined };
+    return { kind: "directive", word: word.slice(1), inSelector: braceDepthAt(text, offset) > 0 };
   }
   if (word.startsWith("$")) {
     const inner = word.slice(1);
@@ -579,6 +749,28 @@ function setupKeyItem(key: string): CompletionSuggestion {
   };
 }
 
+/**
+ * Native at-rule suggestions for the typed prefix.
+ *
+ * `topLevel` keeps every pass-through at-rule; inside a rule body only the
+ * conditional group rules CSS Nesting accepts are offered (SPECIFICATION.md
+ * §3.4/§3.5), so `@charset`, `@import`, `@keyframes` and friends never suggest
+ * an invalid nested position.
+ */
+function nativeAtRuleItems(word: string, topLevel: boolean): readonly CompletionSuggestion[] {
+  const typed = word.toLowerCase();
+  return NATIVE_AT_RULES.filter(
+    (rule) => (topLevel || rule.nested) && (typed === "" || rule.name.startsWith(typed)),
+  ).map<CompletionSuggestion>((rule) => ({
+    label: `@${rule.name}`,
+    kind: "directive",
+    detail: "native at-rule",
+    documentation: rule.documentation,
+    insertText: `@${rule.name} `,
+    sortText: `1-${rule.name}`,
+  }));
+}
+
 function importPathItems(
   analysis: AnalyzeResult,
   typed: string,
@@ -642,17 +834,27 @@ export function completionsAt(
       const aliases = analysis.mediaAliases
         .filter((alias) => context.word === "" || alias.name.startsWith(context.word))
         .map(aliasItem);
-      const directives =
-        context.inSelector || context.word !== ""
-          ? []
-          : DIRECTIVES.map<CompletionSuggestion>((directive) => ({
-              label: `@${directive.name}`,
-              kind: "directive",
-              detail: "Chikx directive",
-              documentation: directive.documentation,
-              insertText: `@${directive.name} `,
-            }));
-      return result([...aliases, ...directives], replaceStart);
+      const topLevel = !context.inSelector;
+      const directives = topLevel
+        ? DIRECTIVES.filter(
+            (directive) => context.word === "" || directive.name.startsWith(context.word),
+          ).map<CompletionSuggestion>((directive) => ({
+            label: `@${directive.name}`,
+            kind: "directive",
+            detail: "Chikx directive",
+            documentation: directive.documentation,
+            insertText: `@${directive.name} `,
+            sortText: `0-${directive.name}`,
+          }))
+        : [];
+      const natives =
+        topLevel || atStatementStart(text, replaceStart)
+          ? nativeAtRuleItems(context.word, topLevel)
+          : [];
+      return result(
+        topLevel ? [...directives, ...natives, ...aliases] : [...aliases, ...natives],
+        replaceStart,
+      );
     }
     case "token": {
       const replaceStart = offset - context.word.length - 1;

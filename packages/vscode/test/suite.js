@@ -45,6 +45,10 @@ exports.run = async function run() {
     manifest.contributes.languages.some((language) => language.id === "chikx"),
     "chikx language contribution missing",
   );
+  const formatSetting = manifest.contributes.configuration.properties["chikx.editor.formatOnSave"];
+  assert.ok(formatSetting, "chikx.editor.formatOnSave setting is not contributed");
+  assert.strictEqual(formatSetting.type, "boolean");
+  assert.strictEqual(formatSetting.default, false, "formatOnSave must default to off");
 
   const commands = await vscode.commands.getCommands(true);
   for (const command of [
@@ -122,11 +126,63 @@ exports.run = async function run() {
         .then((value) => value.includes(".ui-button")),
       true,
     );
+
+    // Formatting: Format Document reaches the registered provider.
+    const formatPath = path.join(temporary, "format-manual.cssx");
+    await fs.writeFile(formatPath, ".card{color:red}", "utf8");
+    const formatDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(formatPath));
+    await vscode.window.showTextDocument(formatDocument);
+    const formatEdits = await vscode.commands.executeCommand(
+      "vscode.executeFormatDocumentProvider",
+      formatDocument.uri,
+      { tabSize: 2, insertSpaces: true },
+    );
+    assert.ok(Array.isArray(formatEdits), "Format Document provider returned no edit list");
+    assert.ok(formatEdits.length > 0, "Format Document provider returned no edits");
+    const applyFormat = new vscode.WorkspaceEdit();
+    for (const edit of formatEdits) {
+      applyFormat.replace(formatDocument.uri, edit.range, edit.newText);
+    }
+    assert.strictEqual(await vscode.workspace.applyEdit(applyFormat), true);
+    assert.strictEqual(formatDocument.getText(), ".card {\n  color: red;\n}\n");
+
+    // Save path: default off saves untouched, then on formats; parse errors stay put.
+    const savePath = path.join(temporary, "format-save.cssx");
+    await fs.writeFile(savePath, ".card{color:red}", "utf8");
+    const saveDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(savePath));
+    const saveEditor = await vscode.window.showTextDocument(saveDocument);
+    const chikxConfig = vscode.workspace.getConfiguration("chikx", saveDocument.uri);
+    await chikxConfig.update("editor.formatOnSave", false, vscode.ConfigurationTarget.Global);
+
+    await saveEditor.edit((builder) => builder.insert(new vscode.Position(0, 0), " "));
+    await saveDocument.save();
+    assert.strictEqual(saveDocument.getText(), " .card{color:red}");
+    assert.strictEqual(await fs.readFile(savePath, "utf8"), " .card{color:red}");
+
+    await chikxConfig.update("editor.formatOnSave", true, vscode.ConfigurationTarget.Global);
+    await saveEditor.edit((builder) => builder.insert(new vscode.Position(0, 0), " "));
+    await saveDocument.save();
+    assert.strictEqual(saveDocument.getText(), ".card {\n  color: red;\n}\n");
+    assert.strictEqual(await fs.readFile(savePath, "utf8"), ".card {\n  color: red;\n}\n");
+
+    const errorPath = path.join(temporary, "format-error.cssx");
+    const brokenSource = "@md {\n  .card { padding: 20px; }\n}\n";
+    await fs.writeFile(errorPath, brokenSource, "utf8");
+    const errorDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(errorPath));
+    const errorEditor = await vscode.window.showTextDocument(errorDocument);
+    await errorEditor.edit((builder) => builder.insert(new vscode.Position(0, 0), "/* keep */\n"));
+    await errorDocument.save();
+    const expectedBroken = `/* keep */\n${brokenSource}`;
+    assert.strictEqual(errorDocument.getText(), expectedBroken);
+    assert.strictEqual(await fs.readFile(errorPath, "utf8"), expectedBroken);
   } finally {
+    await vscode.workspace
+      .getConfiguration("chikx")
+      .update("editor.formatOnSave", false, vscode.ConfigurationTarget.Global);
     await fs.rm(temporary, { recursive: true, force: true });
   }
 
   console.log(
-    `[chikx host] passed: activation, grammar, 6 commands, ${diagnostics.length} diagnostic(s), completion ${labels.length} item(s), compile+preview commands`,
+    `[chikx host] passed: activation, grammar, 6 commands, format-on-save (default off + on + parse error), ${diagnostics.length} diagnostic(s), completion ${labels.length} item(s), compile+preview commands`,
   );
 };

@@ -127,6 +127,124 @@ describe("completion contexts", () => {
     expect(labels(items)).toEqual(["./layout.cssx", "./sub/", "./theme.cssx"]);
   });
 
+  test("native at-rules complete at top level after @ (includes @keyframes)", async () => {
+    const text = ['@setup { prefix: "ui"; }', "", "@"].join("\n");
+    const state = await analyze(text);
+    const offset = text.length;
+    expect(contextAt(text, offset, state.analysis)).toEqual({
+      kind: "directive",
+      word: "",
+      inSelector: false,
+    });
+    const items = completionsAt(text, offset, { analysis: state.analysis }).items;
+    const byLabel = new Map(items.map((item) => [item.label, item]));
+    const native = [
+      "@keyframes",
+      "@media",
+      "@font-face",
+      "@import",
+      "@property",
+      "@supports",
+      "@layer",
+      "@container",
+      "@page",
+      "@charset",
+    ];
+    for (const label of native) {
+      expect(byLabel.get(label)?.detail).toBe("native at-rule");
+      expect(byLabel.get(label)?.documentation?.length ?? 0).toBeGreaterThan(0);
+    }
+    const ordered = items.map((item) => item.label);
+    for (const directive of ["@setup", "@use", "@variables", "@runtime", "@media-types"]) {
+      expect(ordered).toContain(directive);
+    }
+    // Chikx directives stay ahead of the native at-rules.
+    expect(ordered.indexOf("@setup")).toBeLessThan(ordered.indexOf("@keyframes"));
+    expect(ordered.indexOf("@media-types")).toBeLessThan(ordered.indexOf("@media"));
+    // The adapter maps these optional sort keys, so the grouping holds in VS Code too.
+    expect(byLabel.get("@setup")?.sortText).toBe("0-setup");
+    expect(byLabel.get("@keyframes")?.sortText).toBe("1-keyframes");
+    expect(byLabel.get("@keyframes")?.insertText).toBe("@keyframes ");
+  });
+
+  test("the typed prefix filters native at-rules and Chikx directives", async () => {
+    const top = ".a { color: red; }\n@me";
+    const topState = await analyze(top);
+    expect(aliasLabels(topState.analysis, top, top.length)).toEqual(["@media-types", "@media"]);
+
+    const keyframes = "@k";
+    const keyframesState = await analyze(keyframes);
+    expect(aliasLabels(keyframesState.analysis, keyframes, keyframes.length)).toEqual([
+      "@keyframes",
+    ]);
+
+    const setup = "@se";
+    const setupState = await analyze(setup);
+    expect(aliasLabels(setupState.analysis, setup, setup.length)).toEqual(["@setup"]);
+  });
+
+  test("rule bodies only offer CSS-nesting-legal native at-rules", async () => {
+    const text = ".a {\n  @\n}";
+    const state = await analyze(text);
+    const offset = text.indexOf("@") + 1;
+    expect(contextAt(text, offset, state.analysis)).toEqual({
+      kind: "directive",
+      word: "",
+      inSelector: true,
+    });
+    const items = aliasLabels(state.analysis, text, offset);
+    for (const legal of ["@media", "@supports", "@layer", "@container"]) {
+      expect(items).toContain(legal);
+    }
+    for (const topLevelOnly of [
+      "@keyframes",
+      "@font-face",
+      "@charset",
+      "@import",
+      "@property",
+      "@page",
+    ]) {
+      expect(items).not.toContain(topLevelOnly);
+    }
+    // Media aliases keep completing inside a rule body.
+    expect(items).toContain("@md");
+  });
+
+  test("native at-rules are not offered mid-declaration but aliases still are", async () => {
+    const text = ".a {\n  padding: 10px @m\n}";
+    const state = await analyze(text);
+    const offset = text.indexOf("@m") + 2;
+    expect(contextAt(text, offset, state.analysis)).toEqual({
+      kind: "directive",
+      word: "m",
+      inSelector: true,
+    });
+    expect(aliasLabels(state.analysis, text, offset)).toEqual(["@md"]);
+  });
+
+  test("top-level @ completion survives recovery-pending statements", async () => {
+    const text = [
+      "@variables { gap: 8px; }",
+      ".card {",
+      "  padding: $gap",
+      "  & .label { color: red; }",
+      "}",
+      "",
+      "@",
+    ].join("\n");
+    const state = await analyze(text);
+    expect(state.analysis.problems.some((problem) => problem.severity === "error")).toBe(true);
+    const offset = text.length;
+    expect(contextAt(text, offset, state.analysis)).toEqual({
+      kind: "directive",
+      word: "",
+      inSelector: false,
+    });
+    const items = aliasLabels(state.analysis, text, offset);
+    expect(items).toContain("@setup");
+    expect(items).toContain("@keyframes");
+  });
+
   test("property, value, selector and pseudo contexts are distinguished", async () => {
     const propertyText = ".a {\n  dis";
     const propertyState = await analyze(propertyText);

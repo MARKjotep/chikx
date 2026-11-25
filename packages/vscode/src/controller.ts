@@ -26,9 +26,11 @@ import {
 } from "./output.js";
 import { basenamePath, dirnamePath, normalizePath, relativeTo, toPosix } from "./paths.js";
 import { ProjectIndex } from "./project.js";
+import { ChikxCodeActionProvider } from "./providers/code-actions.js";
 import { ChikxColorProvider } from "./providers/color.js";
 import { ChikxCompletionProvider } from "./providers/completion.js";
 import { ChikxDiagnostics } from "./providers/diagnostics.js";
+import { ChikxFormattingProvider, formattingEdits } from "./providers/formatting.js";
 import { ChikxHoverProvider } from "./providers/hover.js";
 import {
   ChikxDefinitionProvider,
@@ -147,6 +149,15 @@ export class ChikxController {
         { language: "chikx" },
         new ChikxSymbolProvider(this.service),
       ),
+      vscode.languages.registerDocumentFormattingEditProvider(
+        { language: "chikx" },
+        new ChikxFormattingProvider(),
+      ),
+      vscode.languages.registerCodeActionsProvider(
+        { language: "chikx" },
+        new ChikxCodeActionProvider(this.service),
+        ChikxCodeActionProvider.metadata,
+      ),
       vscode.commands.registerCommand(COMMANDS.compileFile, () =>
         this.withActiveDocument((doc) => this.compileFile(doc)),
       ),
@@ -168,6 +179,7 @@ export class ChikxController {
         }
       }),
       vscode.workspace.onDidSaveTextDocument((document) => void this.onDocumentSaved(document)),
+      vscode.workspace.onWillSaveTextDocument((event) => this.onWillSaveTextDocument(event)),
       vscode.workspace.onDidCloseTextDocument((document) => {
         this.diagnostics.clear(document.uri);
         this.service.forget(toPosix(document.uri.fsPath));
@@ -195,6 +207,27 @@ export class ChikxController {
   private onDocumentOpened(document: vscode.TextDocument): void {
     if (document.languageId !== "chikx" || document.uri.scheme !== "file") return;
     this.diagnostics.schedule(document);
+  }
+
+  /**
+   * Optional Chikx format-on-save (`chikx.editor.formatOnSave`, default off).
+   *
+   * Returns the same whole-document edit the formatting provider offers, so
+   * manual formatting, `editor.formatOnSave` and this listener agree. The edit
+   * is requested only for manual and after-delay saves; focus-out saves are
+   * left alone. Parse errors produce no edit, and formatting is idempotent, so
+   * enabling both this setting and global `editor.formatOnSave` cannot insert a
+   * missing semicolon twice (a `CHIKX1002` declaration is not rewritten at all).
+   */
+  private onWillSaveTextDocument(event: vscode.TextDocumentWillSaveEvent): void {
+    const document = event.document;
+    if (document.languageId !== "chikx" || document.uri.scheme !== "file") return;
+    const enabled = vscode.workspace
+      .getConfiguration("chikx", document.uri)
+      .get<boolean>("editor.formatOnSave", false);
+    if (!enabled) return;
+    if (event.reason === vscode.TextDocumentSaveReason.FocusOut) return;
+    event.waitUntil(Promise.resolve(formattingEdits(document)));
   }
 
   private async onDocumentSaved(document: vscode.TextDocument): Promise<void> {
