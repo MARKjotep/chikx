@@ -193,7 +193,8 @@ MUST be rejected with diagnostics rather than silently changing semantics.
 ### 3.6 Reserved names
 
 Chikx directives are reserved and MUST NOT be used as aliases, variables or class-map keys where
-that would conflict. Conflicting alias names are rejected. Native CSS keywords keep their native
+that would conflict. Conflicting alias names are rejected. The built-in `keyframes` namespace name is
+reserved: an `@use` alias named `keyframes` is CHIKX2001 (§6.4). Native CSS keywords keep their native
 meaning.
 
 ## 4. Media conditions
@@ -313,9 +314,10 @@ Variables substitute **token sequences**, not JavaScript expressions. Resolution
 dependency graph and supports forward references. Undefined symbols and cycles are errors with
 source locations.
 
-- Local definitions override unqualified imported definitions.
+- Local definitions override unqualified imported definitions, including when several unqualified
+  imports export the same name; no ambiguity is reported when a local definition exists.
 - Duplicate local definitions are errors.
-- Ambiguous imports are errors.
+- Ambiguous unqualified imports are errors unless a local definition overrides the name.
 - Namespaced imports remain independent.
 - Imported values resolve in their defining module; local overrides do not mutate imported modules.
 - There is no implicit transitive re-export.
@@ -343,11 +345,30 @@ Runtime variables emit native custom properties and references, for example:
 .card { color: var(--ui-primary); }
 ```
 
-Runtime tokens are scoped by the prefix/module policy. Collisions across entrypoints are detected.
-Imported runtime tokens must have a defined emission owner; in the MVP they are emitted in each
-consuming entrypoint, deduplicated within that entrypoint, with a warning on conflicting definitions
-across outputs. Compile-time and runtime symbols cannot share a local name. Native `var()` remains
-valid.
+Runtime tokens are scoped by the prefix/module policy and named with the consuming build's prefix.
+Imported runtime tokens are emitted in each consuming entrypoint; a token referenced only by a
+`styles`-imported module's rules is emitted too. Compile-time and runtime symbols cannot share a
+local name (§6.1). Native `var()` remains valid.
+
+**Merge-order override (ADR-0016, owner decision of 2026-11-25).** When two runtime definitions
+produce the same post-prefix custom-property name, the definition later in merge order wins and the
+compiler emits one resolved declaration for that property. Merge order is:
+
+1. style-imported (`styles`) modules in canonical DFS `@use` post-order (dependencies before
+   importers, each module once);
+2. then any other reachable runtime-token module in graph topological order (dependencies before
+   importers);
+3. the entry last.
+
+The rule is deliberate and matches the native cascade: the entry's `@runtime` definition overrides a
+style-imported module's same-named property, and a later style module overrides an earlier one —
+exactly as a later `:root` declaration wins in CSS. Do not turn this back into a conflict error.
+Inline variants follow the same order per query group: base declarations first, then one conditional
+`:root` per resolved query in first-appearance order, and the winning definition supplies its own
+base and variants, so the entry's value beats an imported module's same-query value. A losing
+definition contributes neither its base nor its variants. Unqualified `$name` symbol ambiguity is
+unaffected: a local definition or a namespace is still how a compile-time value is chosen.
+Cross-entrypoint collision reporting is project-level work deferred beyond v0.1.
 
 ### 6.3 Rule-merge imports
 
@@ -375,11 +396,48 @@ as described in §6.1.
   so authoring a key restores it. A project-glob entry that is style-imported elsewhere still builds
   standalone under its own resolved flags.
 - **Tokens.** Compile-time values resolve in their defining module (§6.1). Runtime tokens of merged
-  modules are emitted into the consuming build under §6.2: deduplicated there, named with the
-  consuming build's prefix, and includes runtime properties referenced only by a merged module's
-  rules.
+  modules are emitted into the consuming build under §6.2, named with the consuming build's prefix,
+  and include runtime properties referenced only by a merged module's rules. If the entry and a
+  merged module (or two merged modules) define the same property, merge order decides the value
+  without a conflict diagnostic: the entry wins over imported modules and a later module wins over
+  an earlier one (ADR-0016).
 - **Cycles.** A cycle through any `@use` edge, style-bearing or not, is CHIKX2001 at the edge that
   closes it (§6.1). The merged walk still terminates deterministically.
+
+### 6.4 Built-in `keyframes` namespace
+
+`@keyframes <name> { … }` stays native CSS and additionally registers `<name>` in a built-in
+`keyframes` namespace (ADR-0015, owner decision of 2026-11-25). A declaration value may reference it
+as `$keyframes.<name>`:
+
+```scss
+@keyframes spin {
+  from { rotate: 0deg; }
+  to { rotate: 360deg; }
+}
+.spinner { animation-name: $keyframes.spin; animation-duration: 1s; }
+```
+
+emits the native `@keyframes spin` block and `animation-name: spin`. The reference is a compile-time
+substitution that expands to the authored name text (§6.1); it is not recursive and the at-rule
+prelude is never substituted.
+
+- **Registration.** Only a top-level `@keyframes` block whose prelude is a single plain identifier
+  registers a member, named exactly as authored (ASCII case-insensitive at-rule name). String-named
+  keyframes, escaped names, other preludes, and keyframes nested inside a rule or another at-rule
+  block (for example `@media`) stay native CSS and are not addressable. A repeated name in one module
+  registers once; the later block still wins in CSS.
+- **Visibility.** A module sees its own keyframe names plus those of every module reached through a
+  `styles` `@use` edge (§6.3), transitively in authored order — exactly the blocks the build emits. A
+  token-only import contributes no CSS, so its keyframe names are not referenceable.
+- **Duplicate names.** Expansion emits only the bare name text, so the same name may be declared by
+  several merged modules. Both blocks are emitted as authored and native cascade order decides the
+  winner; the compiler reports no conflict.
+- **Failures.** An unknown member, a name visible only through a token-only import, and a bare
+  `$keyframes` are CHIKX2001 at the reference and the affected declaration segment is omitted (§5.5).
+  `@use "…" as keyframes` is CHIKX2001 at the `@use` statement and does not shadow the built-in
+  namespace. No new diagnostic code exists for this feature.
+- **Editor support.** Completion, hover and rename for keyframe names are not part of v0.1.
 
 ## 7. Selectors and classes
 
@@ -622,6 +680,8 @@ boundary. Invalid CSS is never emitted; affected constructs are omitted after an
 The following are explicitly deferred beyond v0.1 and require an ADR plus regression fixtures:
 
 - mixins and reusable declaration groups (`@group`/`@apply`);
+- keyframe names through token-only imports and keyframe editor support (ADR-0015; use
+  `@use "…" styles` for imported keyframes);
 - arbitrary expressions and computation;
 - container aliases and attribute-based theme conditions;
 - inline pseudo-state modifiers;

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, posix } from "node:path";
+import { compileProject, createNodeHost } from "../../packages/compiler/src/index.ts";
 import { stylesheetIr } from "../../packages/compiler/src/ir/factories.ts";
 import type { DeclarationIr, RuleIr, StylesheetIr } from "../../packages/compiler/src/ir/types.ts";
 import { lower } from "../../packages/compiler/src/lowering/index.ts";
@@ -252,7 +253,7 @@ describe("runtime tokens: emission ownership", () => {
     expect(declarationsOf(result.ir).at(-1)?.value).toBe("var(--ui-primary)");
   });
 
-  test("two namespaces exporting one name conflict once and the first definition wins", async () => {
+  test("two namespaces exporting one name resolve in merge order: the later module wins", async () => {
     const files = {
       [`${WORKSPACE}/a.cssx`]: "@runtime { primary: #aaaaaa; }\n",
       [`${WORKSPACE}/b.cssx`]: "@runtime { primary: #bbbbbb; }\n",
@@ -262,17 +263,112 @@ describe("runtime tokens: emission ownership", () => {
     };
     const { result } = await runRuntime(files, `${WORKSPACE}/input.cssx`, { prefix: "ui" });
 
-    expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]?.code).toBe("CHIKX2001");
-    expect(result.diagnostics[0]?.message).toContain("would be defined by both");
+    // ADR-0016: no conflict diagnostic; the definition later in merge order wins.
+    expect(result.diagnostics).toEqual([]);
     expect(rootRules(result.ir).map(ruleSummary)[0]?.declarations).toEqual([
-      ["--ui-primary", "#aaaaaa"],
+      ["--ui-primary", "#bbbbbb"],
     ]);
     expect(declarationsOf(result.ir).map((declaration) => declaration.value)).toEqual([
-      "#aaaaaa",
+      "#bbbbbb",
       "var(--ui-primary)",
       "var(--ui-primary)",
     ]);
+  });
+});
+
+describe("runtime tokens: merge-order override (ADR-0016)", () => {
+  test("an entry @runtime definition overrides a style-imported module's property", async () => {
+    const theme = `${WORKSPACE}/theme.cssx`;
+    const entry = `${WORKSPACE}/input.cssx`;
+    const files = {
+      [theme]: "@runtime { primary: #111111; }\n.theme { color: $primary; }\n",
+      [entry]:
+        '@use "./theme.cssx" styles;\n@runtime { primary: #222222; }\n.app { color: $primary; }\n',
+    };
+    const { result } = await runRuntime(files, entry, { prefix: "ui", ruleModules: [theme] });
+
+    expect(result.diagnostics).toEqual([]);
+    expect(rootRules(result.ir).map(ruleSummary)).toEqual([
+      {
+        selector: ":root",
+        query: null,
+        keys: [],
+        declarations: [["--ui-primary", "#222222"]],
+      },
+    ]);
+  });
+
+  test("the later style module wins when two modules define one property", async () => {
+    const a = `${WORKSPACE}/a.cssx`;
+    const b = `${WORKSPACE}/b.cssx`;
+    const entry = `${WORKSPACE}/input.cssx`;
+    const files = {
+      [a]: "@runtime { accent: #aaaaaa @md #bbbbbb; }\n.a { border-color: $accent; }\n",
+      [b]: "@runtime { accent: #cccccc @md #dddddd; }\n.b { border-color: $accent; }\n",
+      [entry]:
+        '@use "./a.cssx" as a styles;\n@use "./b.cssx" as b styles;\n' +
+        ".app { color: $a.accent; background: $b.accent; }\n",
+    };
+    const { result } = await runRuntime(files, entry, { prefix: "ui", ruleModules: [a, b] });
+
+    expect(result.diagnostics).toEqual([]);
+    expect(rootRules(result.ir).map(ruleSummary)).toEqual([
+      {
+        selector: ":root",
+        query: null,
+        keys: [],
+        declarations: [["--ui-accent", "#cccccc"]],
+      },
+      {
+        selector: ":root",
+        query: "(min-width: 768px)",
+        keys: ["md"],
+        declarations: [["--ui-accent", "#dddddd"]],
+      },
+    ]);
+  });
+
+  test("the entry's variant wins over an imported module's same-query definition", async () => {
+    const theme = `${WORKSPACE}/theme.cssx`;
+    const entry = `${WORKSPACE}/input.cssx`;
+    const files = {
+      [theme]: "@runtime { surface: #ffffff @dark #111111; }\n.theme { background: $surface; }\n",
+      [entry]:
+        '@use "./theme.cssx" styles;\n@runtime { surface: #f8fafc @dark #0f172a; }\n.app { background: $surface; }\n',
+    };
+    const { result } = await runRuntime(files, entry, { prefix: "ui", ruleModules: [theme] });
+
+    expect(result.diagnostics).toEqual([]);
+    expect(rootRules(result.ir).map(ruleSummary)).toEqual([
+      {
+        selector: ":root",
+        query: null,
+        keys: [],
+        declarations: [["--ui-surface", "#f8fafc"]],
+      },
+      {
+        selector: ":root",
+        query: "(prefers-color-scheme: dark)",
+        keys: ["dark"],
+        declarations: [["--ui-surface", "#0f172a"]],
+      },
+    ]);
+  });
+
+  test("merge-order resolution is deterministic across runs", async () => {
+    const theme = `${WORKSPACE}/theme.cssx`;
+    const entry = `${WORKSPACE}/input.cssx`;
+    const files = {
+      [theme]: "@runtime { primary: #111111; }\n.theme { color: $primary; }\n",
+      [entry]:
+        '@use "./theme.cssx" styles;\n@runtime { primary: #222222; }\n.app { color: $primary; }\n',
+    };
+    const options = { prefix: "ui", ruleModules: [theme] } as const;
+    const first = await runRuntime(files, entry, options);
+    const second = await runRuntime(files, entry, options);
+
+    expect(JSON.stringify(second.result.ir)).toBe(JSON.stringify(first.result.ir));
+    expect(second.result.diagnostics).toEqual(first.result.diagnostics);
   });
 });
 
@@ -412,5 +508,38 @@ describe("runtime tokens: ordering and purity", () => {
     const before = JSON.stringify(first.substituted);
     emitRuntimeTokens(first.substituted, first.graph, entry, { prefix: "ui" });
     expect(JSON.stringify(first.substituted)).toBe(before);
+  });
+});
+
+const MERGED_RUNTIME_CASES = ["override-entry", "override-modules", "override-variants"] as const;
+
+describe("runtime tokens: merged-build merge order goldens", () => {
+  async function compileMerged(name: string) {
+    const directory = join(FIXTURES, "runtime", name);
+    const results = await compileProject(["entry.cssx"], createNodeHost(directory), {
+      projectRoot: directory,
+    });
+    const entry = results["entry.cssx"];
+    if (entry === undefined) throw new Error(`fixture ${name} produced no entry result`);
+    return { directory, entry };
+  }
+
+  for (const name of MERGED_RUNTIME_CASES) {
+    test(`runtime/${name} matches expected/css with no diagnostics`, async () => {
+      const { directory, entry } = await compileMerged(name);
+      const expected = readFileSync(join(directory, "expected", "css"), "utf8");
+
+      expect(entry.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([]);
+      expect(entry.css).toBe(expected);
+    });
+  }
+
+  test("merged runtime goldens are byte-identical across repeated runs", async () => {
+    for (const name of MERGED_RUNTIME_CASES) {
+      const first = await compileMerged(name);
+      const second = await compileMerged(name);
+      expect({ name, css: second.entry.css }).toEqual({ name, css: first.entry.css });
+      expect(second.entry.diagnostics).toEqual(first.entry.diagnostics);
+    }
   });
 });

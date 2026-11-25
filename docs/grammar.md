@@ -231,6 +231,36 @@ conditional blocks inside them are rejected (`CHIKX3001`, "Unsupported Chikx tra
 context") instead of silently changing semantics. Plain declarations and keyframe steps pass
 through. See [compatibility.md](compatibility.md#native-at-rules).
 
+### Keyframe name references (`$keyframes.<name>`)
+
+An authored `@keyframes <name>` block registers `<name>` in a built-in `keyframes` namespace
+([ADR-0015](decisions/ADR-0015-keyframes-namespace.md)). A declaration value can reference it, and the
+reference compiles to the plain name text:
+
+```chikx
+@keyframes spin {
+  from { rotate: 0deg; }
+  to { rotate: 360deg; }
+}
+.spinner {
+  animation-name: $keyframes.spin;
+  animation-duration: 1s;
+}
+```
+
+emits `animation-name: spin` beside the unchanged `@keyframes spin` block. Notes:
+
+- Only a top-level `@keyframes` whose prelude is a plain identifier registers a name. String-named
+  keyframes (`@keyframes "fade"`), keyframes nested in a rule or inside another at-rule block such as
+  `@media`, and non-identifier preludes stay native CSS only.
+- A module can also use the keyframe names of modules it imported with `@use "…" styles` — those
+  blocks are emitted in its own build. Token-only imports do not expose keyframe names, because
+  their CSS is not emitted.
+- An unknown member, a bare `$keyframes` and an `@use … as keyframes` alias are `CHIKX2001`; the
+  affected declaration is omitted. Two merged modules defining the same name are **not** an error:
+  both blocks are emitted and native cascade order decides.
+- Completion, hover and rename for keyframe names are not implemented yet.
+
 ## 8. Diagnostics
 
 | Family | Meaning | Anchor |

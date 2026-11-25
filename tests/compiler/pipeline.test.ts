@@ -103,9 +103,9 @@ function expectedCodeSeverity(entries: readonly ExpectedDiagnostic[]): string[] 
 }
 
 describe("fixture catalog through the public pipeline", () => {
-  test("discovers the frozen 48-entry catalog", () => {
-    expect(fixtures).toHaveLength(48);
-    expect(fixtures.filter((fixture) => fixture.id.startsWith("errors/"))).toHaveLength(8);
+  test("discovers the frozen 54-entry catalog", () => {
+    expect(fixtures).toHaveLength(54);
+    expect(fixtures.filter((fixture) => fixture.id.startsWith("errors/"))).toHaveLength(9);
   });
 
   for (const fixture of fixtures) {

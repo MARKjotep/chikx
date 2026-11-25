@@ -108,6 +108,34 @@ Authors **SHOULD** order mobile-first ascending aliases (`sm`, `md`, `lg`, `xl`,
 combined conditions last. The compiler MAY warn about suspicious order, but it **MUST NOT** silently
 reorder declarations.
 
+### Runtime custom properties merge in emission order
+
+`@runtime` tokens compile to `:root` custom properties, and a build can see the same property name
+from its entry and from modules it imports. Chikx resolves that in **merge order** instead of
+rejecting it ([ADR-0016](decisions/ADR-0016-runtime-token-override.md)): style-imported modules first
+in depth-first `@use` order, then other reachable token modules, and the entry last. One `:root`
+declaration is emitted with the winning value, and conditional variants follow the same order per
+query group.
+
+```chikx
+/* theme.cssx, imported with @use "./theme.cssx" styles; */
+@runtime { primary: #111111; }
+
+/* entry.cssx */
+@runtime { primary: #2563eb; }
+```
+
+```css
+:root {
+  --ui-primary: #2563eb;
+}
+```
+
+The entry wins because it is last in merge order — the same rule a browser applies to a later
+`:root` declaration. Two imported modules resolve the same way: the later one wins. This is
+deliberate, not a missing conflict check; use a namespace or a local definition when you mean to
+choose a compile-time `$name` instead.
+
 ### Worked example — `!important` per segment
 
 `!important` belongs to the value segment it terminates (D2,

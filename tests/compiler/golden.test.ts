@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { emitCss } from "../../packages/compiler/src/emitter/index.ts";
-import { parse } from "../../packages/compiler/src/index.ts";
+import { compile, parse } from "../../packages/compiler/src/index.ts";
 import { tokenize } from "../../packages/compiler/src/lexer/index.ts";
 import { groupRuns, lower } from "../../packages/compiler/src/lowering/index.ts";
 import { renameClasses } from "../../packages/compiler/src/naming/index.ts";
@@ -179,7 +179,7 @@ function compileFixture(fixture: Fixture): CompileOutput {
 describe("golden fixture catalog", () => {
   test("every fixture is classified as plain or deferred by its dollar-ref tokens", () => {
     const all = fixtures.map((fixture) => fixture.id);
-    expect(all).toHaveLength(48);
+    expect(all).toHaveLength(54);
 
     const plain = fixtures.filter((fixture) => !fixture.deferred).map((fixture) => fixture.id);
     expect(plain).toEqual([
@@ -187,6 +187,7 @@ describe("golden fixture catalog", () => {
       "errors/duplicate-setting",
       "errors/malformed-value",
       "errors/missing-semicolon",
+      "errors/semicolonless-before-nested-rule",
       "errors/semicolonless-modifier",
       "errors/top-level-conditional",
       "errors/unclosed-block",
@@ -226,12 +227,17 @@ describe("golden fixture catalog", () => {
     const deferred = fixtures.filter((fixture) => fixture.deferred).map((fixture) => fixture.id);
     expect(deferred).toEqual([
       "canonical/button",
+      "keyframes/bare-namespace",
+      "keyframes/same-file",
+      "keyframes/unknown-member",
       "runtime/basic",
       "runtime/collision-with-compile-time",
       "runtime/with-variant",
       "variables/ambiguous-import",
       "variables/basic",
       "variables/cycle",
+      "variables/duplicate-local",
+      "variables/local-overrides-ambiguous-import",
       "variables/local-overrides-imported",
       "variables/namespaced-members",
       "variables/undefined-ref",
@@ -240,7 +246,7 @@ describe("golden fixture catalog", () => {
 
   test("every plain fixture reproduces its expected/css byte-exact", () => {
     const plain = fixtures.filter((fixture) => !fixture.deferred);
-    expect(plain.length).toBe(38);
+    expect(plain.length).toBe(39);
 
     for (const fixture of plain) {
       const expected = readFileSync(join(fixture.directory, "expected", "css"), "utf8");
@@ -267,5 +273,19 @@ describe("golden fixture catalog", () => {
         stripped: stripStructuralWhitespace(actual.minified),
       });
     }
+  });
+});
+
+describe("CHIKX1002 recovery through compile()", () => {
+  test("a semicolonless declaration keeps its value and the nested rule", async () => {
+    const id = "errors/semicolonless-before-nested-rule";
+    const file = `${id}/input.cssx`;
+    const source = readFileSync(join(fixturesRoot, id, "input.cssx"), "utf8");
+    const result = await compile(source, { file, workspaceRoot: fixturesRoot });
+
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["CHIKX1002"]);
+    expect(result.css).toContain("color: red");
+    expect(result.css).toContain(".ui-button:hover");
+    expect(result.css).toBe(readFileSync(join(fixturesRoot, id, "expected", "css"), "utf8"));
   });
 });

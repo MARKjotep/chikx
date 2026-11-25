@@ -348,8 +348,8 @@ function fixtureIr(fixture: FixtureCase): StylesheetIr {
 }
 
 describe("maps-off golden stability", () => {
-  test("the 48 golden CSS files are unchanged with source maps off", () => {
-    expect(fixtures).toHaveLength(48);
+  test("the 54 golden CSS files are unchanged with source maps off", () => {
+    expect(fixtures).toHaveLength(54);
     const sentinel = "/* no css: see expected/diagnostics.json */";
     let checked = 0;
 
@@ -363,8 +363,8 @@ describe("maps-off golden stability", () => {
       }
       checked += 1;
     }
-    // 38 plain fixtures; the 10 dollar-ref fixtures are deferred to A08.
-    expect(checked).toBe(38);
+    // 39 plain fixtures; the 15 dollar-ref fixtures are deferred to A08.
+    expect(checked).toBe(39);
   });
 
   test("enabling maps appends only the URL comment and never reshapes CSS", () => {

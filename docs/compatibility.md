@@ -23,7 +23,8 @@ such rather than assumed.
 | Compile-time variables | ✅ Supported | Token-sequence substitution; forward references; cycles and undefined tokens are `CHIKX2001`. | `tests/compiler/**` |
 | `@use` imports | ✅ Supported | Relative, workspace-contained, namespaced or unqualified, token-only by default, no transitive re-export, no network/executable imports. | `tests/compiler/**` |
 | Rule-merge imports (`@use … styles`) | ✅ Supported | Optional `styles` clause merges the module's rules (ADR-0014): merged rules keep the module's own prefix, imported modules emit first in depth-first `@use` order, one merged map/`.d.ts`, conflicts are `CHIKX4001`; `@setup { module: true }` suppresses a module's own artifacts. | `tests/compiler/merge.test.ts`, `modules.test.ts`, `tests/fixtures/modules/merge/` |
-| Runtime variables (`@runtime`) | ✅ Supported | Emit `:root` custom properties, conditional overrides and `var(--prefix-name)` references. | `tests/browser/specs/themes.pw.ts`, `examples/variables` |
+| Keyframe name references (`$keyframes.<name>`) | ✅ Supported | A top-level `@keyframes <name>` registers the name; `animation-name: $keyframes.spin` compiles to `animation-name: spin` beside the native block. Visible names are the file's own plus those of `@use … styles` modules; unknown members, bare `$keyframes` and `as keyframes` aliases are `CHIKX2001` with the declaration omitted. Duplicate names across merged modules are not errors (ADR-0015). | `tests/compiler/keyframes.test.ts`, `tests/fixtures/keyframes/` |
+| Runtime variables (`@runtime`) | ✅ Supported | Emit `:root` custom properties, conditional overrides and `var(--prefix-name)` references. Duplicate property names across the entry and style-imported modules resolve in merge order — entry last, later module wins — with no conflict diagnostic (ADR-0016). | `tests/compiler/runtime.test.ts`, `tests/fixtures/runtime/`, `tests/browser/specs/themes.pw.ts`, `examples/variables` |
 | Class prefixing (`prefix` strategy) | ✅ Supported | Prefix applies to local classes, including nested references. Empty prefix leaves names unchanged. | `tests/compiler/**`, browser pages |
 | `:global(.external)` escape | ✅ Supported (simple classes) | Removed from renaming and exports; emitted unchanged. Complex global selectors are not supported. | `tests/compiler/**` |
 | Class maps + `.d.ts` | ✅ Supported | Quoted original keys, camelCase named exports, literal string types, readonly map. | `tests/compiler/**`, `examples/jsx` |
@@ -53,7 +54,7 @@ Native CSS at-rules keep their native meaning. Chikx wrappers never rewrite thei
 | `@supports` | ✅ Pass-through | Conditions never alter Chikx alias resolution. |
 | `@layer` | ✅ Pass-through | Block and statement forms; grouping never crosses a layer boundary. |
 | `@container` | ✅ Pass-through | Native container queries; no Chikx container aliases. |
-| `@keyframes` | ✅ Pass-through, restricted | Keyframe steps pass through; inline modifiers and conditional blocks inside are rejected (`CHIKX3001`). |
+| `@keyframes` | ✅ Pass-through, restricted | Keyframe steps pass through; inline modifiers and conditional blocks inside are rejected (`CHIKX3001`). `@keyframes <name>` also registers `$keyframes.<name>` (ADR-0015). |
 | `@font-face` | ✅ Pass-through, restricted | Descriptor declarations pass through; Chikx transformations inside are rejected. |
 | `@property` | ✅ Pass-through, restricted | Descriptors pass through; Chikx transformations inside are rejected. |
 | `@page` | ✅ Pass-through | Classic declaration blocks pass through without diagnostics. |

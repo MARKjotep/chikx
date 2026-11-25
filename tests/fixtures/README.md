@@ -114,16 +114,28 @@ points at end of file, where an unclosed block is reported.
 | `errors/duplicate-setting` | CHIKX1001 for a repeated `prefix` key inside one block (tap the merged-`@setup` rule). |
 | `errors/missing-semicolon` | CHIKX1002 for `color: red` followed by another declaration; recovery resumes at the next statement. |
 | `errors/semicolonless-modifier` | CHIKX1002 for a final declaration carrying a recognized modifier (`padding: 10px @md 20px`) with no semicolon before `}` (ADR-0011). |
+| `errors/semicolonless-before-nested-rule` | CHIKX1002 for a non-final `color: red` that runs into `&:hover { … }`; recovery keeps the authored declaration and the nested rule (ADR-0011, invariant 2). |
 | `errors/malformed-value` | CHIKX1003 for `calc(100% - 20px;` (unbalanced parenthesis). |
 | `variables/basic` | Local tokens, token-sequence substitution and forward references. |
 | `variables/local-overrides-imported` | A local `gap` overrides an unqualified imported `gap`; imported `radius` still resolves. |
 | `variables/ambiguous-import` | Two unqualified imports export `spacing`; intended CHIKX2001 error (diagnostics authored in P3). |
+| `variables/duplicate-local` | A repeated compile-time local definition stays CHIKX2001; the first definition is kept and the rule still emits (ADR-0016 keeps this negative unchanged). |
+| `variables/local-overrides-ambiguous-import` | A local `@variables` definition wins over two unqualified imports that export the same name, with no ambiguity diagnostic (ADR-0016). |
 | `variables/cycle` | `a.cssx` ↔ `b.cssx` cycle; intended CHIKX2001 error. |
 | `variables/undefined-ref` | `$missing` is undefined; intended CHIKX2001 error. |
 | `variables/namespaced-members` | `$layout.spacing` and `$layout.margin` stay independent of local names. |
+| `keyframes/same-file` | ADR-0015: `@keyframes spin` registers `$keyframes.spin`; `animation-name: $keyframes.spin` emits `animation-name: spin` beside the native block. |
+| `keyframes/unknown-member` | ADR-0015: `$keyframes.fade` with only `spin` declared is CHIKX2001 and the declaration (and its empty rule) is omitted; the keyframe block still emits. |
+| `keyframes/bare-namespace` | ADR-0015: bare `$keyframes` follows the bare-namespace CHIKX2001 rule with segment omission. |
+| `keyframes/style-import` | ADR-0015: a keyframe from a `@use "…" styles` module is referenceable from the importing file; the merged build emits the block (merged fixture: `entry.cssx`). |
+| `keyframes/token-only` | ADR-0015: a token-only import does not expose keyframe names (`CHIKX2001`, empty CSS) because its block is not emitted. |
+| `keyframes/duplicate-name` | ADR-0015: two merged modules may declare the same keyframe name; both blocks are emitted and the cascade decides, with no diagnostic (merged fixture: `entry.cssx`). |
 | `runtime/basic` | SPECIFICATION.md §3.4 runtime custom property plus reference. |
 | `runtime/with-variant` | Runtime tokens with `@dark`, `@md` and `@dark+md` overrides. |
 | `runtime/collision-with-compile-time` | Compile-time and runtime `primary` collide; intended CHIKX2001 error. |
+| `runtime/override-entry` | ADR-0016: an entry `@runtime` definition overrides a style-imported module's same-named custom property (merged fixture: `entry.cssx`). |
+| `runtime/override-modules` | ADR-0016: two style-imported modules define one custom property; the later one in merge order wins with no diagnostic (merged fixture: `entry.cssx`). |
+| `runtime/override-variants` | ADR-0016: the entry's `@dark` variant beats a style-imported module's same-query variant while base and override order stay authored (merged fixture: `entry.cssx`). |
 | `global/escape` | `:global(.external-icon)` is neither renamed nor exported, at top level and nested. |
 | `naming/prefix` | `ui` prefix applies to nested classes and camelCase export aliases. |
 | `naming/empty-prefix` | An explicit empty prefix leaves names unchanged. |
