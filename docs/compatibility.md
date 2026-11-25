@@ -21,7 +21,8 @@ such rather than assumed.
 | Nested selectors | ✅ Supported | `&:hover`, `&::before`, `&:nth-child(2n)`, `& > .icon`, `& + .button`, `&.is-active`, bare descendant (D1). Flattened to flat CSS. | `tests/compiler/selectors.test.ts` |
 | Mixed-specificity parent lists | ✅ Supported | Uses `:is(...)` where native nesting requires it; pseudo-element lists that cannot be represented are rejected rather than mis-flattened. | `tests/compiler/selectors.test.ts` |
 | Compile-time variables | ✅ Supported | Token-sequence substitution; forward references; cycles and undefined tokens are `CHIKX2001`. | `tests/compiler/**` |
-| `@use` imports | ✅ Supported | Relative, workspace-contained, tokens only, namespaced or unqualified, no transitive re-export, no network/executable imports. | `tests/compiler/**` |
+| `@use` imports | ✅ Supported | Relative, workspace-contained, namespaced or unqualified, token-only by default, no transitive re-export, no network/executable imports. | `tests/compiler/**` |
+| Rule-merge imports (`@use … styles`) | ✅ Supported | Optional `styles` clause merges the module's rules (ADR-0014): merged rules keep the module's own prefix, imported modules emit first in depth-first `@use` order, one merged map/`.d.ts`, conflicts are `CHIKX4001`; `@setup { module: true }` suppresses a module's own artifacts. | `tests/compiler/merge.test.ts`, `modules.test.ts`, `tests/fixtures/modules/merge/` |
 | Runtime variables (`@runtime`) | ✅ Supported | Emit `:root` custom properties, conditional overrides and `var(--prefix-name)` references. | `tests/browser/specs/themes.pw.ts`, `examples/variables` |
 | Class prefixing (`prefix` strategy) | ✅ Supported | Prefix applies to local classes, including nested references. Empty prefix leaves names unchanged. | `tests/compiler/**`, browser pages |
 | `:global(.external)` escape | ✅ Supported (simple classes) | Removed from renaming and exports; emitted unchanged. Complex global selectors are not supported. | `tests/compiler/**` |
@@ -30,8 +31,8 @@ such rather than assumed.
 | `__proto__` class key | ✅ Safe | Null-prototype map and computed-key handling. | `tests/compiler/**` |
 | Minified output | ✅ Supported (opt-in) | Compacts generated whitespace; computed styles equal pretty output in all browser scenarios. | `tests/browser/specs/parity.pw.ts` |
 | Safe grouping | ✅ Supported (default) | Merges adjacent compatible runs only; computed styles equal `mediaGrouping: "none"`. | `tests/browser/specs/grouping.pw.ts` |
-| CSS source maps | ✅ Supported (opt-in) | `source-map: true` writes a v3 `<css-name>.map` with `sourcesContent` and a `sourceMappingURL` comment; no map when CSS emission is off. | `tests/compiler/sourcemap.test.ts`, `mapgen.test.ts`, `examples/custom-output` |
-| Formatter | ✅ CLI only | `chikx format [file]` reprints sources canonically in place; `--check` reports without writing and exits 1 on changes; `--dry-run` reports. Parse errors never rewrite a file. The VS Code extension does not yet expose a formatting provider. | `tests/integration/format-cli.test.ts` |
+| CSS source maps | ✅ Supported (opt-in) | `source-map: true` writes a v3 `<css-name>.map` with declaration-level mappings (one per emitted selector and declaration), `sourcesContent` and a `sourceMappingURL` comment; no map when CSS emission is off. | `tests/compiler/sourcemap.test.ts`, `mapgen.test.ts`, `examples/custom-output` |
+| Formatter | ✅ CLI only | `chikx format [file]` reprints sources canonically in place and is idempotent; `--check` writes nothing and exits 1 when a file would change; `--dry-run` reports. Parse errors return the input unchanged. The VS Code extension does not yet expose a formatting provider. | `tests/integration/format-cli.test.ts`, `tests/compiler/formatter.test.ts` |
 | Mixins / `@group` / `@apply` | ❌ Deferred | Not in the grammar. Requires a future ADR. | SPECIFICATION §13 |
 | Arbitrary expressions | ❌ Deferred | Variables substitute tokens, not computed expressions. | SPECIFICATION §13 |
 | Container aliases | ❌ Deferred | `@container` itself passes through natively; Chikx aliases for containers do not exist. | SPECIFICATION §13 |

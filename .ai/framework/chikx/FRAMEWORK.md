@@ -22,7 +22,7 @@ Compiler core is pure and filesystem-free: all reads/existence/canonicalization 
 `ModuleHost`, and `compile()` is the batteries-included wrapper that injects `createNodeHost`.
 Public barrel exports `tokenize`, `parse`, `compile`, `compileProject`, `planOutputs`, `format`,
 `createNodeHost`, `DIAGNOSTIC_CODES`, `error`, `warning` and the frozen types; `parseTokens` is
-internal (public `parse()` wraps tokenize + parseTokens).
+internal (`parse()` wraps tokenize + parseTokens).
 
 ## 2. Repository map
 
@@ -30,8 +30,7 @@ internal (public `parse()` wraps tokenize + parseTokens).
 |---|---|
 | `.ai/CSSX-MASTERPLAN.md` | Primary historical specification. **Never edit**; ADRs record deltas. |
 | `.ai/PROGRESS.md` | Single source of truth for phase/task status (🟢🟡🔴⚪). Lead-owned. |
-| `.ai/plans/CSSX-PLAN.md` | Phase/task plan (A01–A16), owned scopes, concurrency rules. |
-| `.ai/tasks/`, `.ai/reports/`, `.ai/reports/logs/` | Per-task prompts, reports, worker logs. |
+| `.ai/plans/CSSX-PLAN.md` | Phase/task plan (A01–A16), owned scopes, concurrency rules; `.ai/tasks/`, `.ai/reports/`, `.ai/reports/logs/` hold prompts, reports and worker logs. |
 | `.ai/framework/<Framework>/bugs|features/` | External-framework defect/feature records (not app bugs). |
 | `SPECIFICATION.md` | Normative language contract (§0–§14). |
 | `docs/*.md` | Author-facing restatements: `grammar`, `cascade`, `configuration`, `compatibility`, `performance`, `known-limitations`, `release`. |
@@ -59,7 +58,6 @@ internal (public `parse()` wraps tokenize + parseTokens).
 | `tests/browser/` | Playwright 3-engine computed-style gate (`harness/` scenarios + build, `server.ts`, `specs/*.pw.ts`). |
 | `tests/integration/`, `tests/extension/` | CLI build/config/watch/format + Node smoke; grammar/scope, provider and extension-host suites. |
 | `examples/` | `basic`, `responsive`, `variables`, `jsx`, `custom-output` (all built by `release:check`). |
-| `scripts/benchmark.ts` | Deterministic 100/1000-file benchmark feeding `docs/performance.md`. |
 
 ## 3. Compile pipeline (exact order)
 
@@ -339,16 +337,14 @@ Routing table (symptom → owning module):
 
 | Symptom | Owning module |
 |---|---|
-| Wrong tokens, escapes, comment/string/url boundaries | `lexer/` |
-| Wrong AST, recovery, semicolon/rule-vs-declaration decisions | `parser/` |
+| Wrong tokens, escapes, AST shape, recovery, semicolon/rule-vs-declaration decisions | `lexer/` + `parser/` |
 | Import resolution, cycles, scope/ambiguity errors | `resolver/` |
 | Wrong variant expansion, media query text/combining, flush order, native contexts | `lowering/` |
 | Wrong `$` expansion/omission, `:root` emission, `var()` | `variables/` |
 | Wrong prefix, `:global`, class table, JS map, `.d.ts` | `naming/` |
 | Wrong flattening/`&`/`:is()` behavior | `selectors/` |
 | Wrong CSS text, minify, source map, emitter-side omission | `emitter/` + `sourcemaps/` |
-| Wrong destination, extension, overlap/escape, import path | `output/` |
-| Setup decoding/defaults/API precedence | `index.ts` (+ `output/resolve.ts`) |
+| Wrong destination, extension, overlap/escape, import path; setup decoding/defaults/API precedence | `output/` + `index.ts` |
 | CLI discovery, config, exit code, manifest, watch | `packages/cli/src/**` |
 | Editor grammar, providers, commands | `packages/vscode/**` |
 

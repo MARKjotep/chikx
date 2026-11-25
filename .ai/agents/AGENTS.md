@@ -2,9 +2,8 @@
 
 ## Start here
 
-Before any task in this repository, read [`../framework/chikx/FRAMEWORK.md`](../framework/chikx/FRAMEWORK.md):
-the verified handover reference for the Chikx language, compiler pipeline, diagnostics, invariants,
-quality gates and the bug-fix protocol.
+Read [`../framework/chikx/FRAMEWORK.md`](../framework/chikx/FRAMEWORK.md) first: the verified Chikx
+language, compiler pipeline, diagnostics, invariants, gates and bug-fix protocol.
 
 ## Roles and delegation
 

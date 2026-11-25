@@ -14,7 +14,7 @@ was touched. `.ai/PROGRESS.md` untouched (lead flips status).
 
 | File | Change |
 |---|---|
-| `.ai/framework/chikx/FRAMEWORK.md` | **New** 401-line reference with all 11 required sections: identity, repository map, exact compile pipeline, frozen-contract rule, language semantics digest (setup/imports/media/cascade/variables/runtime/selectors/naming/outputs), diagnostics registry with producers, invariants, gates and commands, bug-fix protocol, documentation index (14 ADRs), current state. |
+| `.ai/framework/chikx/FRAMEWORK.md` | **New** 400-line reference with all 11 required sections: identity, repository map, exact compile pipeline, frozen-contract rule, language semantics digest (setup/imports/media/cascade/variables/runtime/selectors/naming/outputs), diagnostics registry with producers, invariants, gates and commands, bug-fix protocol, documentation index (14 ADRs), current state. |
 | `.ai/agents/AGENTS.md` | Appended a 6-line "Start here" pointer (heading + 4 wrapped lines) linking `../framework/chikx/FRAMEWORK.md`. No other content changed. |
 | `.ai/tasks/CSSX-DOC.md` | Task record (summary, scope, acceptance, verification notes). |
 | `.ai/reports/CSSX-DOC.md` | This report. |
@@ -86,3 +86,17 @@ protocol in §9 of the reference.
   safety constitution.
 - Lead: flip `.ai/PROGRESS.md` after verifying this report; optionally schedule the
   `docs/grammar.md` / `docs/compatibility.md` drift fix (owner: a doc task, not `code`).
+
+## Drift fixes (lead-directed)
+
+Follow-up after the lead verified and committed `FRAMEWORK.md`. Exactly three doc files changed; the
+"not edited" drift list above is superseded for items 1–3:
+
+| File | Change |
+|---|---|
+| `docs/grammar.md` | EBNF `use` now includes `[ "styles" ]`; the directives table row and the "imports tokens only" paragraph now state ADR-0014 semantics (token-only default, `styles` merges rules with the module's own prefix, imported-first order, one merged map, `CHIKX4001` conflicts, `module: true` suppression, no transitive/network import). |
+| `docs/compatibility.md` | `@use` row no longer says "tokens only"; new "Rule-merge imports (`@use … styles`)" ✅ Supported row with the one-line semantics and merge-suite evidence. Source maps now state declaration-level mappings (one per emitted selector and declaration, `sourcesContent`, comment); formatter row states `chikx format` + `--check`/`--dry-run`, idempotence and the unchanged-on-parse-error guarantee, with the formatter unit suite added. |
+| `.ai/plans/CSSX-PLAN.md` | Header now cites ADR-0001–0014; status now "P0–P7 complete (🟢), including A16 rule-merge imports" with per-task verification pointing at `.ai/PROGRESS.md`. |
+
+Validation after the fixes: `bun run verify` **exit 0** — 4 typecheck projects, Biome 364 files,
+612 pass / 0 fail across 37 files. No code, test, golden or config file was touched.

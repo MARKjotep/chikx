@@ -69,7 +69,7 @@ other declaration values.
 file          = { setup | use | variables | runtime | mediaTypes | rule | nativeAtRule } ;
 setup         = "@setup" "{" { setting } "}" ;
 setting       = identifier ":" scalar ";" ;
-use           = "@use" string [ "as" identifier ] ";" ;
+use           = "@use" string [ "as" identifier ] [ "styles" ] ";" ;
 variables     = "@variables" "{" { tokenDeclaration } "}" ;
 runtime       = "@runtime" "{" { declaration } "}" ;
 mediaTypes    = "@media-types" "{" { aliasDeclaration } "}" ;
@@ -91,14 +91,20 @@ setting key — within one block or across blocks — is rejected.
 | Directive | Position | Purpose |
 |---|---|---|
 | `@setup { key: value; }` | top level | Output paths, filenames, emit flags, prefix. Keys are kebab-case. |
-| `@use "path" [as ns];` | top level | Import compile-time tokens, optionally namespaced. Paths are relative to the importing file and restricted to the workspace. |
+| `@use "path" [as ns] [styles];` | top level | Import compile-time tokens, optionally namespaced; the optional `styles` clause also merges the module's rules (ADR-0014). Paths are relative to the importing file and restricted to the workspace. |
 | `@variables { name: tokens; }` | top level | Compile-time token definitions. Values substitute token sequences, not JavaScript. |
 | `@runtime { name: value [@alias value]; }` | top level | Native custom properties with optional conditional values. |
 | `@media-types { alias: condition; }` | top level | File-local media aliases, merged over built-ins and project config. |
 
-`@use` imports **tokens** only; stylesheet rules are never imported. Token-only modules emit no
-artifacts unless they are themselves listed as entries. There is no implicit transitive re-export
-and no network or executable import.
+`@use` imports compile-time tokens by default; without the `styles` clause it never imports rules.
+The optional `styles` clause makes the import rule-bearing (ADR-0014): the module's rules are merged
+into the importing build ahead of the importing file's own rules, depth-first in authored `@use`
+order, and keep the imported module's own `@setup prefix`. The build writes one merged class map and
+declaration file; the same original class name resolving to different emitted names, or a camelCase
+export-alias collision, is `CHIKX4001`. A module that should never emit artifacts of its own declares
+`@setup { module: true; }`, which suppresses its CSS, map, types and CSS import unless those keys are
+authored explicitly. Modules are imported once; there is no implicit transitive re-export and no
+network or executable import.
 
 ## 4. Declarations and inline variants
 

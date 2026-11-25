@@ -1,12 +1,13 @@
 # Chikx Implementation Plan
 
 **Primary specification:** `.ai/CSSX-MASTERPLAN.md`; normative language contract:
-`SPECIFICATION.md`. Decisions live in `docs/decisions/` (ADR-0001–ADR-0010). Owner-locked language
+`SPECIFICATION.md`. Decisions live in `docs/decisions/` (ADR-0001–ADR-0014). Owner-locked language
 decisions dated 2026-11-25: descendant bare nesting (D1), per-segment `!important` (D2),
 rule-scoped conditional blocks (D3).
 
-Status: P0 in progress. Tasks are scheduled only when dependencies are satisfied. The lead verifies
-every gate and flips status in `.ai/PROGRESS.md`.
+Status: P0–P7 complete (🟢), including A16 rule-merge imports (`@use … styles`, ADR-0014). Tasks were
+scheduled only when dependencies were satisfied; per-task verification lives in `.ai/PROGRESS.md`,
+and the lead flips status only after verifying each gate.
 
 ## Phases
 
