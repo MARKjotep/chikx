@@ -55,6 +55,11 @@ export function segmentValueTokens(ast: Stylesheet | undefined): Map<number, rea
         case "native-at-rule":
           if (item.block !== undefined) visitBody(item.block);
           break;
+        case "group-use-site":
+          // Use-site overrides are ordinary declarations of the consuming
+          // module even before expansion replaces the node (ADR-0017).
+          for (const declaration of item.declarations) addDeclaration(declaration);
+          break;
       }
     }
   };
@@ -68,13 +73,40 @@ export function segmentValueTokens(ast: Stylesheet | undefined): Map<number, rea
 }
 
 /**
+ * Collect the segment starts authored inside top-level `@group.<name>`
+ * definitions (ADR-0017).
+ *
+ * Definitions emit no IR, so a {@link DeclarationIr} whose origin segment is in
+ * this set can only have reached the IR through use-site expansion. Substitution
+ * uses that to enforce owner decision (b): group defaults are compile-time only,
+ * so a `@runtime` reference there is CHIKX2001 and the segment is omitted
+ * instead of rewritten to `var(--...)` with the consuming build's prefix.
+ *
+ * Both the base segment and every inline-variant segment are included, matching
+ * the IR's per-segment spans.
+ */
+export function groupDefaultSegments(ast: Stylesheet | undefined): Set<number> {
+  const starts = new Set<number>();
+  if (ast === undefined) return starts;
+  for (const item of ast.items) {
+    if (item.kind !== "group-definition") continue;
+    for (const declaration of item.declarations) {
+      starts.add(declaration.span.start);
+      for (const variant of declaration.variants) starts.add(variant.span.start);
+    }
+  }
+  return starts;
+}
+
+/**
  * Collect authored `$` references from one module's AST.
  *
  * `includeRules` adds references from stylesheet rule values (used for the entry
  * module, whose declarations are compiled); without it only `@variables` and
  * `@runtime` values are visited, which is what imported token-only modules can
  * contribute to the entry's artifact (SPECIFICATION.md §6.1: imports bring in
- * tokens only, not rules).
+ * tokens only, not rules). Rule values include the declarations of `@group.`
+ * use-site blocks, because this module's build emits them (ADR-0017).
  */
 export function astReferences(
   ast: Stylesheet,
@@ -115,6 +147,12 @@ export function astReferences(
           break;
         case "native-at-rule":
           if (item.block !== undefined) visitBody(item.block, file);
+          break;
+        case "group-use-site":
+          // Use-site overrides are emitted in this module's build, so a
+          // `@runtime` reference authored there must register its custom
+          // property exactly like a plain declaration (ADR-0017 item 6).
+          for (const declaration of item.declarations) collectDeclaration(declaration, file);
           break;
       }
     }

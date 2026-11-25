@@ -23,6 +23,7 @@ import {
 } from "./cursor.js";
 import { type ParseContext, parseDeclaration } from "./declaration.js";
 import { DiagnosticBag, messages } from "./diagnostics.js";
+import { isGroupAtKeyword, parseGroupDefinition } from "./group.js";
 import { readModifier } from "./modifier.js";
 import { recoverStatement, skipAtRule, skipBalancedBlock, skipStatementBlock } from "./recovery.js";
 import {
@@ -565,6 +566,8 @@ function parseTopLevelAtRule(ctx: ParseContext): StylesheetItem | undefined {
   const tokens = cursor.tokens;
   const startToken = cursor.current();
   const name = atRuleName(startToken).toLowerCase();
+
+  if (isGroupAtKeyword(startToken)) return parseGroupDefinition(ctx);
 
   switch (name) {
     case "setup":

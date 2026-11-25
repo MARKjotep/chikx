@@ -14,6 +14,9 @@ For each rule, declarations are expanded in **authored order**:
 3. conditional blocks are emitted where they appear;
 4. nested rules are lowered and emitted where they appear.
 
+A `@group.<name>` use site is expanded in place within that order: its defaults in definition order,
+then its own declarations in authored order (§2).
+
 Consecutive expanded declarations with the same selector and at-rule context form one contiguous
 run. Runs are flushed when a nested rule or a conditional declaration interrupts them. The output
 preserves authored declaration order — including duplicate fallbacks, shorthand/longhand pairs and
@@ -107,6 +110,72 @@ valid authored CSS; the compiler documents it rather than "fixing" it. If the in
 Authors **SHOULD** order mobile-first ascending aliases (`sm`, `md`, `lg`, `xl`, `2xl`) and place
 combined conditions last. The compiler MAY warn about suspicious order, but it **MUST NOT** silently
 reorder declarations.
+
+### Worked example — group defaults and use-site overrides
+
+A `@group.<name>` use site expands at the authored position into the group's defaults in definition
+order, then the use-site block's declarations in authored order
+([ADR-0017](decisions/ADR-0017-reusable-declaration-groups.md)):
+
+```chikx
+@group.card {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  color: black;
+}
+
+.panel {
+  @group.card {
+    padding: 20px;
+    color: navy;
+  }
+}
+
+.tile {
+  @group.card {
+    border-radius: 0;
+  }
+}
+```
+
+```css
+.ui-panel {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  color: black;
+  padding: 20px;
+  color: navy;
+}
+
+.ui-tile {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  color: black;
+  border-radius: 0;
+}
+```
+
+Every default is still emitted — `padding: 12px` and the group's `border-radius: 8px` included —
+then the use-site lines follow. The override wins only because the use-site declaration comes
+**later at equal specificity**, exactly the "later base declaration wins" rule above; the compiler
+never filters, reorders, deduplicates or rewrites the group's lines. `.panel` keeps `border` and the
+group's radius, `.tile` keeps everything except the radius.
+
+Two consequences are pinned by ADR-0017 and its tests, and are by design rather than bugs:
+
+- **A use-site base declaration beats an earlier group default at every width**, including when the
+  default was authored as an inline variant. Given `@group.heading { color: black @md navy; }` and a
+  use-site `color: red`, the output is `color: black`, then
+  `@media (min-width: 768px) { … color: navy }`, then a later `color: red`. Red wins at 320px
+  and at 1280px alike, because the base declaration is last in source order — write the
+  declaration you want last instead of expecting the compiler to repair it.
+- **A group default authored `!important` is not beaten by a plain override.** `!important` binds
+  per value segment ([ADR-0003](decisions/ADR-0003-important-per-segment.md)), so a definition's
+  `padding: 10px !important` outranks a plain `padding: 20px` at the use site. Write `!important`
+  in the override to compete.
 
 ### Runtime custom properties merge in emission order
 

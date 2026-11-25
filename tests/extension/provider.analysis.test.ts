@@ -214,6 +214,44 @@ describe("colors and classes", () => {
   });
 });
 
+describe("group analysis surface", () => {
+  test("exposes the absolute document path and resolved group visibility", () => {
+    const relative = "tests/fixtures/groups/style-import/entry.cssx";
+    const text = fixture(relative);
+    const analysis = analyzeText({ text, path: join(ROOT, relative), version: 1 }, { readModule });
+    expect(analysis.path).toBe(join(ROOT, relative));
+    expect(analysis.groups).toHaveLength(1);
+    const entry = analysis.groups[0];
+    expect(entry?.kind).toBe("resolved");
+    if (entry?.kind !== "resolved") return;
+    expect(entry.symbol.name).toBe("card");
+    expect(entry.symbol.file.endsWith("chrome.cssx")).toBe(true);
+    expect(entry.symbol.defaults.map((value) => value.property)).toEqual(["padding", "border"]);
+    expect(entry.symbol.references).toHaveLength(1);
+  });
+
+  test("local definitions shadow styles imports and token-only imports expose no groups", () => {
+    const localRelative = "tests/fixtures/groups/local-shadows-import/entry.cssx";
+    const local = analyzeText(
+      { text: fixture(localRelative), path: join(ROOT, localRelative), version: 1 },
+      { readModule },
+    );
+    const resolved = local.groups.find((entry) => entry.name === "card");
+    expect(resolved?.kind).toBe("resolved");
+    if (resolved?.kind === "resolved") {
+      expect(resolved.symbol.file).toBe(join(ROOT, localRelative));
+      expect(resolved.symbol.defaults.map((value) => value.property)).toEqual(["padding"]);
+    }
+
+    const tokenOnlyRelative = "tests/fixtures/groups/token-only/entry.cssx";
+    const tokenOnly = analyzeText(
+      { text: fixture(tokenOnlyRelative), path: join(ROOT, tokenOnlyRelative), version: 1 },
+      { readModule },
+    );
+    expect(tokenOnly.groups).toEqual([]);
+  });
+});
+
 describe("analysis service", () => {
   test("debounces and only reports the newest document version", async () => {
     const callbacks: (() => void)[] = [];

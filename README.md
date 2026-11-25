@@ -164,9 +164,14 @@ TextMate grammar, language configuration and a chick file icon in light and dark
 - syntax highlighting for directives, aliases, `$tokens`, selectors, values and native at-rules;
 - diagnostics from the tolerant parser and an in-memory compile, with exact spans and CHIKX codes;
 - completions for properties, values, `@` aliases (built-in, project and `@media-types`), `$` tokens
-  and namespace members, setup keys, import paths, nested selectors and pseudo-classes;
-- hover for resolved tokens, media conditions and generated class names; definition, references,
-  single-file token rename, colors and outline;
+  and namespace members (including `$keyframes.`), setup keys, import paths, nested selectors and
+  pseudo-classes; context-aware repairs after `&:` and `&.`, and property completion above `&` lines;
+- color intelligence: 25 curated CSS functions with usage tooltips after `(`, 148 named colors and
+  a 35-entry hex palette after `#` on color properties, 27 units after numbers, clickable swatches
+  and the native color picker;
+- hover for resolved tokens, media conditions, generated class names and CSS function usage;
+  definition, references, single-file token rename, colors and outline; accepting a property leaves
+  the cursor before `;` (`chikx.editor.completePropertyWithSemicolon`, default on);
 - commands **Compile File**, **Build Project**, **Preview Compiled CSS** (in memory, never writes),
   **Open Generated CSS**, **Open Class Map**, **Check Project**, plus a status bar and output
   channel;
@@ -187,10 +192,10 @@ bun run test:browser  # Playwright computed-style cascade gate (Chromium require
 bun run benchmark     # masterplan §9 measurements -> docs/performance.md
 ```
 
-`bun run verify` currently passes with 679 tests across 41 files, including a real VS Code
-extension-host smoke suite. Browser coverage: 75/75 Playwright tests recorded on Chromium, Firefox and
-WebKit, checking viewport boundaries, light/dark, reduced motion, hover/focus/disabled, specificity,
-safe grouping and pretty-vs-minified parity.
+`bun run verify` currently passes with 892 pass / 0 fail across 45 files, including a real VS Code
+extension-host smoke suite (192 extension tests across 10 files). Browser coverage: 75/75 Playwright
+tests recorded on Chromium, Firefox and WebKit, checking viewport boundaries, light/dark, reduced
+motion, hover/focus/disabled, specificity, safe grouping and pretty-vs-minified parity.
 
 ## Repository layout
 

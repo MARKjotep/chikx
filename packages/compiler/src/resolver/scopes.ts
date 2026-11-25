@@ -12,6 +12,7 @@ import type { Declaration, Stylesheet, TokenDeclaration } from "../types/ast.js"
 import type { Diagnostic } from "../types/diagnostics.js";
 import { error } from "../types/diagnostics.js";
 import type { Span } from "../types/span.js";
+import { GROUP_DIRECTIVE } from "./groups.js";
 import { KEYFRAMES_NAMESPACE } from "./keyframes.js";
 import type {
   ImportSymbolOrigin,
@@ -273,6 +274,21 @@ function collectNamespaceBindings(
         error(
           "CHIKX2001",
           `"$${alias}" is a built-in namespace (ADR-0015) and cannot be used as an @use alias in "${file}".`,
+          imported.item.span,
+        ),
+      );
+      continue;
+    }
+
+    // The built-in `@group.<name>` construct owns the `group` directive name
+    // (ADR-0017 item 5, §3.6), so an alias of that name is rejected the same
+    // way: CHIKX2001 at the `@use`, no namespace, and the edge itself still
+    // resolves.
+    if (alias === GROUP_DIRECTIVE) {
+      report(
+        error(
+          "CHIKX2001",
+          `"${alias}" is a reserved directive name (ADR-0017) and cannot be used as an @use alias in "${file}".`,
           imported.item.span,
         ),
       );

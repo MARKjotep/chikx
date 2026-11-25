@@ -1,0 +1,9 @@
+.panel {
+  padding: 12px;
+  border-color: red;
+}
+
+.panel:hover {
+  padding: 12px;
+  padding: 16px;
+}

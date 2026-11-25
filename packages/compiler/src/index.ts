@@ -14,7 +14,7 @@ import { stylesheetIr } from "./ir/factories.js";
 import type { StylesheetIr } from "./ir/types.js";
 import { tokenize } from "./lexer/index.js";
 import type { TokenizeResult } from "./lexer/index.js";
-import { groupRuns, lower } from "./lowering/index.js";
+import { expandGroupUseSites, groupRuns, lower } from "./lowering/index.js";
 import { generateClassMap, mergeClassTables, renameClasses } from "./naming/index.js";
 import type { ClassTableSource } from "./naming/index.js";
 import { planOutputs } from "./output/index.js";
@@ -30,7 +30,7 @@ import {
 import { defaultSetupFor } from "./output/resolve.js";
 import { parseTokens } from "./parser/index.js";
 import { buildModuleGraph, styleModuleOrder } from "./resolver/index.js";
-import type { ModuleGraph } from "./resolver/index.js";
+import type { GroupResolution, ModuleGraph } from "./resolver/index.js";
 import { decodeCssString } from "./resolver/paths.js";
 import { flattenIr } from "./selectors/index.js";
 import type { Setting, Stylesheet } from "./types/ast.js";
@@ -54,6 +54,8 @@ export type {
   ConditionalBlock,
   ConditionalBlockItem,
   Declaration,
+  GroupDefinition,
+  GroupUseSite,
   MediaTypesBlock,
   Modifier,
   NativeAtRule,
@@ -185,10 +187,11 @@ export function parse(source: string, options: ParseOptions): ParseResult {
  * Compile one Chikx source string to CSS, JS class map, declarations and/or a
  * source map, returning artifacts and diagnostics without writing files.
  *
- * The pipeline is `parse` → optional module graph → (`lower` → `substitute` →
- * `renameClasses` per style-imported module) → `lower` → `substitute` →
- * `renameClasses` for the entry → `mergeClassTables` → `emitRuntimeTokens` →
- * `groupRuns` → `flattenIr` → `emitCss` → `planOutputs` → `generateClassMap`.
+ * The pipeline is `parse` → optional module graph → (`expandGroupUseSites` →
+ * `lower` → `substitute` → `renameClasses` per style-imported module) →
+ * `expandGroupUseSites` → `lower` → `substitute` → `renameClasses` for the
+ * entry → `mergeClassTables` → `emitRuntimeTokens` → `groupRuns` → `flattenIr`
+ * → `emitCss` → `planOutputs` → `generateClassMap`.
  * Rule-bearing `styles` imports (ADR-0014) contribute their rules first, in
  * depth-first `@use` order, each renamed with the module's own `@setup` prefix;
  * the importing build then has one merged class map and declaration file.
@@ -358,6 +361,9 @@ interface CompileEntryInput {
   readonly setupDiagnostics: readonly Diagnostic[];
 }
 
+/** No visible groups: used when the entry module record is unavailable. */
+const NO_GROUPS: ReadonlyMap<string, GroupResolution> = new Map();
+
 /** Run every pure pass for one already-loaded entry and return frozen artifacts. */
 function compileEntry(input: CompileEntryInput): CompileResult {
   const styleModules = styleModuleOrder(input.graph, input.entryKey);
@@ -365,19 +371,22 @@ function compileEntry(input: CompileEntryInput): CompileResult {
   const moduleIr: StylesheetIr[] = [];
   const tables: ClassTableSource[] = [];
 
-  // Rule-merge imports (ADR-0014): each module is lowered, substituted and
-  // renamed on its own, with its own setup prefix. Imported modules come first
-  // in the IR (depth-first in authored `@use` order), then the entry's rules.
+  // Rule-merge imports (ADR-0014): each module is expanded, lowered,
+  // substituted and renamed on its own, with its own setup prefix. Imported
+  // modules come first in the IR (depth-first in authored `@use` order), then
+  // the entry's rules.
   for (const file of styleModules) {
     const record = input.graph.modules.get(file);
     if (record === undefined) continue;
     const decoded = decodeSetup(record.ast);
     const prefix = modulePrefix(input.options, decoded);
-    const lowered = lower(record.ast, input.options);
+    const expanded = expandGroupUseSites(record.ast, { module: file, groups: record.groups });
+    const lowered = lower(expanded.ast, input.options);
     const substituted = substitute(lowered.ir, input.graph, file, { prefix: input.prefix });
     const renamed = renameClasses(substituted.ir, { prefix });
     moduleDiagnostics.push(
       ...decoded.diagnostics,
+      ...expanded.diagnostics,
       ...lowered.diagnostics,
       ...substituted.diagnostics,
       ...renamed.diagnostics,
@@ -389,7 +398,12 @@ function compileEntry(input: CompileEntryInput): CompileResult {
     });
   }
 
-  const lowered = lower(input.ast, input.options);
+  const entryGroups = input.graph.modules.get(input.entryKey)?.groups ?? NO_GROUPS;
+  const expandedEntry = expandGroupUseSites(input.ast, {
+    module: input.entryKey,
+    groups: entryGroups,
+  });
+  const lowered = lower(expandedEntry.ast, input.options);
   const substituted = substitute(lowered.ir, input.graph, input.entryKey, {
     prefix: input.prefix,
   });
@@ -441,6 +455,7 @@ function compileEntry(input: CompileEntryInput): CompileResult {
     input.setupDiagnostics,
     input.baseDiagnostics,
     moduleDiagnostics,
+    expandedEntry.diagnostics,
     lowered.diagnostics,
     substituted.diagnostics,
     runtime.diagnostics,

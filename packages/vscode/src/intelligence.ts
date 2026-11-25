@@ -7,6 +7,7 @@
  * code paths with plain text and offsets.
  */
 
+import type { GroupDefinition, GroupUseSite } from "../../compiler/src/index.js";
 import type {
   AnalyzeResult,
   ClassOccurrence,
@@ -20,10 +21,17 @@ import {
   BOOLEAN_SETUP_KEYS,
   SETUP_KEYS,
   collectTokenReferences,
+  declarationSegments,
+  forEachDeclaration,
   positionAt,
   rangeAt,
 } from "./analysis.js";
-import { dirnamePath } from "./paths.js";
+import type { GroupSymbol, GroupVisibility } from "./groups.js";
+import { GROUP_KEYWORD } from "./groups.js";
+import type { KeyframeSymbol } from "./keyframes.js";
+import { KEYFRAMES_KEYWORD, KEYFRAMES_NAMESPACE, keyframeDefinitionAt } from "./keyframes.js";
+import { dirnamePath, isAbsolutePath, normalizePath, relativeTo } from "./paths.js";
+import { propertyDoc } from "./property-docs.js";
 
 /** Completion item kinds understood by the adapter. */
 export type SuggestionKind =
@@ -34,11 +42,13 @@ export type SuggestionKind =
   | "token"
   | "runtime-token"
   | "member"
+  | "group"
   | "setup-key"
   | "setup-value"
   | "import-path"
   | "selector"
-  | "pseudo";
+  | "pseudo"
+  | "color";
 
 /** One completion suggestion. */
 export interface CompletionSuggestion {
@@ -47,8 +57,31 @@ export interface CompletionSuggestion {
   readonly detail?: string;
   readonly documentation?: string;
   readonly insertText: string;
+  /**
+   * Optional snippet insert form (VS Code snippet syntax, `$0` = final cursor).
+   *
+   * The editor adapter prefers this over `insertText` when it is set, so a
+   * suggestion can place the cursor inside the inserted text (`color: $0;`)
+   * without the pure layer knowing anything about the editor.
+   */
+  readonly snippet?: string;
+  /**
+   * Optional replacement start for this single item, overriding the result
+   * range. Used when a shared range would delete authored text (typed digits in
+   * front of a unit) while sibling items still need the full typed word.
+   */
+  readonly replaceStart?: number;
   /** Optional editor sort key; lower sorts first (Chikx directives before natives). */
   readonly sortText?: string;
+  /**
+   * Optional editor filter text, overriding the label.
+   *
+   * VS Code narrows the list against the text its replacement range covers, so
+   * an item whose range starts before the typed word (`(cl`, `#e7`) must be
+   * filtered by that wider text or the editor hides an item the pure layer
+   * correctly offered.
+   */
+  readonly filterText?: string;
 }
 
 /** Completion outcome with the range the editor should replace. */
@@ -71,12 +104,17 @@ export interface DefinitionTarget {
   readonly range: Range;
 }
 
-/** Rename plan; every edit is single-file in this MVP. */
+/** Rename plan; token edits are single-file, group edits carry their module. */
 export type RenamePlan =
   | {
       readonly ok: true;
       readonly placeholder: string;
-      readonly edits: readonly { readonly range: Range; readonly newText: string }[];
+      readonly edits: readonly {
+        readonly range: Range;
+        readonly newText: string;
+        /** Defining/referencing module for cross-module group renames. */
+        readonly file?: string;
+      }[];
     }
   | { readonly ok: false; readonly reason: string };
 
@@ -94,6 +132,7 @@ export interface OutlineNode {
     | "rule"
     | "declaration"
     | "alias"
+    | "group"
     | "native";
   readonly range: Range;
   readonly children: readonly OutlineNode[];
@@ -105,11 +144,13 @@ export type CompletionContext =
   | { readonly kind: "directive"; readonly word: string; readonly inSelector: boolean }
   | { readonly kind: "token"; readonly word: string }
   | { readonly kind: "member"; readonly namespace: string; readonly word: string }
+  | { readonly kind: "group-member"; readonly word: string }
   | { readonly kind: "import-path"; readonly typed: string }
   | { readonly kind: "setup-key"; readonly word: string }
   | { readonly kind: "setup-value"; readonly key: string; readonly word: string }
   | { readonly kind: "property"; readonly word: string }
   | { readonly kind: "value"; readonly property?: string; readonly word: string }
+  | { readonly kind: "keyframe-selector"; readonly word: string }
   | { readonly kind: "selector"; readonly word: string }
   | { readonly kind: "pseudo"; readonly word: string };
 
@@ -120,16 +161,30 @@ export interface IntelligenceOptions {
   readonly classMap?: Readonly<Record<string, string>>;
   /** Directory lister for import-path completion (`@use "`). */
   readonly listDirectory?: (absoluteDirectory: string) => readonly string[];
+  /**
+   * Accepting a property completion inserts `property: ;` and parks the cursor
+   * before the semicolon (mirrors `css.completion.completePropertyWithSemicolon`).
+   * Absent means enabled, matching the `chikx.editor.completePropertyWithSemicolon`
+   * setting default.
+   */
+  readonly completePropertyWithSemicolon?: boolean;
 }
 
 /** Common CSS properties offered inside rule bodies. */
 const CSS_PROPERTIES: readonly string[] = Object.freeze([
+  "accent-color",
   "align-content",
   "align-items",
   "align-self",
   "animation",
   "animation-delay",
+  "animation-direction",
   "animation-duration",
+  "animation-fill-mode",
+  "animation-iteration-count",
+  "animation-name",
+  "animation-play-state",
+  "animation-timing-function",
   "appearance",
   "aspect-ratio",
   "backdrop-filter",
@@ -141,13 +196,17 @@ const CSS_PROPERTIES: readonly string[] = Object.freeze([
   "background-size",
   "border",
   "border-bottom",
+  "border-bottom-color",
   "border-collapse",
   "border-color",
   "border-left",
+  "border-left-color",
   "border-radius",
   "border-right",
+  "border-right-color",
   "border-style",
   "border-top",
+  "border-top-color",
   "border-width",
   "bottom",
   "box-shadow",
@@ -156,9 +215,11 @@ const CSS_PROPERTIES: readonly string[] = Object.freeze([
   "clip-path",
   "color",
   "column-gap",
+  "column-rule-color",
   "content",
   "cursor",
   "display",
+  "fill",
   "filter",
   "flex",
   "flex-basis",
@@ -202,6 +263,7 @@ const CSS_PROPERTIES: readonly string[] = Object.freeze([
   "opacity",
   "order",
   "outline",
+  "outline-color",
   "overflow",
   "overflow-x",
   "overflow-y",
@@ -217,8 +279,10 @@ const CSS_PROPERTIES: readonly string[] = Object.freeze([
   "right",
   "row-gap",
   "scroll-behavior",
+  "stroke",
   "text-align",
   "text-decoration",
+  "text-decoration-color",
   "text-overflow",
   "text-transform",
   "top",
@@ -278,6 +342,598 @@ const PROPERTY_VALUES: Readonly<Record<string, readonly string[]>> = Object.free
   "justify-content": ["flex-start", "center", "flex-end", "space-between", "space-around"],
 });
 
+/**
+ * The standard CSS named colors (CSS Color 4), alphabetically ordered.
+ *
+ * `transparent` and `currentColor` are CSS-wide value keywords, not named
+ * colors, so they stay in `CSS_VALUES` and are not repeated here.
+ */
+const CSS_NAMED_COLORS: readonly string[] = Object.freeze([
+  "aliceblue",
+  "antiquewhite",
+  "aqua",
+  "aquamarine",
+  "azure",
+  "beige",
+  "bisque",
+  "black",
+  "blanchedalmond",
+  "blue",
+  "blueviolet",
+  "brown",
+  "burlywood",
+  "cadetblue",
+  "chartreuse",
+  "chocolate",
+  "coral",
+  "cornflowerblue",
+  "cornsilk",
+  "crimson",
+  "cyan",
+  "darkblue",
+  "darkcyan",
+  "darkgoldenrod",
+  "darkgray",
+  "darkgreen",
+  "darkgrey",
+  "darkkhaki",
+  "darkmagenta",
+  "darkolivegreen",
+  "darkorange",
+  "darkorchid",
+  "darkred",
+  "darksalmon",
+  "darkseagreen",
+  "darkslateblue",
+  "darkslategray",
+  "darkslategrey",
+  "darkturquoise",
+  "darkviolet",
+  "deeppink",
+  "deepskyblue",
+  "dimgray",
+  "dimgrey",
+  "dodgerblue",
+  "firebrick",
+  "floralwhite",
+  "forestgreen",
+  "fuchsia",
+  "gainsboro",
+  "ghostwhite",
+  "gold",
+  "goldenrod",
+  "gray",
+  "green",
+  "greenyellow",
+  "grey",
+  "honeydew",
+  "hotpink",
+  "indianred",
+  "indigo",
+  "ivory",
+  "khaki",
+  "lavender",
+  "lavenderblush",
+  "lawngreen",
+  "lemonchiffon",
+  "lightblue",
+  "lightcoral",
+  "lightcyan",
+  "lightgoldenrodyellow",
+  "lightgray",
+  "lightgreen",
+  "lightgrey",
+  "lightpink",
+  "lightsalmon",
+  "lightseagreen",
+  "lightskyblue",
+  "lightslategray",
+  "lightslategrey",
+  "lightsteelblue",
+  "lightyellow",
+  "lime",
+  "limegreen",
+  "linen",
+  "magenta",
+  "maroon",
+  "mediumaquamarine",
+  "mediumblue",
+  "mediumorchid",
+  "mediumpurple",
+  "mediumseagreen",
+  "mediumslateblue",
+  "mediumspringgreen",
+  "mediumturquoise",
+  "mediumvioletred",
+  "midnightblue",
+  "mintcream",
+  "mistyrose",
+  "moccasin",
+  "navajowhite",
+  "navy",
+  "oldlace",
+  "olive",
+  "olivedrab",
+  "orange",
+  "orangered",
+  "orchid",
+  "palegoldenrod",
+  "palegreen",
+  "paleturquoise",
+  "palevioletred",
+  "papayawhip",
+  "peachpuff",
+  "peru",
+  "pink",
+  "plum",
+  "powderblue",
+  "purple",
+  "rebeccapurple",
+  "red",
+  "rosybrown",
+  "royalblue",
+  "saddlebrown",
+  "salmon",
+  "sandybrown",
+  "seagreen",
+  "seashell",
+  "sienna",
+  "silver",
+  "skyblue",
+  "slateblue",
+  "slategray",
+  "slategrey",
+  "snow",
+  "springgreen",
+  "steelblue",
+  "tan",
+  "teal",
+  "thistle",
+  "tomato",
+  "turquoise",
+  "violet",
+  "wheat",
+  "white",
+  "whitesmoke",
+  "yellow",
+  "yellowgreen",
+]);
+
+/**
+ * The hex equivalent of every {@link CSS_NAMED_COLORS} entry, alphabetically
+ * ordered and frozen.
+ *
+ * One constant carries the name→hex knowledge for both editor features that
+ * need colour channels: the `#` completion state narrows named colours by the
+ * digits the author typed (`#ff` → `red`), and `colorsAt` needs real channels to
+ * hand VS Code a swatch. Values are the CSS Color 4 definitions as published in
+ * the `vscode-css-languageservice` colour table.
+ */
+const CSS_NAMED_COLOR_HEX: Readonly<Record<string, string>> = Object.freeze({
+  aliceblue: "#f0f8ff",
+  antiquewhite: "#faebd7",
+  aqua: "#00ffff",
+  aquamarine: "#7fffd4",
+  azure: "#f0ffff",
+  beige: "#f5f5dc",
+  bisque: "#ffe4c4",
+  black: "#000000",
+  blanchedalmond: "#ffebcd",
+  blue: "#0000ff",
+  blueviolet: "#8a2be2",
+  brown: "#a52a2a",
+  burlywood: "#deb887",
+  cadetblue: "#5f9ea0",
+  chartreuse: "#7fff00",
+  chocolate: "#d2691e",
+  coral: "#ff7f50",
+  cornflowerblue: "#6495ed",
+  cornsilk: "#fff8dc",
+  crimson: "#dc143c",
+  cyan: "#00ffff",
+  darkblue: "#00008b",
+  darkcyan: "#008b8b",
+  darkgoldenrod: "#b8860b",
+  darkgray: "#a9a9a9",
+  darkgreen: "#006400",
+  darkgrey: "#a9a9a9",
+  darkkhaki: "#bdb76b",
+  darkmagenta: "#8b008b",
+  darkolivegreen: "#556b2f",
+  darkorange: "#ff8c00",
+  darkorchid: "#9932cc",
+  darkred: "#8b0000",
+  darksalmon: "#e9967a",
+  darkseagreen: "#8fbc8f",
+  darkslateblue: "#483d8b",
+  darkslategray: "#2f4f4f",
+  darkslategrey: "#2f4f4f",
+  darkturquoise: "#00ced1",
+  darkviolet: "#9400d3",
+  deeppink: "#ff1493",
+  deepskyblue: "#00bfff",
+  dimgray: "#696969",
+  dimgrey: "#696969",
+  dodgerblue: "#1e90ff",
+  firebrick: "#b22222",
+  floralwhite: "#fffaf0",
+  forestgreen: "#228b22",
+  fuchsia: "#ff00ff",
+  gainsboro: "#dcdcdc",
+  ghostwhite: "#f8f8ff",
+  gold: "#ffd700",
+  goldenrod: "#daa520",
+  gray: "#808080",
+  green: "#008000",
+  greenyellow: "#adff2f",
+  grey: "#808080",
+  honeydew: "#f0fff0",
+  hotpink: "#ff69b4",
+  indianred: "#cd5c5c",
+  indigo: "#4b0082",
+  ivory: "#fffff0",
+  khaki: "#f0e68c",
+  lavender: "#e6e6fa",
+  lavenderblush: "#fff0f5",
+  lawngreen: "#7cfc00",
+  lemonchiffon: "#fffacd",
+  lightblue: "#add8e6",
+  lightcoral: "#f08080",
+  lightcyan: "#e0ffff",
+  lightgoldenrodyellow: "#fafad2",
+  lightgray: "#d3d3d3",
+  lightgreen: "#90ee90",
+  lightgrey: "#d3d3d3",
+  lightpink: "#ffb6c1",
+  lightsalmon: "#ffa07a",
+  lightseagreen: "#20b2aa",
+  lightskyblue: "#87cefa",
+  lightslategray: "#778899",
+  lightslategrey: "#778899",
+  lightsteelblue: "#b0c4de",
+  lightyellow: "#ffffe0",
+  lime: "#00ff00",
+  limegreen: "#32cd32",
+  linen: "#faf0e6",
+  magenta: "#ff00ff",
+  maroon: "#800000",
+  mediumaquamarine: "#66cdaa",
+  mediumblue: "#0000cd",
+  mediumorchid: "#ba55d3",
+  mediumpurple: "#9370d8",
+  mediumseagreen: "#3cb371",
+  mediumslateblue: "#7b68ee",
+  mediumspringgreen: "#00fa9a",
+  mediumturquoise: "#48d1cc",
+  mediumvioletred: "#c71585",
+  midnightblue: "#191970",
+  mintcream: "#f5fffa",
+  mistyrose: "#ffe4e1",
+  moccasin: "#ffe4b5",
+  navajowhite: "#ffdead",
+  navy: "#000080",
+  oldlace: "#fdf5e6",
+  olive: "#808000",
+  olivedrab: "#6b8e23",
+  orange: "#ffa500",
+  orangered: "#ff4500",
+  orchid: "#da70d6",
+  palegoldenrod: "#eee8aa",
+  palegreen: "#98fb98",
+  paleturquoise: "#afeeee",
+  palevioletred: "#d87093",
+  papayawhip: "#ffefd5",
+  peachpuff: "#ffdab9",
+  peru: "#cd853f",
+  pink: "#ffc0cb",
+  plum: "#dda0dd",
+  powderblue: "#b0e0e6",
+  purple: "#800080",
+  rebeccapurple: "#663399",
+  red: "#ff0000",
+  rosybrown: "#bc8f8f",
+  royalblue: "#4169e1",
+  saddlebrown: "#8b4513",
+  salmon: "#fa8072",
+  sandybrown: "#f4a460",
+  seagreen: "#2e8b57",
+  seashell: "#fff5ee",
+  sienna: "#a0522d",
+  silver: "#c0c0c0",
+  skyblue: "#87ceeb",
+  slateblue: "#6a5acd",
+  slategray: "#708090",
+  slategrey: "#708090",
+  snow: "#fffafa",
+  springgreen: "#00ff7f",
+  steelblue: "#4682b4",
+  tan: "#d2b48c",
+  teal: "#008080",
+  thistle: "#d8bfd8",
+  tomato: "#ff6347",
+  turquoise: "#40e0d0",
+  violet: "#ee82ee",
+  wheat: "#f5deb3",
+  white: "#ffffff",
+  whitesmoke: "#f5f5f5",
+  yellow: "#ffff00",
+  yellowgreen: "#9acd32",
+});
+
+/**
+ * Properties whose value grammar accepts a `<color>`, derived from the offered
+ * property list: the `color` property itself, every `*-color` longhand and the
+ * SVG paint properties `fill`/`stroke`.
+ *
+ * Shorthands that merely contain a color (`border`, `background`, `outline`)
+ * stay out, so their keyword and function lists are unchanged; `width:` never
+ * lists a color.
+ */
+const COLOR_PROPERTIES: ReadonlySet<string> = new Set(
+  CSS_PROPERTIES.filter(
+    (property) =>
+      property === "color" ||
+      property === "fill" ||
+      property === "stroke" ||
+      property.endsWith("-color"),
+  ),
+);
+
+/**
+ * Curated hex palette: neutrals, the primary/secondary hues and common brand
+ * tones, grouped neutrals-first so a value list opens on the greys.
+ *
+ * A curated set (not all 16.7 million values) keeps the popup small while the
+ * named colours of A49 stay available beside it; `#` narrows both families.
+ */
+const CSS_HEX_COLORS: readonly string[] = Object.freeze([
+  // Neutrals.
+  "#000000",
+  "#111827",
+  "#374151",
+  "#6b7280",
+  "#9ca3af",
+  "#d1d5db",
+  "#e5e7eb",
+  "#ffffff",
+  // Reds.
+  "#7f1d1d",
+  "#b91c1c",
+  "#dc2626",
+  "#e74c3c",
+  "#ef4444",
+  // Oranges and ambers.
+  "#ea580c",
+  "#f97316",
+  "#f59e0b",
+  "#fbbf24",
+  // Greens.
+  "#15803d",
+  "#16a34a",
+  "#22c55e",
+  "#10b981",
+  // Cyans and blues.
+  "#0891b2",
+  "#0ea5e9",
+  "#2563eb",
+  "#1d4ed8",
+  "#1e40af",
+  "#1e3a8a",
+  // Purples and violets.
+  "#6d28d9",
+  "#7c3aed",
+  "#8b5cf6",
+  "#a855f7",
+  "#663399",
+  // Pinks and roses.
+  "#db2777",
+  "#ec4899",
+  "#f43f5e",
+]);
+
+/**
+ * Named-color items for a value word typed after a color-accepting property.
+ *
+ * The names join the keyword values' `0-` sort family, so the editor orders
+ * them alphabetically beside `auto`, `inherit`, … and ahead of the `0~` units
+ * and `1-` functions. `detail: "CSS color"` keeps them distinguishable from a
+ * generic keyword value in the popup and in tests; `kind: "color"` is what makes
+ * VS Code paint the swatch in the suggest widget (the adapter maps it to
+ * `CompletionItemKind.Color`).
+ */
+function namedColorItems(word: string): readonly CompletionSuggestion[] {
+  return CSS_NAMED_COLORS.filter(
+    (color) => word === "" || color.startsWith(word),
+  ).map<CompletionSuggestion>(namedColorItem);
+}
+
+/** One named colour, shared by the value state and the `#` state. */
+function namedColorItem(color: string): CompletionSuggestion {
+  return {
+    label: color,
+    kind: "color",
+    detail: "CSS color",
+    insertText: color,
+    sortText: `0-${color}`,
+  };
+}
+
+/**
+ * Hex items for the curated palette.
+ *
+ * `detail` repeats the hex so the item is self-describing in a popup that may
+ * render it as a swatch without a visible label, and it stays distinct from the
+ * named colours' `detail` for tests and for the editor.
+ */
+function hexColorItems(word: string, replaceStart?: number): readonly CompletionSuggestion[] {
+  const digits = word.toLowerCase();
+  return CSS_HEX_COLORS.filter((hex) => hex.slice(1).startsWith(digits)).map<CompletionSuggestion>(
+    (hex) => ({
+      label: hex,
+      kind: "color",
+      detail: `CSS color ${hex}`,
+      insertText: hex,
+      sortText: `0-${hex}`,
+      ...(replaceStart === undefined ? {} : { replaceStart }),
+    }),
+  );
+}
+
+/**
+ * Offset of the `#` the author typed in front of a value word.
+ *
+ * `#` is not a word character, so the scan stops at it: `color: #` has an empty
+ * word and `color: #f7` only `f7`. The offset is the replacement start for the
+ * colour items, so accepting one swaps the typed `#…` prefix instead of
+ * appending to it (`color: #` + `red` → `color: red`).
+ */
+function hashColorStart(text: string, offset: number, word: string): number | undefined {
+  const hash = offset - word.length - 1;
+  return hash >= 0 && text[hash] === "#" ? hash : undefined;
+}
+
+/**
+ * Colour items for a `#`-prefixed value word.
+ *
+ * Filtering rule (stated once, used by the tests): the typed digits are
+ * compared against the hex body of every candidate without its `#`, so `#f0`
+ * narrows to the palette entries that start with `f0`; a named colour also
+ * matches when its own name starts with the typed text (`#re` → `red`,
+ * `rebeccapurple`). Each item carries the filter text of the criterion that
+ * matched it, because VS Code narrows against the text its range covers
+ * (`#re`) and would otherwise hide a hex-matched name (`#ff` → `red`).
+ */
+function hashColorItems(word: string, replaceStart: number): readonly CompletionSuggestion[] {
+  const items: CompletionSuggestion[] = [...hexColorItems(word, replaceStart)];
+  const digits = word.toLowerCase();
+  for (const color of CSS_NAMED_COLORS) {
+    const byName = word === "" || color.startsWith(word);
+    const hex = CSS_NAMED_COLOR_HEX[color] ?? "";
+    const byHex = digits === "" || hex.slice(1).startsWith(digits);
+    if (!byName && !byHex) continue;
+    items.push({
+      ...namedColorItem(color),
+      replaceStart,
+      filterText: `#${byName ? color : hex.slice(1)}`,
+    });
+  }
+  return items;
+}
+
+/**
+ * Every colour authored in a declaration value, for the editor's inline
+ * swatches. Hex values are property-agnostic; a named colour only counts as a
+ * whole word inside a colour-accepting declaration (see `namedColorRuns`).
+ */
+function namedColorRuns(
+  text: string,
+): readonly { readonly start: number; readonly end: number; readonly name: string }[] {
+  const runs: { start: number; end: number; name: string }[] = [];
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index];
+    if (char === '"' || char === "'") {
+      index = skipString(text, index);
+      continue;
+    }
+    if (char !== undefined && /[A-Za-z_]/.test(char)) {
+      let end = index + 1;
+      while (end < text.length && /[A-Za-z0-9_-]/.test(text[end] ?? "")) end += 1;
+      // A run only counts as a colour when the whole run is a name: the `$` of a
+      // token, the `#` of a hex value, the `-` of `--brand` or `red-500` and the
+      // `.` of `url(red.png)` all make it something else.
+      const before = text[index - 1];
+      const after = text[end];
+      const wholeWord =
+        (before === undefined || !/[A-Za-z0-9_$#@.-]/.test(before)) &&
+        (after === undefined || after !== ".");
+      const name = text.slice(index, end).toLowerCase();
+      if (wholeWord && Object.hasOwn(CSS_NAMED_COLOR_HEX, name)) {
+        runs.push({ start: index, end, name });
+      }
+      index = end;
+      continue;
+    }
+    index += 1;
+  }
+  return runs;
+}
+
+/** One CSS unit offered after a number in a declaration value. */
+interface CssUnit {
+  readonly unit: string;
+  readonly description: string;
+}
+
+/**
+ * CSS units suggested once a declaration value starts with a number.
+ *
+ * Values stay raw CSS (SPECIFICATION.md §3.3), so the list is property-agnostic:
+ * `margin: 1` and `rotate: 1` offer the same units. Length, percentage, angle,
+ * time, frequency and resolution units cover every unit-bearing value the
+ * curated properties accept.
+ */
+const CSS_UNITS: readonly CssUnit[] = Object.freeze([
+  { unit: "px", description: "CSS pixel: the reference device-independent length." },
+  { unit: "rem", description: "Root em: relative to the root element's font size." },
+  { unit: "em", description: "Em: relative to the element's own font size." },
+  { unit: "%", description: "Percentage: relative to the property's own reference value." },
+  { unit: "vh", description: "Viewport height: 1% of the viewport height." },
+  { unit: "vw", description: "Viewport width: 1% of the viewport width." },
+  { unit: "vmin", description: "1% of the smaller of viewport width and height." },
+  { unit: "vmax", description: "1% of the larger of viewport width and height." },
+  { unit: "ch", description: "Advance width of the `0` glyph in the current font." },
+  { unit: "ex", description: "x-height of the current font." },
+  { unit: "cm", description: "Centimeter: an absolute metric length." },
+  { unit: "mm", description: "Millimeter: an absolute metric length." },
+  { unit: "in", description: "Inch: an absolute length equal to 96px." },
+  { unit: "pt", description: "Point: 1/72 of an inch." },
+  { unit: "pc", description: "Pica: 12 points, or 1/6 of an inch." },
+  { unit: "q", description: "Quarter-millimeter: an absolute metric length." },
+  { unit: "fr", description: "Fraction: a share of the free space in a grid track." },
+  { unit: "deg", description: "Degree: 1/360 of a full turn." },
+  { unit: "grad", description: "Gradian: 1/400 of a full turn." },
+  { unit: "rad", description: "Radian: 2π radians make a full turn." },
+  { unit: "turn", description: "Turn: one full rotation, equal to 360deg." },
+  { unit: "s", description: "Second: an absolute time." },
+  { unit: "ms", description: "Millisecond: 1/1000 of a second." },
+  { unit: "hz", description: "Hertz: cycles per second." },
+  { unit: "khz", description: "Kilohertz: 1000 cycles per second." },
+  { unit: "dpi", description: "Dots per inch: a resolution." },
+  { unit: "dppx", description: "Dots per CSS pixel: 1dppx equals 96dpi." },
+]);
+
+/**
+ * Unit items for a value word that starts with a number.
+ *
+ * The typed number stays in place: the item replaces only the units suffix the
+ * author already typed (`1r` → `rem`), so accepting a unit can never delete
+ * digits. `replaceStart` therefore sits after the number prefix instead of at
+ * the start of the word (A46's typed-dot precedent), which keeps digit-leading
+ * keyword values such as `font-weight: 4` → `400` on their own range.
+ */
+function unitItems(
+  word: string,
+  numberPrefix: string,
+  offset: number,
+): readonly CompletionSuggestion[] {
+  const suffix = word.slice(numberPrefix.length).toLowerCase();
+  const replaceStart = offset - suffix.length;
+  return CSS_UNITS.filter(
+    (unit) => suffix === "" || unit.unit.startsWith(suffix),
+  ).map<CompletionSuggestion>((unit) => ({
+    label: unit.unit,
+    kind: "value",
+    detail: "CSS unit",
+    documentation: unit.description,
+    insertText: unit.unit,
+    // `0~` sorts after every keyword value (`0-…`) and before the functions
+    // (`1-…`), so units sit between the two existing families.
+    sortText: `0~${unit.unit}`,
+    replaceStart,
+  }));
+}
+
 /** Common pseudo-classes and pseudo-elements. */
 const PSEUDOS: readonly string[] = Object.freeze([
   ":active",
@@ -311,6 +967,230 @@ const SELECTOR_STARTERS: readonly string[] = Object.freeze([
   "& + ",
 ]);
 
+/**
+ * Frame selectors offered at a statement position inside an `@keyframes`
+ * block (SPECIFICATION.md §3.5/§6.4). Percentage selectors insert their `%`.
+ */
+const KEYFRAME_FRAME_SELECTORS: readonly {
+  readonly label: string;
+  readonly documentation: string;
+}[] = Object.freeze([
+  { label: "from", documentation: "Start frame; equivalent to `0%`." },
+  { label: "to", documentation: "End frame; equivalent to `100%`." },
+  { label: "0%", documentation: "Frame at the start of the animation timeline." },
+  { label: "25%", documentation: "Frame one quarter into the animation timeline." },
+  { label: "50%", documentation: "Frame halfway through the animation timeline." },
+  { label: "75%", documentation: "Frame three quarters into the animation timeline." },
+  { label: "100%", documentation: "Frame at the end of the animation timeline." },
+]);
+
+/**
+ * One CSS function offered in a declaration value. Values stay raw CSS, so any
+ * function is legal after the colon of any property (SPECIFICATION.md §3.3).
+ */
+interface CssFunction {
+  /** Function name without the opening parenthesis. */
+  readonly name: string;
+  /**
+   * What the function does and the shape of its arguments (one or two
+   * sentences). Shared verbatim by completion documentation and hover.
+   */
+  readonly usage: string;
+  /** Short call example rendered after the usage as the sample call. */
+  readonly example: string;
+  /** Inserted text when it differs from `name(` (`var(` inserts `var(--`). */
+  readonly insertText?: string;
+}
+
+/**
+ * Documentation body shared by completion and hover: the usage sentence, a
+ * blank line, then the sample call. One format for every curated function.
+ */
+function cssFunctionDocumentation(fn: CssFunction): string {
+  return `${fn.usage}\n\nExample: \`${fn.example}\``;
+}
+
+/**
+ * Curated CSS functions suggested in the `value` context. The list is a hint,
+ * not a constraint: authored values are raw CSS slices the compiler never
+ * rewrites, so anything an engine accepts still compiles.
+ */
+const CSS_FUNCTIONS: readonly CssFunction[] = Object.freeze([
+  {
+    name: "calc",
+    usage: "Math expression mixing units, e.g. percentages and pixels.",
+    example: "calc(100% - 20px)",
+  },
+  {
+    name: "min",
+    usage:
+      "Smallest of its arguments. Takes two or more comma-separated lengths, percentages or numbers; mixed units are allowed.",
+    example: "min(50%, 40rem)",
+  },
+  {
+    name: "max",
+    usage:
+      "Largest of its arguments. Takes two or more comma-separated lengths, percentages or numbers; mixed units are allowed.",
+    example: "max(50%, 40rem)",
+  },
+  {
+    name: "clamp",
+    usage:
+      "Clamps a preferred value between a minimum and a maximum. Takes three comma-separated arguments: minimum, preferred, maximum.",
+    example: "clamp(0.5rem, 1rem + 2vw, 2rem)",
+  },
+  {
+    name: "var",
+    usage:
+      "Reads a custom property at computed-value time. Takes the property name (it must start with `--`), then an optional fallback after a comma.",
+    example: "var(--ui-color)",
+    insertText: "var(--",
+  },
+  {
+    name: "env",
+    usage:
+      "Reads a user-agent environment variable such as a device safe-area inset. Takes the variable name, then an optional fallback after a comma.",
+    example: "env(safe-area-inset-top)",
+  },
+  {
+    name: "attr",
+    usage:
+      "Reads an attribute value from the element. Takes the attribute name, then an optional type or unit.",
+    example: "attr(data-label)",
+  },
+  {
+    name: "url",
+    usage:
+      "References an external resource. Takes a quoted string or an unquoted URL between the parentheses.",
+    example: 'url("./icon.svg")',
+  },
+  {
+    name: "rgb",
+    usage:
+      "RGB color. Takes three red, green and blue channels (0–255 integers or percentages), then an optional alpha after a slash.",
+    example: "rgb(37 99 235)",
+  },
+  {
+    name: "rgba",
+    usage:
+      "RGB color with alpha. Takes three channels and then the alpha as a fourth comma-separated argument.",
+    example: "rgba(37, 99, 235, 0.5)",
+  },
+  {
+    name: "hsl",
+    usage:
+      "Hue/saturation/lightness color. Takes an angle and two percentages, then an optional alpha after a slash.",
+    example: "hsl(220 80% 55%)",
+  },
+  {
+    name: "hsla",
+    usage:
+      "Hue/saturation/lightness color with alpha. Takes an angle, two percentages and the alpha as a fourth comma-separated argument.",
+    example: "hsla(220, 80%, 55%, 0.5)",
+  },
+  {
+    name: "color-mix",
+    usage:
+      "Mixes two colors in a color space. Takes `in <space>` first, then two colors separated by a comma, each with an optional percentage.",
+    example: "color-mix(in oklab, red, blue)",
+  },
+  {
+    name: "linear-gradient",
+    usage:
+      "Gradient along a straight line. Takes an optional angle or `to <side>`, then two or more comma-separated color stops.",
+    example: "linear-gradient(to right, red, blue)",
+  },
+  {
+    name: "radial-gradient",
+    usage:
+      "Gradient radiating from a center. Takes an optional shape, size and position, then two or more comma-separated color stops.",
+    example: "radial-gradient(circle, red, blue)",
+  },
+  {
+    name: "conic-gradient",
+    usage:
+      "Gradient swept around a center. Takes an optional `from <angle>` and `at <position>`, then two or more comma-separated color stops.",
+    example: "conic-gradient(from 45deg, red, blue)",
+  },
+  {
+    name: "repeating-linear-gradient",
+    usage:
+      "Gradient that repeats along a straight line. Takes an optional angle or `to <side>`, then color stops with explicit lengths so the band repeats.",
+    example: "repeating-linear-gradient(45deg, red 0 10px, blue 10px 20px)",
+  },
+  {
+    name: "cubic-bezier",
+    usage:
+      "Custom easing curve. Takes four numbers `x1, y1, x2, y2` defining two control points; the x values must stay between 0 and 1.",
+    example: "cubic-bezier(0.4, 0, 0.2, 1)",
+  },
+  {
+    name: "steps",
+    usage:
+      "Stepped easing curve. Takes a step count, then an optional position keyword (`end`, `start`, `jump-none`, `jump-both`).",
+    example: "steps(4, end)",
+  },
+  {
+    name: "translate",
+    usage:
+      "Moves the element. Takes one or two lengths or percentages: the x offset, then an optional y offset.",
+    example: "translate(10px, 20px)",
+  },
+  {
+    name: "rotate",
+    usage: "Rotates the element. Takes a single angle.",
+    example: "rotate(45deg)",
+  },
+  {
+    name: "scale",
+    usage:
+      "Scales the element. Takes a unitless factor, or two factors for separate x and y scaling.",
+    example: "scale(1.05)",
+  },
+  {
+    name: "blur",
+    usage:
+      "Gaussian blur filter. Takes the standard deviation as a length; `0` leaves the element sharp.",
+    example: "blur(4px)",
+  },
+  {
+    name: "brightness",
+    usage:
+      "Brightness filter. Takes a unitless factor or a percentage, where `1` and `100%` leave the element unchanged.",
+    example: "brightness(1.2)",
+  },
+  {
+    name: "counter",
+    usage:
+      "Generates a counter value in generated content. Takes the counter name, then an optional list style.",
+    example: "counter(item)",
+  },
+]);
+
+/**
+ * Function items for a value word.
+ *
+ * `replaceStart` moves the item's replacement range in front of the shared
+ * value range; the call-opener state uses it to cover the typed `(`, so
+ * accepting `clamp(` swaps the opener instead of duplicating it.
+ */
+function functionItems(word: string, replaceStart?: number): readonly CompletionSuggestion[] {
+  return CSS_FUNCTIONS.filter(
+    (fn) => word === "" || fn.name.startsWith(word),
+  ).map<CompletionSuggestion>((fn) => ({
+    label: `${fn.name}(`,
+    kind: "value",
+    detail: "CSS function",
+    documentation: cssFunctionDocumentation(fn),
+    insertText: fn.insertText ?? `${fn.name}(`,
+    sortText: `1-${fn.name}`,
+    // The paren state replaces the typed `(`, so VS Code narrows against `(cl`
+    // while the label stays `clamp(`; the filter text carries the paren so the
+    // editor's own narrowing cannot hide an offered function.
+    ...(replaceStart === undefined ? {} : { replaceStart, filterText: `(${fn.name}` }),
+  }));
+}
+
 /** Directives offered after `@` at a statement start. */
 const DIRECTIVES: readonly { readonly name: string; readonly documentation: string }[] =
   Object.freeze([
@@ -320,6 +1200,17 @@ const DIRECTIVES: readonly { readonly name: string; readonly documentation: stri
     { name: "runtime", documentation: "Tokens emitted as native CSS custom properties." },
     { name: "media-types", documentation: "File-local media alias definitions." },
   ]);
+
+/**
+ * The `@group` directive, offered at the top level (definition) and inside a
+ * rule body (use site). ADR-0017: a definition is inert and the same syntax
+ * inside a rule applies a group's defaults plus per-use-site overrides.
+ */
+const GROUP_DIRECTIVE = Object.freeze({
+  name: "group",
+  documentation:
+    "Reusable declaration group (ADR-0017): `@group.card { … }` defines defaults at the top level; the same syntax inside a rule body applies them with optional overrides.",
+});
 
 /**
  * Native CSS at-rules Chikx passes through unchanged (SPECIFICATION.md §3.4,
@@ -515,12 +1406,85 @@ function scanBackWord(text: string, offset: number): { start: number; word: stri
   return { start, word: text.slice(start, offset) };
 }
 
+/**
+ * Offset of the `(` the author just typed in front of a value word.
+ *
+ * `scanBackWord` stops at `(`, so the word behind a typed paren is only what
+ * the author typed since (`width: (cl` → `cl`). A paren belongs to a named call
+ * when a name character sits directly in front of it (`calc(`); its opener is
+ * not text the author can replace, so it is not this state.
+ */
+function callOpenerStart(text: string, offset: number, word: string): number | undefined {
+  const paren = offset - word.length - 1;
+  if (paren < 0 || text[paren] !== "(") return undefined;
+  const before = text[paren - 1];
+  return before !== undefined && /[A-Za-z0-9_-]/.test(before) ? undefined : paren;
+}
+
+/**
+ * Colon run typed directly before the completion word at `offset`.
+ *
+ * The word scan stops at `:`, so the typed pseudo colons sit in front of it
+ * (`&:` + `hov`). `start` is the replacement start for a pseudo suggestion and
+ * covers the colons (plus any spaces between them and the word), so accepting
+ * `:hover` after `&:` yields `&:hover` instead of `&::hover`.
+ */
+function typedColons(text: string, offset: number, word: string): { count: number; start: number } {
+  let start = offset - word.length;
+  while (start > 0 && (text[start - 1] === " " || text[start - 1] === "\t")) start -= 1;
+  const afterColons = start;
+  while (start > 0 && text[start - 1] === ":") start -= 1;
+  const count = afterColons - start;
+  return { count, start: count === 0 ? offset - word.length : start };
+}
+
+/**
+ * Selector or pseudo-selector position at `offset`.
+ *
+ * A colon run directly before the typed word makes it a pseudo position; the
+ * suggestion list then filters on the text after the colons (`hov` → `:hover`)
+ * while the replacement range covers the typed colons.
+ */
+function selectorOrPseudo(text: string, offset: number, word: string): CompletionContext {
+  return typedColons(text, offset, word).count > 0
+    ? { kind: "pseudo", word }
+    : { kind: "selector", word };
+}
+
 function statementStart(text: string, offset: number): number {
   for (let index = offset - 1; index >= 0; index -= 1) {
     const char = text[index];
     if (char === ";" || char === "{" || char === "}") return index;
   }
   return -1;
+}
+
+/**
+ * Statement text between the last boundary and the last line break before
+ * `offset`.
+ *
+ * Value completion after a property colon only needs the current line: a
+ * multi-line statement (`color: red` followed by a new declaration line) must
+ * not read back as a single declaration (ADR-0011 recovery).
+ */
+function currentLineStatement(text: string, offset: number): string {
+  const lineStart = text.lastIndexOf("\n", offset - 1);
+  return text.slice(Math.max(statementStart(text, offset) + 1, lineStart + 1), offset);
+}
+
+/**
+ * Frame-selector word at `offset` inside an `@keyframes` block. The ordinary
+ * word scan stops at `%`, so percentage selectors need their own scan to keep
+ * the replacement range over the whole `50%`.
+ */
+function frameSelectorWord(text: string, offset: number): string {
+  let start = offset;
+  while (start > 0) {
+    const char = text[start - 1];
+    if (char !== undefined && /[0-9A-Za-z%]/.test(char)) start -= 1;
+    else break;
+  }
+  return text.slice(start, offset);
 }
 
 /**
@@ -581,14 +1545,85 @@ interface RuleLike {
   readonly body: readonly unknown[];
 }
 
-function findEnclosingRule(analysis: AnalyzeResult, offset: number): RuleLike | undefined {
-  let found: RuleLike | undefined;
+interface NativeAtRuleLike {
+  readonly name: string;
+  readonly prelude: string;
+  readonly span: SpanLike;
+  readonly block: readonly unknown[];
+}
+
+/** Block members of any AST node: rule/conditional `body` and at-rule `block`. */
+function blockMembers(node: {
+  readonly body?: readonly unknown[];
+  readonly block?: readonly unknown[];
+}): readonly unknown[] {
+  return [...(node.body ?? []), ...(node.block ?? [])];
+}
+
+/**
+ * Innermost style rule containing `offset` and whether another rule encloses it.
+ */
+interface EnclosingRule {
+  readonly rule: RuleLike;
+  /** True when the rule itself sits inside another rule's body. */
+  readonly nestedInRule: boolean;
+}
+
+/**
+ * Innermost style rule containing `offset`.
+ *
+ * Native at-rule blocks are traversed too: `@keyframes spin { from { … } }`
+ * parses each frame block as an ordinary `rule` nested in the at-rule's
+ * `block` member (SPECIFICATION.md §3.5), so frame bodies behave exactly like
+ * rule bodies.
+ */
+function findEnclosingRule(analysis: AnalyzeResult, offset: number): EnclosingRule | undefined {
+  let found: EnclosingRule | undefined;
+  const visit = (node: unknown, insideRule: boolean): void => {
+    const candidate = node as Partial<RuleLike> & { kind?: string; block?: readonly unknown[] };
+    if (
+      candidate.span !== undefined &&
+      (offset < candidate.span.start || offset > candidate.span.end)
+    ) {
+      return;
+    }
+    const isRule = candidate.kind === "rule" && candidate.span !== undefined;
+    if (isRule) found = { rule: candidate as RuleLike, nestedInRule: insideRule };
+    for (const child of blockMembers(candidate)) visit(child, insideRule || isRule);
+  };
+  for (const item of analysis.ast.items) visit(item, false);
+  return found;
+}
+
+/**
+ * Innermost native CSS at-rule block containing `offset` (SPECIFICATION.md
+ * §3.5). Statement at-rules such as `@import` carry no `block` and are never
+ * reported as an enclosing construct.
+ */
+function findEnclosingNativeAtRule(
+  analysis: AnalyzeResult,
+  offset: number,
+): NativeAtRuleLike | undefined {
+  let found: NativeAtRuleLike | undefined;
   const visit = (node: unknown): void => {
-    const candidate = node as Partial<RuleLike> & { kind?: string };
-    if (candidate.kind !== "rule" || candidate.span === undefined) return;
-    if (offset < candidate.span.start || offset > candidate.span.end) return;
-    found = candidate as RuleLike;
-    for (const child of candidate.body ?? []) visit(child);
+    const candidate = node as Partial<NativeAtRuleLike> & {
+      kind?: string;
+      body?: readonly unknown[];
+    };
+    if (
+      candidate.span !== undefined &&
+      (offset < candidate.span.start || offset > candidate.span.end)
+    ) {
+      return;
+    }
+    if (
+      candidate.kind === "native-at-rule" &&
+      candidate.span !== undefined &&
+      candidate.block !== undefined
+    ) {
+      found = candidate as NativeAtRuleLike;
+    }
+    for (const child of blockMembers(candidate)) visit(child);
   };
   for (const item of analysis.ast.items) visit(item);
   return found;
@@ -613,6 +1648,7 @@ function findEnclosingDeclaration(
       span?: SpanLike;
       property?: string;
       body?: readonly unknown[];
+      block?: readonly unknown[];
       declarations?: readonly unknown[];
     };
     if (
@@ -626,6 +1662,7 @@ function findEnclosingDeclaration(
       return;
     }
     for (const child of candidate.body ?? []) visit(child);
+    for (const child of candidate.block ?? []) visit(child);
     for (const child of candidate.declarations ?? []) visit(child);
   };
   for (const item of analysis.ast.items) visit(item);
@@ -635,6 +1672,553 @@ function findEnclosingDeclaration(
 function importByAlias(analysis: AnalyzeResult, alias: string): ImportedModule | undefined {
   return analysis.imports.find((entry) => entry.alias === alias);
 }
+
+/** Editor-readable label of a defining module (`this file`, `@use` specifier, path). */
+function groupModuleLabel(analysis: AnalyzeResult, file: string): string {
+  if (normalizePath(file) === normalizePath(analysis.path)) return "this file";
+  const direct = analysis.imports.find(
+    (entry) => normalizePath(entry.path) === normalizePath(file),
+  );
+  if (direct !== undefined) return `\`${direct.specifier}\``;
+  const relative = relativeTo(dirnamePath(analysis.path), file);
+  return isAbsolutePath(relative) ? `\`${relative}\`` : `\`./${relative}\``;
+}
+
+/** Default-declaration markdown lines shared by completion and hover. */
+function groupDefaultLines(symbol: GroupSymbol): string[] {
+  if (symbol.defaults.length === 0) return ["_No default declarations._"];
+  return symbol.defaults.map((entry) => `\`${entry.property}: ${entry.value}\``);
+}
+
+/** Completion item for one visible group name, local first and ambiguity marked. */
+function groupItem(
+  analysis: AnalyzeResult,
+  entry: GroupVisibility,
+  typed: string,
+): CompletionSuggestion | undefined {
+  if (!entry.name.startsWith(typed)) return undefined;
+  const skeleton = `${entry.name} {\n  \n}`;
+  if (entry.kind === "ambiguous") {
+    const modules = entry.candidates.map((candidate) => groupModuleLabel(analysis, candidate.file));
+    return {
+      label: entry.name,
+      kind: "group",
+      detail: `ambiguous group — ${modules.join(" and ")}`,
+      documentation: `Multiple visible definitions of \`@group.${entry.name}\`. The compiler reports CHIKX2001 at a use site until one import is removed or a local definition is added.`,
+      insertText: skeleton,
+      sortText: `2-${entry.name}`,
+    };
+  }
+  const local = normalizePath(entry.symbol.file) === normalizePath(analysis.path);
+  return {
+    label: entry.name,
+    kind: "group",
+    detail: local
+      ? "group — defined in this file"
+      : `group — defined in ${groupModuleLabel(analysis, entry.symbol.file)}`,
+    documentation: `**@group.${entry.name}** — ${local ? "defined in this file" : `defined in ${groupModuleLabel(analysis, entry.symbol.file)}`}\n\nDefaults:\n${groupDefaultLines(entry.symbol).join("\n")}`,
+    insertText: skeleton,
+    sortText: `${local ? "0" : "1"}-${entry.name}`,
+  };
+}
+
+/** Compact frames summary shared by keyframe completion and hover. */
+function keyframeFramesLine(frames: readonly string[]): string {
+  if (frames.length === 0) return "_No frame blocks; the definition is empty._";
+  return `Frames: ${frames.map((frame) => `\`${frame}\``).join(", ")}`;
+}
+
+/** Completion item for one visible keyframe definition, duplicates included. */
+function keyframeCompletion(
+  analysis: AnalyzeResult,
+  symbol: KeyframeSymbol,
+  typed: string,
+  variant: "local" | "imported" | "duplicate" | "ambiguous",
+): CompletionSuggestion | undefined {
+  if (!symbol.name.startsWith(typed)) return undefined;
+  const local = variant === "local";
+  const module = local ? "this file" : groupModuleLabel(analysis, symbol.file);
+  const suffix =
+    variant === "duplicate" ? " (duplicate name)" : variant === "ambiguous" ? " (ambiguous)" : "";
+  const lines = [
+    `**$keyframes.${symbol.name}** — ${local ? "defined in this file" : `defined in ${module}`}`,
+    "",
+    keyframeFramesLine(symbol.frames),
+  ];
+  if (variant === "ambiguous") {
+    lines.push(
+      "",
+      "Duplicate keyframe names are valid CSS (ADR-0015); rename needs one unambiguous definition.",
+    );
+  }
+  return {
+    label: symbol.name,
+    kind: "member",
+    detail: `keyframe — defined in ${module}${suffix}`,
+    documentation: lines.join("\n"),
+    insertText: symbol.name,
+    sortText: `${local ? "0" : variant === "imported" ? "1" : "2"}-${symbol.name}`,
+  };
+}
+
+/** Cursor result for a `@group.<name>` definition or use site. */
+export interface GroupCursor {
+  readonly site: "definition" | "use-site";
+  readonly name: string;
+  readonly nameRange: Range;
+  /** Whole `@group.<name>` keyword, the hover range. */
+  readonly keywordRange: Range;
+  /** Authored definition node when the cursor is on a definition name. */
+  readonly definition?: GroupDefinition;
+  /** Authored use-site node when the cursor is on a use-site member. */
+  readonly useSite?: GroupUseSite;
+}
+
+/**
+ * `@group.<name>` construct under the cursor, from AST spans only.
+ *
+ * Rename and prepare-rename address only the name text. Hover passes
+ * `includeKeyword` so the whole `@group.<name>` span (the `@group` word and the
+ * dot included) resolves to the construct instead of falling through to the
+ * media-alias scanner.
+ */
+export function groupAt(
+  analysis: AnalyzeResult,
+  offset: number,
+  options: { readonly includeKeyword?: boolean } = {},
+): GroupCursor | undefined {
+  const inName = (span: SpanLike, name: string): boolean => {
+    const start = span.start + GROUP_KEYWORD.length;
+    const from = options.includeKeyword === true ? span.start : start;
+    return offset >= from && offset <= start + name.length;
+  };
+  const cursorOf = (
+    span: SpanLike,
+    name: string,
+    site: "definition" | "use-site",
+    node: GroupDefinition | GroupUseSite,
+  ): GroupCursor => {
+    const start = span.start + GROUP_KEYWORD.length;
+    return {
+      site,
+      name,
+      nameRange: rangeAt(analysis.lineStarts, start, start + name.length),
+      keywordRange: rangeAt(analysis.lineStarts, span.start, start + name.length),
+      ...(site === "definition"
+        ? { definition: node as GroupDefinition }
+        : { useSite: node as GroupUseSite }),
+    };
+  };
+
+  for (const item of analysis.ast.items) {
+    if (item.kind === "group-definition" && inName(item.span, item.name)) {
+      return cursorOf(item.span, item.name, "definition", item);
+    }
+  }
+
+  let found: GroupCursor | undefined;
+  const visit = (node: unknown): void => {
+    if (found !== undefined) return;
+    const candidate = node as {
+      kind?: string;
+      name?: string;
+      span?: SpanLike;
+      body?: readonly unknown[];
+      block?: readonly unknown[];
+    };
+    if (
+      candidate.kind === "group-use-site" &&
+      candidate.name !== undefined &&
+      candidate.span !== undefined
+    ) {
+      if (inName(candidate.span, candidate.name)) {
+        found = cursorOf(candidate.span, candidate.name, "use-site", node as GroupUseSite);
+      }
+      return;
+    }
+    for (const child of candidate.body ?? []) visit(child);
+    for (const child of candidate.block ?? []) visit(child);
+  };
+  for (const item of analysis.ast.items) visit(item);
+  return found;
+}
+
+/** Base property names the use-site block repeats from the definition. */
+function groupOverrides(useSite: GroupUseSite, symbol: GroupSymbol): readonly string[] {
+  const defaults = new Set(symbol.defaults.map((entry) => entry.property));
+  const overrides: string[] = [];
+  for (const declaration of useSite.declarations) {
+    if (!defaults.has(declaration.property)) continue;
+    if (overrides.includes(declaration.property)) continue;
+    overrides.push(declaration.property);
+  }
+  return overrides;
+}
+
+/** Hover markdown for a group definition or use site (analysis, never compilation). */
+function groupHover(analysis: AnalyzeResult, cursor: GroupCursor): HoverContent {
+  const range = cursor.keywordRange;
+  const title = `@group.${cursor.name}`;
+  if (cursor.site === "definition") {
+    const declarations = cursor.definition?.declarations ?? [];
+    const lines = [`**${title}** — group definition`, ""];
+    if (declarations.length === 0) {
+      lines.push("_No default declarations; the group is inert._");
+    } else {
+      lines.push(
+        "Defaults:",
+        ...declarations.map((entry) => `\`${entry.property}: ${entry.value}\``),
+      );
+    }
+    return { markdown: lines.join("\n"), range };
+  }
+
+  const entry = analysis.groups.find((candidate) => candidate.name === cursor.name);
+  if (entry === undefined) {
+    return {
+      markdown: [
+        `**Unknown group \`${title}\`**`,
+        "",
+        "No visible definition in this module. Groups are visible from this file and its `styles` imports; the compiler reports CHIKX2001 and omits the block.",
+      ].join("\n"),
+      range,
+    };
+  }
+  if (entry.kind === "ambiguous") {
+    const modules = entry.candidates.map((candidate) => groupModuleLabel(analysis, candidate.file));
+    return {
+      markdown: [
+        `**Ambiguous group \`${title}\`**`,
+        "",
+        `Two visible definitions: ${modules.slice(0, 2).join(" and ")}. The compiler reports CHIKX2001 at this use site and expands no declarations; add a local definition or remove one \`styles\` import.`,
+      ].join("\n"),
+      range,
+    };
+  }
+
+  const overrides =
+    cursor.useSite === undefined ? [] : groupOverrides(cursor.useSite, entry.symbol);
+  const lines = [
+    `**${title}** — group use site`,
+    "",
+    `Defined in ${groupModuleLabel(analysis, entry.symbol.file)}.`,
+    "",
+    "Defaults:",
+    ...groupDefaultLines(entry.symbol),
+    "",
+    overrides.length === 0
+      ? "Overrides in this use site: none."
+      : `Overrides in this use site: ${overrides.map((name) => `\`${name}\``).join(", ")}`,
+  ];
+  return { markdown: lines.join("\n"), range };
+}
+
+function sameRange(left: Range, right: Range): boolean {
+  return (
+    left.start.line === right.start.line &&
+    left.start.character === right.start.character &&
+    left.end.line === right.end.line &&
+    left.end.character === right.end.character
+  );
+}
+
+/** Group rename plan across the visible module set (ADR-0017 item 5). */
+function renameGroup(cursor: GroupCursor, newName: string, analysis: AnalyzeResult): RenamePlan {
+  if (!TOKEN_NAME_PATTERN.test(newName)) {
+    return {
+      ok: false,
+      reason:
+        "Group names must start with a letter or underscore and contain letters, digits, `_` or `-`.",
+    };
+  }
+  const entry = analysis.groups.find((candidate) => candidate.name === cursor.name);
+  if (entry === undefined) {
+    return {
+      ok: false,
+      reason: `Unknown group "@group.${cursor.name}" is not visible in this module.`,
+    };
+  }
+  if (entry.kind === "ambiguous") {
+    const modules = entry.candidates.map((candidate) => groupModuleLabel(analysis, candidate.file));
+    return {
+      ok: false,
+      reason: `Ambiguous group "@group.${cursor.name}": it is defined in ${modules.join(" and ")}. Add a local definition or rename one definition first.`,
+    };
+  }
+  if (cursor.site === "definition" && !sameRange(cursor.nameRange, entry.symbol.declaration)) {
+    return {
+      ok: false,
+      reason: `Duplicate group definition "@group.${cursor.name}"; only the first definition is addressable.`,
+    };
+  }
+  return {
+    ok: true,
+    placeholder: entry.symbol.name,
+    edits: [
+      { file: entry.symbol.file, range: entry.symbol.declaration, newText: newName },
+      ...entry.symbol.references.map((reference) => ({
+        file: reference.file,
+        range: reference.name,
+        newText: newName,
+      })),
+    ],
+  };
+}
+
+/** Cursor result for a `@keyframes <name>` definition or `$keyframes.<name>` reference. */
+export interface KeyframeCursor {
+  readonly site: "definition" | "reference";
+  readonly name: string;
+  readonly nameRange: Range;
+  /** Whole `$keyframes.<name>` range for a reference; the name range for a definition. */
+  readonly keywordRange: Range;
+  /** Frame selectors discovered on a definition cursor. */
+  readonly frames?: readonly string[];
+}
+
+/**
+ * `@keyframes <name>` definition or `$keyframes.<name>` reference under the cursor.
+ *
+ * Definitions come from top-level native at-rule spans; references come from the
+ * same `$` scanner the token intelligence uses, filtered to the built-in
+ * `keyframes` namespace. Only the current document is scanned here; rename also
+ * edits references attributed in other visible modules.
+ */
+export function keyframeAt(
+  text: string,
+  offset: number,
+  analysis: AnalyzeResult,
+): KeyframeCursor | undefined {
+  const contains = (range: Range): boolean =>
+    offsetAt(analysis.lineStarts, range.start) <= offset &&
+    offset <= offsetAt(analysis.lineStarts, range.end);
+
+  for (const item of analysis.ast.items) {
+    if (item.kind !== "native-at-rule") continue;
+    const definition = keyframeDefinitionAt(item, text, analysis.lineStarts);
+    if (definition === undefined || !contains(definition.range)) continue;
+    return {
+      site: "definition",
+      name: definition.name,
+      nameRange: definition.range,
+      keywordRange: definition.range,
+      frames: definition.frames,
+    };
+  }
+
+  const reference = collectTokenReferences(text, analysis.ast).find(
+    (candidate) =>
+      candidate.namespace === KEYFRAMES_NAMESPACE &&
+      offset >= candidate.start &&
+      offset <= candidate.end,
+  );
+  if (reference !== undefined) {
+    return {
+      site: "reference",
+      name: reference.name,
+      nameRange: rangeAt(
+        analysis.lineStarts,
+        reference.start + KEYFRAMES_KEYWORD.length,
+        reference.end,
+      ),
+      keywordRange: rangeAt(analysis.lineStarts, reference.start, reference.end),
+    };
+  }
+
+  // Tolerant-parse fallback: the declaration holding the reference may have been
+  // dropped (recovery) or may live where the declaration walker does not reach.
+  // Match the whole authored construct from raw text so the `keyframes`
+  // namespace word itself resolves exactly like the `$` and name parts.
+  const textual = keyframeReferenceFromText(text, offset);
+  if (textual === undefined) return undefined;
+  return {
+    site: "reference",
+    name: textual.name,
+    nameRange: rangeAt(analysis.lineStarts, textual.nameStart, textual.end),
+    keywordRange: rangeAt(analysis.lineStarts, textual.start, textual.end),
+  };
+}
+
+/** Plain-identifier keyframe names, matching the compiler's registration rule. */
+const KEYFRAME_TEXT_NAME = /^[A-Za-z_-][A-Za-z0-9_-]*$/;
+
+/**
+ * Textual `$keyframes.<name>` construct containing `offset`.
+ *
+ * This is the fallback for references that tolerant parsing did not keep in the
+ * AST. It deliberately ignores strings, comments and `url(...)` contents and
+ * only accepts the built-in `keyframes` namespace, so plain `$tokens`,
+ * `$theme.member` and `@keyframes` header hovers are untouched.
+ */
+function keyframeReferenceFromText(
+  text: string,
+  offset: number,
+):
+  | {
+      readonly start: number;
+      readonly end: number;
+      readonly nameStart: number;
+      readonly name: string;
+    }
+  | undefined {
+  const start = text.lastIndexOf(KEYFRAMES_KEYWORD, offset);
+  if (start < 0) return undefined;
+  if (start > 0 && /[A-Za-z0-9_$-]/.test(text[start - 1] ?? "")) return undefined;
+  const nameStart = start + KEYFRAMES_KEYWORD.length;
+  let end = nameStart;
+  while (end < text.length && /[A-Za-z0-9_-]/.test(text[end] ?? "")) end += 1;
+  if (end === nameStart || offset > end) return undefined;
+  const name = text.slice(nameStart, end);
+  if (!KEYFRAME_TEXT_NAME.test(name)) return undefined;
+  if (enclosingString(text, start) !== undefined) return undefined;
+  if (insideUrl(text, start)) return undefined;
+  return { start, end, nameStart, name };
+}
+
+/** Whether `offset` falls inside the parentheses of an authored `url(...)`. */
+function insideUrl(text: string, offset: number): boolean {
+  const open = text.toLowerCase().lastIndexOf("url(", offset);
+  if (open < 0) return false;
+  let depth = 0;
+  let index = open;
+  while (index < offset) {
+    const char = text[index];
+    if (char === '"' || char === "'") {
+      index = skipString(text, index);
+      continue;
+    }
+    if (char === "(") depth += 1;
+    else if (char === ")") depth = Math.max(0, depth - 1);
+    index += 1;
+  }
+  return depth > 0;
+}
+
+/** Hover markdown for a keyframe definition or `$keyframes.<name>` reference. */
+function keyframeHover(analysis: AnalyzeResult, cursor: KeyframeCursor): HoverContent {
+  const range = cursor.keywordRange;
+  if (cursor.site === "definition") {
+    return {
+      markdown: [
+        `**@keyframes ${cursor.name}** — keyframe definition`,
+        "",
+        keyframeFramesLine(cursor.frames ?? []),
+      ].join("\n"),
+      range,
+    };
+  }
+
+  const title = `$keyframes.${cursor.name}`;
+  const entry = analysis.keyframes.find((candidate) => candidate.name === cursor.name);
+  if (entry === undefined) {
+    return {
+      markdown: [
+        `**Unknown keyframe \`${title}\`**`,
+        "",
+        "No visible `@keyframes` definition in this module. Keyframe names are visible from this file and its `styles` imports; a token-only import exposes none. The compiler reports CHIKX2001 at this reference.",
+      ].join("\n"),
+      range,
+    };
+  }
+  if (entry.kind === "ambiguous") {
+    const modules = entry.candidates.map((candidate) => groupModuleLabel(analysis, candidate.file));
+    return {
+      markdown: [
+        `**Ambiguous keyframe \`${title}\`**`,
+        "",
+        `Defined in ${modules.join(" and ")}. Duplicate keyframe names are valid CSS and the compiler reports no conflict; add a local \`@keyframes\` block or remove one \`styles\` import to make rename unambiguous.`,
+      ].join("\n"),
+      range,
+    };
+  }
+
+  const local = normalizePath(entry.symbol.file) === normalizePath(analysis.path);
+  const lines = [
+    `**${title}** — keyframe`,
+    "",
+    local
+      ? "Defined in this file."
+      : `Defined in ${groupModuleLabel(analysis, entry.symbol.file)}.`,
+    "",
+    keyframeFramesLine(entry.symbol.frames),
+  ];
+  if (entry.duplicates.length > 0) {
+    const modules = entry.duplicates.map((duplicate) => groupModuleLabel(analysis, duplicate.file));
+    lines.push(
+      "",
+      `Also declared in ${modules.join(" and ")} (duplicate names are valid CSS; the local definition is the rename target).`,
+    );
+  }
+  return { markdown: lines.join("\n"), range };
+}
+
+/** Valid CSS identifier used for keyframe names (plain identifier, optional leading hyphen). */
+const KEYFRAME_NAME_PATTERN = /^-?[A-Za-z_][A-Za-z0-9_-]*$/;
+
+/** Keyframe rename plan across the visible module set (ADR-0015). */
+function renameKeyframe(
+  cursor: KeyframeCursor,
+  newName: string,
+  analysis: AnalyzeResult,
+): RenamePlan {
+  if (!KEYFRAME_NAME_PATTERN.test(newName)) {
+    return {
+      ok: false,
+      reason:
+        "Keyframe names must be a valid CSS identifier: start with a letter or underscore (optionally one leading hyphen) and contain only letters, digits, `_` or `-`.",
+    };
+  }
+  const entry = analysis.keyframes.find((candidate) => candidate.name === cursor.name);
+  if (entry === undefined) {
+    return {
+      ok: false,
+      reason: `Unknown keyframe "$keyframes.${cursor.name}" is not visible in this module.`,
+    };
+  }
+  if (entry.kind === "ambiguous") {
+    const modules = entry.candidates.map((candidate) => groupModuleLabel(analysis, candidate.file));
+    return {
+      ok: false,
+      reason: `Ambiguous keyframe "$keyframes.${cursor.name}": it is defined in ${modules.join(" and ")}. Add a local \`@keyframes\` block or rename one definition first.`,
+    };
+  }
+  if (cursor.site === "definition" && !sameRange(cursor.nameRange, entry.symbol.declaration)) {
+    return {
+      ok: false,
+      reason: `Duplicate keyframe definition "@keyframes ${cursor.name}"; only the first definition is addressable.`,
+    };
+  }
+  if (newName !== entry.symbol.name && analysis.keyframes.some((entry) => entry.name === newName)) {
+    return {
+      ok: false,
+      reason: `A keyframe named "${newName}" already exists in scope.`,
+    };
+  }
+  return {
+    ok: true,
+    placeholder: entry.symbol.name,
+    edits: [
+      { file: entry.symbol.file, range: entry.symbol.declaration, newText: newName },
+      ...entry.symbol.references.map((reference) => ({
+        file: reference.file,
+        range: reference.name,
+        newText: newName,
+      })),
+      ...entry.symbol.animationNames.map((declaration) => ({
+        file: declaration.file,
+        range: declaration.value,
+        newText: newName,
+      })),
+    ],
+  };
+}
+
+/**
+ * Property names a tolerant declaration may carry (`width`, `-webkit-x`,
+ * `--brand`). `&:` and similar selector fragments are parsed as declarations by
+ * the recovery grammar and must not be treated as declarations here.
+ */
+const DECLARATION_PROPERTY_PATTERN = /^(--[A-Za-z0-9_-]+|-?[A-Za-z][A-Za-z0-9-]*)$/;
 
 /** Detect the completion context at `offset`. */
 export function contextAt(
@@ -653,6 +2237,9 @@ export function contextAt(
 
   const { word } = scanBackWord(text, offset);
 
+  if (word.startsWith(GROUP_KEYWORD)) {
+    return { kind: "group-member", word: word.slice(GROUP_KEYWORD.length) };
+  }
   if (word.startsWith("@")) {
     return { kind: "directive", word: word.slice(1), inSelector: braceDepthAt(text, offset) > 0 };
   }
@@ -675,38 +2262,99 @@ export function contextAt(
   const setup = findEnclosingSetup(analysis, offset);
   if (setup !== undefined) {
     const head = text.slice(setup.start, offset);
+    // Only a colon inside the current setting makes a value context: `;` ends a
+    // setting and `{` opens the block, so a completed line such as
+    // `prefix: "ui";` must not hijack the next line's key completion.
+    const boundary = Math.max(head.lastIndexOf(";"), head.lastIndexOf("{"));
     const colon = head.lastIndexOf(":");
-    if (colon >= 0) {
-      const key = head.slice(0, colon).replace(/[{}]/g, " ").trim().split(/\s+/).pop();
+    if (colon > boundary) {
+      const key = head
+        .slice(boundary + 1, colon)
+        .trim()
+        .split(/\s+/)
+        .pop();
       return { kind: "setup-value", key: key ?? "", word };
     }
     return { kind: "setup-key", word };
   }
 
   const declaration = findEnclosingDeclaration(analysis, offset);
-  if (declaration !== undefined) {
+  // The tolerant parser also echoes non-declaration statements such as `&:` as
+  // declarations; only a plausible property name keeps the declaration path, so
+  // nested-selector starters still reach the rule-body classification below.
+  if (declaration !== undefined && DECLARATION_PROPERTY_PATTERN.test(declaration.property)) {
     const colon = text.indexOf(":", declaration.span.start);
     if (colon >= 0 && offset > colon) {
+      // ADR-0011 recovery keeps an unterminated declaration whose span swallows
+      // the following statement lines. A line break with value content behind it
+      // and a bare-word current line is a new declaration line inside the rule
+      // body, not a value continuation (S6/S7 keep punctuation or no value).
+      const lineBreak = text.lastIndexOf("\n", offset - 1);
+      if (
+        lineBreak > colon &&
+        text.slice(colon + 1, lineBreak).trim() !== "" &&
+        /^[\t ]*[A-Za-z-]*[\t ]*$/.test(text.slice(lineBreak + 1, offset))
+      ) {
+        return { kind: "property", word };
+      }
       return { kind: "value", property: declaration.property, word };
     }
     return { kind: "property", word };
   }
 
-  const rule = findEnclosingRule(analysis, offset);
-  if (rule !== undefined) {
-    if (offset >= rule.selectorSpan.start && offset <= rule.selectorSpan.end) {
-      if (word.startsWith(":") || text[offset - 1] === ":") return { kind: "pseudo", word };
-      return { kind: "selector", word };
+  const enclosing = findEnclosingRule(analysis, offset);
+  if (enclosing !== undefined) {
+    const { rule, nestedInRule } = enclosing;
+    const inSelector = offset >= rule.selectorSpan.start && offset <= rule.selectorSpan.end;
+    // The tolerant parser glues a statement line and a following `&` selector
+    // line into one selector (`co\n  &:hover`), so the cursor sat inside a
+    // selector span and lost the property list. Inside a rule body only a
+    // selector that ends on the cursor's own line is selector text; a selector
+    // spanning several lines there is a recovery artefact and the authored
+    // current line decides (bare word/empty → property). A selector outside any
+    // rule body cannot be a declaration line, so it keeps the selector path.
+    const selectorSpansLines = /[\r\n]/.test(
+      text.slice(rule.selectorSpan.start, rule.selectorSpan.end),
+    );
+    if (inSelector && (!selectorSpansLines || !nestedInRule)) {
+      return selectorOrPseudo(text, offset, word);
     }
-    if (text[offset - 1] === ":") return { kind: "pseudo", word };
-    const boundary = statementStart(text, offset);
-    const trimmed = text.slice(boundary + 1, offset).trimStart();
+    // The tolerant AST under-spans a declaration whose value is still empty
+    // (`width:` ends at the colon), so the cursor can sit outside the
+    // declaration. A `property:` statement with only whitespace or a value
+    // behind the colon is therefore a value context even when the AST dropped
+    // it. Requiring whitespace after the colon keeps nested selectors such as
+    // `a:hover` out of this branch.
+    const statement = currentLineStatement(text, offset);
+    const declarationStatement = /^\s*([A-Za-z-]+)\s*:(\s.*)?$/.exec(statement);
+    if (declarationStatement !== null) {
+      const property = declarationStatement[1];
+      const valueWord = declarationStatement[2] === undefined ? "" : word;
+      return { kind: "value", property, word: valueWord };
+    }
+    const lineContext = selectorOrPseudo(text, offset, word);
+    if (lineContext.kind === "pseudo") return lineContext;
+    const trimmed = statement.trimStart();
     if (trimmed === "") return { kind: "property", word };
-    if (/^[&.#[:*>]/.test(trimmed)) {
-      if (trimmed.endsWith(":") || /:\s*$/.test(trimmed)) return { kind: "pseudo", word };
-      return { kind: "selector", word };
-    }
+    if (/^[&.#[:*>]/.test(trimmed)) return { kind: "selector", word };
     return { kind: "property", word };
+  }
+
+  // Native at-rule blocks (`@keyframes`) never match as a rule, so statement
+  // positions inside them are classified from the authored text. Frame blocks
+  // themselves parse as ordinary rules and keep the rule-body behaviour above.
+  const nativeAtRule = findEnclosingNativeAtRule(analysis, offset);
+  if (
+    nativeAtRule !== undefined &&
+    nativeAtRule.name.toLowerCase() === "keyframes" &&
+    // `span.end` also covers the closing `}`; only positions inside the block
+    // braces belong to the keyframes body.
+    braceDepthAt(text, offset) > braceDepthAt(text, nativeAtRule.span.start)
+  ) {
+    const statement = text.slice(statementStart(text, offset) + 1, offset).trimStart();
+    if (/^[\s0-9A-Za-z%]*$/.test(statement)) {
+      return { kind: "keyframe-selector", word: frameSelectorWord(text, offset) };
+    }
   }
 
   if (word.startsWith("@")) return { kind: "directive", word: word.slice(1), inSelector: false };
@@ -811,10 +2459,25 @@ function importPathItems(
 }
 
 /**
+ * Popup detail for one class occurrence: a prefixed (generated) class explains
+ * the mapping, a class whose generated name equals its authored name has none.
+ */
+function classDetail(occurrence: ClassOccurrence): string | undefined {
+  return occurrence.generated === occurrence.name
+    ? undefined
+    : `generated class .${occurrence.generated}`;
+}
+
+/**
  * Context-aware completion at one document offset.
  *
- * The manifest trigger characters are `@`, `$`, `.`, `:`, `/`; property, value
- * and selector contexts also complete without a trigger.
+ * The registered trigger characters are `@`, `$`, `.`, `:`, `/`, `&`, `(` and
+ * `#`; property, value and selector contexts also complete without a trigger.
+ *
+ * Two value states replace text in front of the typed word and say so per item
+ * (`replaceStart`): the call opener `(` (A50) and the colour literal `#` (A51).
+ * Both also carry a `filterText`, because the editor narrows the list against
+ * the text its replacement range covers rather than the typed word alone.
  */
 export function completionsAt(
   text: string,
@@ -847,14 +2510,40 @@ export function completionsAt(
             sortText: `0-${directive.name}`,
           }))
         : [];
+      // A group statement is legal at the top level (definition) and inside a
+      // rule body (use site), so it is offered in both directive lists.
+      const groupDirective =
+        context.word === "" || GROUP_DIRECTIVE.name.startsWith(context.word)
+          ? [
+              {
+                label: `@${GROUP_DIRECTIVE.name}`,
+                kind: "directive" as const,
+                detail: "Chikx directive",
+                documentation: GROUP_DIRECTIVE.documentation,
+                insertText: `${GROUP_KEYWORD}`,
+                sortText: `0-${GROUP_DIRECTIVE.name}`,
+              },
+            ]
+          : [];
       const natives =
         topLevel || atStatementStart(text, replaceStart)
           ? nativeAtRuleItems(context.word, topLevel)
           : [];
       return result(
-        topLevel ? [...directives, ...natives, ...aliases] : [...aliases, ...natives],
+        topLevel
+          ? [...directives, ...groupDirective, ...natives, ...aliases]
+          : [...groupDirective, ...aliases, ...natives],
         replaceStart,
       );
+    }
+    case "group-member": {
+      const replaceStart = offset - context.word.length;
+      const items: CompletionSuggestion[] = [];
+      for (const entry of analysis.groups) {
+        const item = groupItem(analysis, entry, context.word);
+        if (item !== undefined) items.push(item);
+      }
+      return result(items, replaceStart);
     }
     case "token": {
       const replaceStart = offset - context.word.length - 1;
@@ -863,6 +2552,18 @@ export function completionsAt(
         if (token.namespace !== undefined) continue;
         if (context.word !== "" && !token.name.startsWith(context.word)) continue;
         items.push(tokenItem(token));
+      }
+      // The built-in `keyframes` namespace (SPECIFICATION.md §6.4) completes
+      // beside the imported aliases so every namespace is reachable from `$`.
+      if (KEYFRAMES_NAMESPACE.startsWith(context.word)) {
+        items.push({
+          label: `$${KEYFRAMES_NAMESPACE}.`,
+          kind: "token",
+          detail: "built-in keyframe namespace",
+          documentation:
+            "A top-level `@keyframes <name>` block registers `<name>` here; reference it as `$keyframes.<name>` in a declaration value (SPECIFICATION.md §6.4).",
+          insertText: `$${KEYFRAMES_NAMESPACE}.`,
+        });
       }
       for (const imported of analysis.imports) {
         if (imported.alias === undefined) continue;
@@ -877,6 +2578,31 @@ export function completionsAt(
     }
     case "member": {
       const replaceStart = offset - context.word.length;
+      if (context.namespace === KEYFRAMES_NAMESPACE) {
+        const items: CompletionSuggestion[] = [];
+        for (const entry of analysis.keyframes) {
+          if (entry.kind === "ambiguous") {
+            for (const candidate of entry.candidates) {
+              const item = keyframeCompletion(analysis, candidate, context.word, "ambiguous");
+              if (item !== undefined) items.push(item);
+            }
+            continue;
+          }
+          const local = normalizePath(entry.symbol.file) === normalizePath(analysis.path);
+          const primary = keyframeCompletion(
+            analysis,
+            entry.symbol,
+            context.word,
+            local ? "local" : "imported",
+          );
+          if (primary !== undefined) items.push(primary);
+          for (const duplicate of entry.duplicates) {
+            const item = keyframeCompletion(analysis, duplicate, context.word, "duplicate");
+            if (item !== undefined) items.push(item);
+          }
+        }
+        return result(items, replaceStart);
+      }
       const imported = importByAlias(analysis, context.namespace);
       if (imported === undefined) return result([], replaceStart);
       const items = imported.tokens
@@ -920,6 +2646,11 @@ export function completionsAt(
     }
     case "property": {
       const replaceStart = offset - context.word.length;
+      // Accepting a property inserts `property: ;` and parks the cursor before
+      // the semicolon, like the built-in CSS support. The replacement range
+      // covers the typed prefix (`col`), so the snippet replaces it whole and
+      // never appends to it. Absent option means enabled (setting default on).
+      const withSemicolon = options.completePropertyWithSemicolon ?? true;
       return result(
         CSS_PROPERTIES.filter(
           (property) => context.word === "" || property.startsWith(context.word),
@@ -927,13 +2658,37 @@ export function completionsAt(
           label: property,
           kind: "property",
           detail: "CSS property",
+          documentation: propertyDoc(property),
           insertText: `${property}: `,
+          ...(withSemicolon ? { snippet: `${property}: $0;` } : {}),
         })),
         replaceStart,
       );
     }
     case "value": {
       const replaceStart = offset - context.word.length;
+      // A `(` the author just typed in front of the word is a call opener
+      // (`width: (`, `width: (cl`). Keyword values, named colors and units make
+      // no sense directly behind a bare paren, so that state lists only the
+      // curated functions and every item's range starts at the paren: accepting
+      // `clamp(` replaces the typed `(` instead of duplicating it. A paren that
+      // belongs to a named call (`calc(`, `width: calc((`) keeps the ordinary
+      // value list, so editing inside a call never loses typed content.
+      const opener = callOpenerStart(text, offset, context.word);
+      if (opener !== undefined) {
+        return result(functionItems(context.word, opener), replaceStart);
+      }
+      // A `#` the author just typed is a colour literal prefix (`color: #`,
+      // `color: #f7`). The typed `#…` is not a value word, so that state lists
+      // the curated hex palette and the named colours only, every item
+      // replacing the typed prefix. Outside a colour-accepting property a `#`
+      // is no value at all (`width: #`, `url(#frag)` handles its own text), so
+      // the list stays empty instead of offering unrelated generic values.
+      const hash = hashColorStart(text, offset, context.word);
+      if (hash !== undefined) {
+        if (!COLOR_PROPERTIES.has(context.property ?? "")) return result([], replaceStart);
+        return result(hashColorItems(context.word, hash), replaceStart);
+      }
       const values = new Set<string>(CSS_VALUES);
       for (const value of PROPERTY_VALUES[context.property ?? ""] ?? []) values.add(value);
       const items: CompletionSuggestion[] = [...values]
@@ -944,41 +2699,90 @@ export function completionsAt(
           kind: "value",
           detail: "CSS value",
           insertText: value,
+          sortText: `0-${value}`,
         }));
-      items.push({
-        label: "var(--...)",
-        kind: "value",
-        detail: "native custom property reference",
-        insertText: "var(--",
-      });
+      // A color-accepting property also offers the CSS named colors; the same
+      // word filters them and `0-` keeps them beside the keyword values. The
+      // curated hex palette joins only for an empty word: a typed prefix
+      // (`color: re`) is name text, and `#` has its own state above.
+      if (COLOR_PROPERTIES.has(context.property ?? "")) {
+        items.push(...namedColorItems(context.word));
+        if (context.word === "") items.push(...hexColorItems(""));
+      }
+      // A typed number suggests the units that can follow it (`margin: 1` →
+      // `1rem`). `%` is not a word character, so an authored `%` leaves an
+      // empty word: no prefix, no units, and the authored `%` is kept as is.
+      const numberPrefix = /^\d*\.?\d+/.exec(context.word)?.[0] ?? "";
+      if (numberPrefix !== "") items.push(...unitItems(context.word, numberPrefix, offset));
+      // Values are raw CSS (SPECIFICATION.md §3.3), so the same CSS functions
+      // apply to every property, including behind a variant modifier segment.
+      items.push(...functionItems(context.word));
       return result(items, replaceStart);
     }
-    case "selector": {
+    case "keyframe-selector": {
       const replaceStart = offset - context.word.length;
+      return result(
+        KEYFRAME_FRAME_SELECTORS.filter(
+          (frame) => context.word === "" || frame.label.startsWith(context.word),
+        ).map<CompletionSuggestion>((frame) => ({
+          label: frame.label,
+          kind: "selector",
+          detail: "keyframe frame selector",
+          documentation: frame.documentation,
+          insertText: frame.label,
+        })),
+        replaceStart,
+      );
+    }
+    case "selector": {
+      // `.` is a word character, so a typed dot is part of `context.word`
+      // (`.te` after `&.`). Class items insert the bare name, so the range must
+      // start after the last dot — otherwise accepting `.test` dropped the typed
+      // dot and `&.test > a` became `&test > a`.
+      const dot = context.word.lastIndexOf(".");
+      const replaceStart =
+        dot < 0 ? offset - context.word.length : offset - (context.word.length - dot - 1);
       const items: CompletionSuggestion[] = SELECTOR_STARTERS.map((starter) => ({
         label: starter.trim(),
         kind: "selector",
         insertText: starter,
       }));
+      // One item per distinct class name: the authored selectors can mention
+      // the same class more than once (`.class {}` plus `&.class`), and the
+      // analysis records one occurrence per class token. The occurrence that
+      // carries the generated-name detail wins, so a prefixed class still
+      // explains its mapping whichever occurrence came first.
+      const classesByName = new Map<string, ClassOccurrence>();
       for (const occurrence of analysis.classes) {
+        const existing = classesByName.get(occurrence.name);
+        if (
+          existing === undefined ||
+          (classDetail(existing) === undefined && classDetail(occurrence) !== undefined)
+        ) {
+          classesByName.set(occurrence.name, occurrence);
+        }
+      }
+      for (const occurrence of classesByName.values()) {
         items.push({
           label: `.${occurrence.name}`,
           kind: "selector",
-          detail:
-            occurrence.generated === occurrence.name
-              ? undefined
-              : `generated class .${occurrence.generated}`,
+          detail: classDetail(occurrence),
           insertText: occurrence.name,
         });
       }
       return result(items, replaceStart);
     }
     case "pseudo": {
-      const replaceStart = offset - context.word.length;
+      // PSEUDOS carry their own leading colons and the range covers the typed
+      // ones, so `&:` + `:hover` is `&:hover` and never `&::hover`. The filter
+      // word is the text after the colons (`hov` → `:hover`).
+      const replaceStart = typedColons(text, offset, context.word).start;
       return result(
-        PSEUDOS.filter((pseudo) => context.word === "" || pseudo.startsWith(context.word)).map(
-          (pseudo) => ({ label: pseudo, kind: "pseudo" as const, insertText: pseudo }),
-        ),
+        PSEUDOS.filter(
+          (pseudo) =>
+            context.word === "" ||
+            pseudo.slice(pseudo.startsWith("::") ? 2 : 1).startsWith(context.word),
+        ).map((pseudo) => ({ label: pseudo, kind: "pseudo" as const, insertText: pseudo })),
         replaceStart,
       );
     }
@@ -1048,7 +2852,33 @@ function aliasTokenAt(
     if (char !== undefined && /[A-Za-z0-9_+-]/.test(char)) end += 1;
     else break;
   }
-  return { text: text.slice(start, end), start: start - 1, end };
+  const name = text.slice(start, end);
+  // `@group` is the Chikx group directive (ADR-0017), never a media alias.
+  // Group hover owns the whole `@group.<name>` span; other aliases are unchanged.
+  if (name === "group" || name.startsWith("group+")) return undefined;
+  return { text: name, start: start - 1, end };
+}
+
+/** Range of a bare `@group` directive word under the cursor, if any. */
+function groupDirectiveAt(
+  text: string,
+  offset: number,
+): { readonly start: number; readonly end: number } | undefined {
+  let start = offset;
+  while (start > 0) {
+    const char = text[start - 1];
+    if (char !== undefined && /[A-Za-z0-9_+-]/.test(char)) start -= 1;
+    else break;
+  }
+  if (text[start - 1] !== "@") return undefined;
+  let end = offset;
+  while (end < text.length) {
+    const char = text[end];
+    if (char !== undefined && /[A-Za-z0-9_+-]/.test(char)) end += 1;
+    else break;
+  }
+  if (text.slice(start, end) !== "group") return undefined;
+  return { start: start - 1, end };
 }
 
 function classAt(analysis: AnalyzeResult, offset: number): ClassOccurrence | undefined {
@@ -1056,11 +2886,42 @@ function classAt(analysis: AnalyzeResult, offset: number): ClassOccurrence | und
 }
 
 /**
- * Hover content for `$tokens`, media aliases and selector classes.
+ * Curated CSS function whose name word contains `offset`.
  *
- * Standard CSS property documentation is deliberately deferred until the
- * css-languageservice projection lands (A13 report), because guessing property
- * docs is worse than no hover.
+ * Lexical on purpose: the authored call shape is the evidence, so the name word
+ * must be immediately followed by `(`. Only the name word matches — the range
+ * and the check never cover the arguments, so hovering `100%` inside
+ * `calc(100% - 20px)` keeps whatever hover that value has. Strings and comments
+ * never match, and text inside `url(...)` arguments never matches (only the
+ * `url` name itself, whose own `(` opens the call). A bare keyword that shares a
+ * name with a function (`steps` as a timing keyword, `min` in `min-width`) fails
+ * the `(` test.
+ */
+function cssFunctionAt(
+  text: string,
+  offset: number,
+): { readonly fn: CssFunction; readonly start: number; readonly end: number } | undefined {
+  let start = offset;
+  while (start > 0 && /[A-Za-z-]/.test(text[start - 1] ?? "")) start -= 1;
+  let end = offset;
+  while (end < text.length && /[A-Za-z-]/.test(text[end] ?? "")) end += 1;
+  if (text[end] !== "(") return undefined;
+  const name = text.slice(start, end);
+  const fn = CSS_FUNCTIONS.find((entry) => entry.name === name);
+  if (fn === undefined) return undefined;
+  if (enclosingString(text, start) !== undefined) return undefined;
+  if (insideUrl(text, start)) return undefined;
+  return { fn, start, end };
+}
+
+/**
+ * Hover content for `$tokens`, media aliases, CSS declaration properties,
+ * curated CSS functions and selector classes.
+ *
+ * Property hover shows a built-in one-sentence description from
+ * `property-docs.ts`; the full css-languageservice projection is still not
+ * embedded (A13 report). Function hover shows the usage sentence and the
+ * sample call from `CSS_FUNCTIONS`.
  */
 export function hoverAt(
   text: string,
@@ -1068,6 +2929,21 @@ export function hoverAt(
   options: IntelligenceOptions,
 ): HoverContent | undefined {
   const { analysis, classMap } = options;
+  const group = groupAt(analysis, offset, { includeKeyword: true });
+  if (group !== undefined) return groupHover(analysis, group);
+  const directive = groupDirectiveAt(text, offset);
+  if (directive !== undefined) {
+    return {
+      markdown: [
+        "**@group** — Chikx directive",
+        "",
+        "`@group.<name> { … }` defines a reusable declaration group at the top level and applies one with overrides inside a rule body (ADR-0017). A group name is required after the dot.",
+      ].join("\n"),
+      range: rangeAt(analysis.lineStarts, directive.start, directive.end),
+    };
+  }
+  const keyframe = keyframeAt(text, offset, analysis);
+  if (keyframe !== undefined) return keyframeHover(analysis, keyframe);
   const token = tokenAt(text, offset, analysis);
   if (token !== undefined) {
     const { symbol, namespace } = token;
@@ -1129,6 +3005,48 @@ export function hoverAt(
       markdown: lines.join("\n"),
       range: rangeAt(analysis.lineStarts, alias.start, alias.end),
     };
+  }
+
+  // Curated CSS functions, matched on the authored call shape. Ordered with the
+  // word-level hovers (after tokens and media aliases, next to declarations) so
+  // it can never shadow them: the enclosing declaration's property is always
+  // followed by `:`, never `(`, so this branch only fires on call words. A
+  // property that shares a function name (`translate`, `rotate`, `scale` are
+  // individual transform properties) keeps its own hover on the property word.
+  const cssFunction = cssFunctionAt(text, offset);
+  if (cssFunction !== undefined) {
+    return {
+      markdown: [
+        `**${cssFunction.fn.name}()** — CSS function`,
+        "",
+        cssFunctionDocumentation(cssFunction.fn),
+      ].join("\n"),
+      range: rangeAt(analysis.lineStarts, cssFunction.start, cssFunction.end),
+    };
+  }
+
+  // Declaration property names only: the enclosing declaration's property must
+  // equal the word, so values (`flex`), pseudo names and `@media` prelude
+  // features (`min-width`) never pick up property docs.
+  const declaration = findEnclosingDeclaration(analysis, offset);
+  if (declaration !== undefined) {
+    let wordStart = offset;
+    while (wordStart > 0 && /[A-Za-z-]/.test(text[wordStart - 1] ?? "")) wordStart -= 1;
+    let wordEnd = offset;
+    while (wordEnd < text.length && /[A-Za-z-]/.test(text[wordEnd] ?? "")) wordEnd += 1;
+    const word = text.slice(wordStart, wordEnd);
+    const doc = propertyDoc(word);
+    if (doc !== undefined && declaration.property === word) {
+      const lines = [`**${word}** — CSS property`, "", doc];
+      const values = PROPERTY_VALUES[word];
+      if (values !== undefined) {
+        lines.push(`Common values: ${values.map((value) => `\`${value}\``).join(", ")}`);
+      }
+      return {
+        markdown: lines.join("\n"),
+        range: rangeAt(analysis.lineStarts, wordStart, wordEnd),
+      };
+    }
   }
 
   const occurrence = classAt(analysis, offset);
@@ -1195,6 +3113,10 @@ export function renameAt(
   options: IntelligenceOptions,
 ): RenamePlan {
   const { analysis } = options;
+  const group = groupAt(analysis, offset);
+  if (group !== undefined) return renameGroup(group, newName, analysis);
+  const keyframe = keyframeAt(text, offset, analysis);
+  if (keyframe !== undefined) return renameKeyframe(keyframe, newName, analysis);
   const token = tokenAt(text, offset, analysis);
   if (token === undefined) {
     return { ok: false, reason: "Place the cursor on a Chikx token to rename it." };
@@ -1269,24 +3191,106 @@ export function colorsOf(analysis: AnalyzeResult): readonly ColorOccurrence[] {
   return analysis.colors;
 }
 
+/** One colour swatch with the editor-agnostic range it covers. */
+export interface DocumentColor {
+  readonly color: {
+    readonly red: number;
+    readonly green: number;
+    readonly blue: number;
+    readonly alpha: number;
+  };
+  readonly range: Range;
+}
+
+/**
+ * Whether a declaration's value can hold a named colour.
+ *
+ * The colour-accepting longhands are derived in `COLOR_PROPERTIES`; every
+ * custom property (`--brand`) is a `<color>`-bearing context too, because its
+ * value type is whatever the author uses it for.
+ */
+function acceptsNamedColor(property: string): boolean {
+  return COLOR_PROPERTIES.has(property) || property.startsWith("--");
+}
+
+/**
+ * Every colour authored in a declaration value, as swatch + range pairs.
+ *
+ * The pure half of the editor's colour decorations (`DocumentColorProvider`):
+ * hex values reuse the analysis occurrences, so `#rgb`/`#rgba`/`#rrggbb`/
+ * `#rrggbbaa` count in any declaration value whatever the property
+ * (`box-shadow: 0 0 4px #000`), while a named colour counts only as a whole word
+ * inside a colour-accepting declaration (`color: red`, `--brand: teal`) and is
+ * resolved through `CSS_NAMED_COLOR_HEX`.
+ */
+export function colorsAt(text: string, analysis: AnalyzeResult): readonly DocumentColor[] {
+  const found: DocumentColor[] = [];
+  for (const occurrence of analysis.colors) {
+    const color = hexColorToRgba(occurrence.value);
+    if (color !== undefined) found.push({ color, range: occurrence.range });
+  }
+  forEachDeclaration(analysis.ast, (declaration) => {
+    if (!acceptsNamedColor(declaration.property)) return;
+    for (const segment of declarationSegments(text, declaration)) {
+      for (const run of namedColorRuns(segment.text)) {
+        const color = hexColorToRgba(CSS_NAMED_COLOR_HEX[run.name] ?? "");
+        if (color === undefined) continue;
+        found.push({
+          color,
+          range: rangeAt(analysis.lineStarts, segment.start + run.start, segment.start + run.end),
+        });
+      }
+    }
+  });
+  return found;
+}
+
 function spanRange(analysis: AnalyzeResult, span: SpanLike): Range {
   return rangeAt(analysis.lineStarts, span.start, span.end);
 }
 
-/** Outline tree: directives, tokens and nested rules. */
+/** Outline tree: directives, tokens, groups and nested rules. */
 export function documentSymbols(analysis: AnalyzeResult): readonly OutlineNode[] {
   const { ast } = analysis;
   const nodes: OutlineNode[] = [];
+
+  const declarationNode = (declaration: {
+    property?: string;
+    value?: string;
+    span?: SpanLike;
+  }): OutlineNode | undefined => {
+    if (declaration.property === undefined || declaration.span === undefined) return undefined;
+    return {
+      name: declaration.property,
+      ...(declaration.value === undefined ? {} : { detail: declaration.value.trim() }),
+      kind: "declaration",
+      range: spanRange(analysis, declaration.span),
+      children: [],
+    };
+  };
+
+  const declarationChildren = (
+    declarations: readonly { property?: string; value?: string; span?: SpanLike }[],
+  ): OutlineNode[] => {
+    const children: OutlineNode[] = [];
+    for (const declaration of declarations) {
+      const node = declarationNode(declaration);
+      if (node !== undefined) children.push(node);
+    }
+    return children;
+  };
 
   const ruleNode = (rule: RuleLike): OutlineNode => {
     const children: OutlineNode[] = [];
     for (const item of rule.body) {
       const child = item as {
         kind?: string;
+        name?: string;
         span?: SpanLike;
         selector?: string;
         selectorSpan?: SpanLike;
         body?: readonly unknown[];
+        declarations?: readonly { property?: string; value?: string; span?: SpanLike }[];
         property?: string;
         value?: string;
         variant?: { aliases: readonly string[] };
@@ -1325,17 +3329,20 @@ export function documentSymbols(analysis: AnalyzeResult): readonly OutlineNode[]
             }),
         });
       } else if (
-        child.kind === "declaration" &&
-        child.property !== undefined &&
+        child.kind === "group-use-site" &&
+        child.name !== undefined &&
         child.span !== undefined
       ) {
         children.push({
-          name: child.property,
-          ...(child.value === undefined ? {} : { detail: child.value.trim() }),
-          kind: "declaration",
+          name: `@group.${child.name}`,
+          detail: "group use",
+          kind: "group",
           range: spanRange(analysis, child.span),
-          children: [],
+          children: declarationChildren(child.declarations ?? []),
         });
+      } else if (child.kind === "declaration") {
+        const node = declarationNode(child);
+        if (node !== undefined) children.push(node);
       }
     }
     return {
@@ -1411,6 +3418,15 @@ export function documentSymbols(analysis: AnalyzeResult): readonly OutlineNode[]
             range: spanRange(analysis, alias.span),
             children: [],
           })),
+        });
+        break;
+      case "group-definition":
+        nodes.push({
+          name: `@group.${item.name}`,
+          detail: "group definition",
+          kind: "group",
+          range: spanRange(analysis, item.span),
+          children: declarationChildren(item.declarations),
         });
         break;
       case "rule":

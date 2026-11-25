@@ -217,6 +217,61 @@ export const SCENARIOS: readonly BrowserScenario[] = [
     testIds: ["card", "icon"],
     compareProperties: BASE_COMPARE_PROPERTIES,
   },
+  {
+    name: "groups",
+    description:
+      "Reusable @group defaults with inline @md/@dark/@reduced variants and use-site overrides.",
+    // ADR-0017 item 3: expansion is a splice, so overrides win by source
+    // order, an @md default loses to a later base declaration at every width,
+    // and a group `!important` default is not beaten by a plain override.
+    source: `@group.chrome {
+  padding: 12px @md 24px;
+  border-radius: 8px;
+  color: black;
+  background: white @dark #181818;
+  display: flex !important;
+  transition-duration: 120ms @reduced 0s;
+}
+
+@group.chip {
+  padding: 6px;
+  border-radius: 4px;
+  color: black;
+}
+
+.panel {
+  @group.chrome {
+    padding: 20px;
+    border-radius: 0;
+    color: navy;
+    display: block;
+  }
+}
+
+.tile {
+  @group.chrome {
+    color: rgb(1, 2, 3);
+  }
+}
+
+.badge {
+  @group.chip {
+    margin-top: 2px;
+  }
+}
+
+.badge {
+  @group.chip {
+    border-radius: 0;
+  }
+}
+`,
+    html: `<div class="{{panel}}" data-testid="panel">group panel</div>
+<div class="{{tile}}" data-testid="tile">group tile</div>
+<div class="{{badge}}" data-testid="badge">group badge</div>`,
+    testIds: ["panel", "tile", "badge"],
+    compareProperties: [...BASE_COMPARE_PROPERTIES, "border-radius"],
+  },
 ];
 
 /** Look up a scenario by name; throws for typos rather than silently skipping. */

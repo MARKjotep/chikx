@@ -14,7 +14,8 @@
  *   block a blank line whenever either side is a nested rule/conditional block;
  * - inline variants stay on the declaration line (`padding: 12px @md 20px;`);
  * - directive blocks (`@setup`, `@variables`, `@runtime`, `@media-types`) hold
- *   one entry per line;
+ *   one entry per line, and `@group.<name>` definitions and use sites print
+ *   like other at-rule blocks with one declaration per line (ADR-0017);
  * - block comments are kept on their own lines, attached to the statement that
  *   follows them; comments embedded in values or selectors stay in the raw
  *   slice and are never duplicated;
@@ -34,6 +35,8 @@ import type {
   ConditionalBlock,
   ConditionalBlockItem,
   Declaration,
+  GroupDefinition,
+  GroupUseSite,
   MediaTypesBlock,
   NativeAtRule,
   Rule,
@@ -130,6 +133,9 @@ function embeddedCommentRanges(
         case "native-at-rule":
           visitNative(item);
           break;
+        case "group-use-site":
+          for (const declaration of item.declarations) visitDeclaration(declaration);
+          break;
       }
     }
   };
@@ -163,6 +169,9 @@ function embeddedCommentRanges(
         break;
       case "media-types":
         for (const alias of item.aliases) ranges.push(alias.span);
+        break;
+      case "group-definition":
+        for (const declaration of item.declarations) visitDeclaration(declaration);
         break;
       case "rule":
         ranges.push({ start: item.selectorSpan.start, end: item.selectorSpan.end });
@@ -247,6 +256,8 @@ class Printer {
         return this.printRuntime(item, level);
       case "media-types":
         return this.printMediaTypes(item, level);
+      case "group-definition":
+        return this.printGroupDefinition(item, level);
       case "rule":
         return this.printRule(item, level);
       case "native-at-rule":
@@ -301,6 +312,37 @@ class Printer {
     lines.push(...this.takeComments(block.span.end, level + 1));
     lines.push(`${pad(level)}}`);
     return { lines, block: true };
+  }
+
+  /**
+   * Print a `@group.<name>` definition or use site (ADR-0017).
+   *
+   * Both node kinds are the same authored construct at different positions, so
+   * they share one layout: the `@group` header, then one declaration per line at
+   * the next depth. Declarations are ordinary {@link Declaration} nodes, so
+   * inline variants and per-segment `!important` print exactly as they do in a
+   * rule body; only the block's own comments and trailing comments are printed
+   * here. Omitting either node would delete an authored group on format-on-save
+   * (ADR-0017 item 8), which is why the printer handles both kinds explicitly.
+   */
+  private printGroup(
+    name: string,
+    declarations: readonly Declaration[],
+    endOffset: number,
+    level: number,
+  ): Chunk {
+    const lines = [`${pad(level)}@group.${name} {`];
+    lines.push(...this.printBlockItems(declarations, level + 1, endOffset));
+    lines.push(`${pad(level)}}`);
+    return { lines, block: true };
+  }
+
+  private printGroupDefinition(block: GroupDefinition, level: number): Chunk {
+    return this.printGroup(block.name, block.declarations, block.span.end, level);
+  }
+
+  private printGroupUseSite(block: GroupUseSite, level: number): Chunk {
+    return this.printGroup(block.name, block.declarations, block.span.end, level);
   }
 
   private printRule(rule: Rule, level: number): Chunk {
@@ -371,6 +413,8 @@ class Printer {
         return this.printConditional(item, level);
       case "native-at-rule":
         return this.printNative(item, level);
+      case "group-use-site":
+        return this.printGroupUseSite(item, level);
     }
   }
 }

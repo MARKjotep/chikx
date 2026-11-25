@@ -1,0 +1,6 @@
+.panel {
+  display: flex !important;
+  color: black;
+  display: block;
+  color: navy;
+}

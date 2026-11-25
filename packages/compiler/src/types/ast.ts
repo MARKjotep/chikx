@@ -6,7 +6,8 @@ import type { Token } from "./token.js";
  *
  * Node shapes mirror SPECIFICATION.md §3.2 and masterplan §6, refined by
  * ADR-0003 (per-segment `!important`), ADR-0004 (rule-scoped conditional
- * blocks) and ADR-0005 (raw value slices plus optional token sequences).
+ * blocks), ADR-0005 (raw value slices plus optional token sequences) and
+ * ADR-0017 (inert `@group.<name>` definitions and use sites).
  *
  * Every node is immutable and carries a {@link Span} into the original source,
  * so diagnostics, lowering and source maps keep exact origins. Value-bearing
@@ -42,6 +43,7 @@ export type StylesheetItem =
   | VariablesBlock
   | RuntimeBlock
   | MediaTypesBlock
+  | GroupDefinition
   | Rule
   | NativeAtRule;
 
@@ -160,6 +162,31 @@ export interface AliasDeclaration {
   readonly span: Span;
 }
 
+/**
+ * A top-level `@group.<name> { ... }` reusable declaration group (ADR-0017).
+ *
+ * A definition is inert: it emits no CSS and only a matching
+ * {@link GroupUseSite} splices its declarations into a rule. The block accepts
+ * declarations and nothing else; a nested rule, conditional block, native
+ * at-rule or further `@group.` statement inside it is a CHIKX1001-family
+ * diagnostic and that statement is omitted while the rest of the definition
+ * survives. Names are plain CSS identifiers matched exactly and
+ * case-sensitively, and the dotted form is contiguous only.
+ *
+ * An empty or unused definition is legal and produces no diagnostic. Duplicate
+ * definitions in one module stay in the AST as separate nodes; the resolver
+ * reports the later one as CHIKX2001 (plan G2).
+ */
+export interface GroupDefinition {
+  readonly kind: "group-definition";
+  /** Group name without the `@group.` prefix, exactly as authored (`card`, `keyframes`). */
+  readonly name: string;
+  /** Declarations in authored order, including inline variant segments. */
+  readonly declarations: readonly Declaration[];
+  /** Covers `@group` through the closing `}`. */
+  readonly span: Span;
+}
+
 /** A selector block: the only place declarations, nested rules and conditional blocks live. */
 export interface Rule {
   readonly kind: "rule";
@@ -174,7 +201,28 @@ export interface Rule {
 }
 
 /** Any construct that may appear inside a rule block or a native at-rule block. */
-export type BlockItem = Declaration | Rule | ConditionalBlock | NativeAtRule;
+export type BlockItem = Declaration | Rule | ConditionalBlock | NativeAtRule | GroupUseSite;
+
+/**
+ * A `@group.<name> { ... }` use site inside a rule body (ADR-0017).
+ *
+ * The block is required in v0.1 and holds per-use-site overrides only;
+ * expansion splices the group's defaults before these declarations at the
+ * authored position (plan G3). A definition is the same syntax at the top level
+ * of a file. Inside this block declarations are the only valid statement: a
+ * nested rule, conditional block or native at-rule is a CHIKX1001-family
+ * diagnostic and only that statement is omitted. Conditional use sites such as
+ * `@group.x @md { ... }` are out of v1.
+ */
+export interface GroupUseSite {
+  readonly kind: "group-use-site";
+  /** Group name without the `@group.` prefix, exactly as authored and case-sensitive. */
+  readonly name: string;
+  /** Override declarations in authored order, including inline variant segments. */
+  readonly declarations: readonly Declaration[];
+  /** Covers `@group` through the closing `}`. */
+  readonly span: Span;
+}
 
 /**
  * A rule-scoped `@md { ... }` conditional block (ADR-0004).

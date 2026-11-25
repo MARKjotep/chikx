@@ -124,6 +124,9 @@ export class ChikxController {
         ".",
         ":",
         "/",
+        "&",
+        "(",
+        "#",
       ),
       vscode.languages.registerHoverProvider(
         { language: "chikx" },

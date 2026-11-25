@@ -9,9 +9,8 @@ lists language features in more detail.
 | Gap | Effect | Status |
 |---|---|---|
 | Editor formatting | Format Document (⌥⇧F) and `chikx.editor.formatOnSave` run the compiler's canonical whole-document formatter; parse errors leave the document unchanged. Range formatting and format-on-type are not available because `format` is a document-level parse→print pass. | Document-level only |
-| Editor CSS intelligence | The extension does not project Chikx onto `vscode-css-languageservice`. Property hover is empty and property/value completions are curated lists, not a full CSS database. | Deferred by design |
-| Cross-module rename | Rename refuses namespace members and classes; only single-file `$token` rename works. Class rename across JSX does not exist. | Deferred |
-| Keyframe name intelligence | `$keyframes.<member>` is not offered by completion, has no hover and is not renamed by the editor; only the compiler expands it (ADR-0015). | Deferred |
+| Editor CSS intelligence | The extension does not project Chikx onto `vscode-css-languageservice`. Hover and completion documentation come from a built-in one-sentence table for the 107 supported properties; property/value completions are curated lists, not a full CSS database. | Projection deferred |
+| Cross-module rename (tokens, classes) | `$token` rename stays single-file; namespace members and classes are refused, and class rename across JSX does not exist. Group and keyframe rename are the exception and span the current document's visible modules (§5). | Partial |
 | LSP server | Only the VS Code extension is provided; there is no language server for other editors. | Deferred |
 
 ## 2. Release and packaging gaps
@@ -49,7 +48,8 @@ is no legacy extension alias, dual registration or migration path in v0.1.
 
 | Limitation | Detail |
 |---|---|
-| No mixins/reusable groups | `@group`/`@apply` and mixins are deferred; they need an ADR and fixtures. |
+| `@group` v1 exclusions | Groups ship only in the narrow form of [ADR-0017](decisions/ADR-0017-reusable-declaration-groups.md) and [SPECIFICATION.md](../SPECIFICATION.md) §3.7. Use sites are **unconditional**: `@group.x @md+dark { … }` and conditional definitions are `CHIKX1001`. Both blocks take **declarations only**; a nested rule, conditional block or native at-rule inside a definition or use site is `CHIKX1001`. There is **no `@apply`**, groups take **no parameters, arguments or interpolation** (they are not mixins), and a group **cannot reference another group**. `@use … as` never addresses groups, and groups are not re-exported: visibility is exactly the module's own top-level definitions plus the transitive `styles` closure. The **bare include `@group.<name>;`** does not exist (`CHIKX1001`), and **`$group.<name>` is not a value** (`CHIKX2001`). Defaults are compile-time only: a `@runtime` reference in a default is `CHIKX2001`, so runtime customization is authored at the use site. |
+| No mixins / `@apply` | `@apply` and parameterised mixins are deferred; `@group.<name>` is the shipped, non-parametric form. |
 | No arbitrary expressions | Variables substitute token sequences; there is no computation. |
 | No container aliases | Native `@container` passes through, but Chikx aliases for container queries do not exist. |
 | No inline pseudo-state modifiers | Use `&:hover { … }`; a modifier alias such as `@hover` is not supported. |
@@ -59,7 +59,8 @@ is no legacy extension alias, dual registration or migration path in v0.1.
 | Runtime tokens per entrypoint | Imported runtime tokens are emitted in each consuming entrypoint. Within one build, duplicate custom-property names resolve in merge order (entry last; later module wins) with no diagnostic (ADR-0016). Collision handling across separate outputs/entrypoints is not implemented yet. |
 | Simple `:global` only | `:global(.class)` is supported; complex global selectors are not. |
 | Export collisions are fatal | `foo-bar` and `fooBar` cannot both be exported from one file (`CHIKX4001`). |
-| Keyframe references need a rule-merge import | `$keyframes.<name>` sees the file's own top-level keyframes plus those of `@use "…" styles` modules. A token-only import's keyframes are not referenceable (`CHIKX2001`) because that module's CSS is not emitted; the `@variables { spin: spin; }` fallback still works. String-named keyframes, keyframes nested in a rule or inside another at-rule block (such as `@media`), and non-identifier preludes are native-only. Two merged modules may define the same name — both blocks are emitted and native cascade order decides (ADR-0015). |
+| Keyframe references need a rule-merge import | `$keyframes.<name>` sees the file's own top-level keyframes plus those of `@use "…" styles` modules. A token-only import's keyframes are not referenceable (`CHIKX2001`) because that module's CSS is not emitted; the `@variables { spin: spin; }` fallback still works. Two merged modules may define the same name — both blocks are emitted and native cascade order decides (ADR-0015, [ADR-0018](decisions/ADR-0018-keyframes-visibility-and-exclusions.md)). |
+| String-named and conditional keyframes | `@keyframes "fade"` is rejected (names are identifiers) and a `@keyframes` block nested in a rule or another at-rule block is not collected; both stay native-only and cannot be referenced as `$keyframes.<name>`. There is no plan to change this in v0.1 (ADR-0018). |
 | Native CSS coverage is tested, not complete | Supported at-rules and selectors are listed in [compatibility.md](compatibility.md); exotic combinations may be rejected or pass through untested. |
 
 ## 5. Editor limitations
@@ -68,7 +69,8 @@ is no legacy extension alias, dual registration or migration path in v0.1.
 |---|---|
 | Preview URIs keyed by basename | Two same-named files can share one `chikx-preview:` document; reopening refreshes content. |
 | Diagnostics for imports | Problems in imported modules are logged rather than published at the current document's offsets. |
-| No property documentation hover | Intentional until a CSS projection layer exists. |
+| Rename scope | Group and keyframe rename span the current document's visible module set: its own top-level definitions plus the transitive `@use "…" styles;` closure. Modules that import the current document from above are never rewritten, and token-only imports expose nothing. Keyframe rename rewrites exact `animation-name: <name>` values only — the `animation:` shorthand and multi-name values are left alone — lists duplicate visible definitions in completion, and refuses until the reference is unambiguous. |
+| Property docs are a built-in table | Hover and completion use one-sentence built-in descriptions for the 107 supported properties; the full `vscode-css-languageservice` data (all properties, MDN links) is intentionally not embedded. |
 | Restricted Mode | Analysis and preview work; writing commands are blocked. |
 
 ## 6. Platform and environment

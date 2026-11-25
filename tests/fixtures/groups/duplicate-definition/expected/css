@@ -1,0 +1,4 @@
+.panel {
+  padding: 12px;
+  color: navy;
+}

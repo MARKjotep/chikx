@@ -5,7 +5,10 @@
  * authored order, resolves media aliases (built-ins < project < file,
  * ADR-0006), combines aliases with logical AND and keeps native at-rules as a
  * context stack. `groupRuns` is the separate safe-grouping utility; the
- * pipeline runs it after class rewriting (P4/A09).
+ * pipeline runs it after class rewriting (P4/A09). `expandGroupUseSites` is the
+ * `@group.<name>` pre-pass (ADR-0017): it splices use sites into declaration
+ * runs per module before `lower`, so defaults keep their defining module's
+ * spans and token scope.
  *
  * Not owned here: CSS text emission and nesting flattening (A06), variable
  * substitution (A08), class naming and prefixing (P4/A09), `@runtime` emission
@@ -13,6 +16,8 @@
  */
 export { lower } from "./lower.js";
 export { groupRuns } from "./group.js";
+export { expandGroupUseSites } from "./expand-groups.js";
+export type { GroupExpansionOptions, GroupExpansionResult } from "./expand-groups.js";
 
 export {
   BUILTIN_MEDIA_ALIASES,

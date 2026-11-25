@@ -11,6 +11,12 @@
       "include": "#directives"
     },
     {
+      "include": "#group-definition"
+    },
+    {
+      "include": "#group-keyword"
+    },
+    {
       "include": "#native-at-rule"
     },
     {
@@ -151,7 +157,7 @@
       "name": "constant.other.color.rgb-value.hex.css"
     },
     "alias": {
-      "match": "@(?!setup\\b|use\\b|variables\\b|runtime\\b|media-types\\b|media\\b|supports\\b|layer\\b|container\\b|keyframes\\b|font-face\\b|property\\b|page\\b|charset\\b|import\\b|namespace\\b|scope\\b|starting-style\\b|counter-style\\b)([A-Za-z0-9][\\w-]*(?:\\+[A-Za-z0-9][\\w-]*)*)",
+      "match": "@(?!setup\\b|use\\b|variables\\b|runtime\\b|media-types\\b|media\\b|supports\\b|layer\\b|container\\b|keyframes\\b|font-face\\b|property\\b|page\\b|charset\\b|import\\b|namespace\\b|scope\\b|starting-style\\b|counter-style\\b|group\\b)([A-Za-z0-9][\\w-]*(?:\\+[A-Za-z0-9][\\w-]*)*)",
       "name": "meta.variant.chikx entity.name.function.chikx"
     },
     "punctuation-value": {
@@ -515,7 +521,7 @@
       ]
     },
     "conditional-block": {
-      "begin": "(@(?!setup\\b|use\\b|variables\\b|runtime\\b|media-types\\b|media\\b|supports\\b|layer\\b|container\\b|keyframes\\b|font-face\\b|property\\b|page\\b|charset\\b|import\\b|namespace\\b|scope\\b|starting-style\\b|counter-style\\b)([A-Za-z0-9][\\w-]*(?:\\+[A-Za-z0-9][\\w-]*)*))(\\s*)(\\{)",
+      "begin": "(@(?!setup\\b|use\\b|variables\\b|runtime\\b|media-types\\b|media\\b|supports\\b|layer\\b|container\\b|keyframes\\b|font-face\\b|property\\b|page\\b|charset\\b|import\\b|namespace\\b|scope\\b|starting-style\\b|counter-style\\b|group\\b)([A-Za-z0-9][\\w-]*(?:\\+[A-Za-z0-9][\\w-]*)*))(\\s*)(\\{)",
       "beginCaptures": {
         "1": {
           "name": "meta.variant.chikx entity.name.function.chikx"
@@ -538,7 +544,7 @@
       ]
     },
     "alias-block-start": {
-      "begin": "(@(?!setup\\b|use\\b|variables\\b|runtime\\b|media-types\\b|media\\b|supports\\b|layer\\b|container\\b|keyframes\\b|font-face\\b|property\\b|page\\b|charset\\b|import\\b|namespace\\b|scope\\b|starting-style\\b|counter-style\\b)([A-Za-z0-9][\\w-]*(?:\\+[A-Za-z0-9][\\w-]*)*))(\\s*)(\\{)",
+      "begin": "(@(?!setup\\b|use\\b|variables\\b|runtime\\b|media-types\\b|media\\b|supports\\b|layer\\b|container\\b|keyframes\\b|font-face\\b|property\\b|page\\b|charset\\b|import\\b|namespace\\b|scope\\b|starting-style\\b|counter-style\\b|group\\b)([A-Za-z0-9][\\w-]*(?:\\+[A-Za-z0-9][\\w-]*)*))(\\s*)(\\{)",
       "beginCaptures": {
         "1": {
           "name": "meta.variant.chikx entity.name.function.chikx"
@@ -801,6 +807,90 @@
           "include": "#fallback"
         }
       ]
+    },
+    "group-definition": {
+      "name": "meta.directive.group.chikx",
+      "begin": "(@group)(\\.)([A-Za-z_][\\w-]*)(\\s*)(\\{)",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.directive.chikx"
+        },
+        "2": {
+          "name": "punctuation.accessor.chikx"
+        },
+        "3": {
+          "name": "entity.name.type.group.chikx"
+        },
+        "5": {
+          "name": "punctuation.section.block.css"
+        }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.block.css"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#block"
+        },
+        {
+          "include": "#declaration"
+        },
+        {
+          "include": "#fallback"
+        }
+      ]
+    },
+    "group-use": {
+      "name": "meta.group.use.chikx",
+      "begin": "(@group)(\\.)([A-Za-z_][\\w-]*)(\\s*)(\\{)",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.directive.chikx"
+        },
+        "2": {
+          "name": "punctuation.accessor.chikx"
+        },
+        "3": {
+          "name": "entity.name.type.group.chikx"
+        },
+        "5": {
+          "name": "punctuation.section.block.css"
+        }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.block.css"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comment"
+        },
+        {
+          "include": "#block"
+        },
+        {
+          "include": "#declaration"
+        },
+        {
+          "include": "#fallback"
+        }
+      ]
+    },
+    "group-keyword": {
+      "match": "(@group)\\b",
+      "captures": {
+        "1": {
+          "name": "keyword.control.directive.chikx"
+        }
+      }
     },
     "native-at-rule": {
       "patterns": [
@@ -1094,6 +1184,12 @@
       "patterns": [
         {
           "include": "#comment"
+        },
+        {
+          "include": "#group-use"
+        },
+        {
+          "include": "#group-keyword"
         },
         {
           "include": "#block"

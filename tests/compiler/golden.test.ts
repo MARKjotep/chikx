@@ -20,6 +20,8 @@ import type { Stylesheet } from "../../packages/compiler/src/types/ast.ts";
  *
  * Fixtures whose input carries a real `$` reference (`dollar-ref` token) are
  * deferred to the A08 golden suite; this suite does not assert their content.
+ * `@group.<name>` fixtures (ADR-0017) are deferred to `groups.golden.test.ts`,
+ * which runs the expansion pre-pass this chain does not have.
  *
  * Empty-output error fixtures use the documented sentinel comment line; every
  * other expected file is byte-identical to the emitted CSS.
@@ -83,6 +85,19 @@ const fixtures: readonly Fixture[] = fixtureDirectories.map((directory) => {
   );
   return { id, directory, source, deferred };
 });
+
+/**
+ * `@group.<name>` fixtures are asserted by `groups.golden.test.ts`.
+ *
+ * That suite runs the expansion pre-pass and the resolver-aware
+ * `compileProject` build, which this chain deliberately does not: it stops at
+ * `lower`, where a use site is still an unexpanded AST node. Including group
+ * fixtures here would assert the pre-expansion output instead of the shipped
+ * behaviour, so the catalog splits them out (plan `.ai/plans/CSSX-PLAN-GROUPS.md`
+ * §8/§9, G4a).
+ */
+const groupFixtures = fixtures.filter((fixture) => fixture.id.startsWith("groups/"));
+const ungroupedFixtures = fixtures.filter((fixture) => !fixture.id.startsWith("groups/"));
 
 /** Remove whitespace that only separates structural CSS tokens. */
 function stripStructuralWhitespace(css: string): string {
@@ -179,9 +194,11 @@ function compileFixture(fixture: Fixture): CompileOutput {
 describe("golden fixture catalog", () => {
   test("every fixture is classified as plain or deferred by its dollar-ref tokens", () => {
     const all = fixtures.map((fixture) => fixture.id);
-    expect(all).toHaveLength(54);
+    expect(all).toHaveLength(67);
 
-    const plain = fixtures.filter((fixture) => !fixture.deferred).map((fixture) => fixture.id);
+    const plain = ungroupedFixtures
+      .filter((fixture) => !fixture.deferred)
+      .map((fixture) => fixture.id);
     expect(plain).toEqual([
       "config/project-json",
       "errors/duplicate-setting",
@@ -224,7 +241,9 @@ describe("golden fixture catalog", () => {
       "output/only-names",
     ]);
 
-    const deferred = fixtures.filter((fixture) => fixture.deferred).map((fixture) => fixture.id);
+    const deferred = ungroupedFixtures
+      .filter((fixture) => fixture.deferred)
+      .map((fixture) => fixture.id);
     expect(deferred).toEqual([
       "canonical/button",
       "keyframes/bare-namespace",
@@ -242,10 +261,27 @@ describe("golden fixture catalog", () => {
       "variables/namespaced-members",
       "variables/undefined-ref",
     ]);
+
+    // Group fixtures are compiled with expansion by groups.golden.test.ts.
+    expect(groupFixtures.map((fixture) => fixture.id)).toEqual([
+      "groups/alias-group",
+      "groups/conditional-use-site",
+      "groups/duplicate-definition",
+      "groups/empty-group",
+      "groups/group-named-keyframes",
+      "groups/group-position",
+      "groups/important-default",
+      "groups/inline-variant-default",
+      "groups/nested-rule-in-definition",
+      "groups/no-override",
+      "groups/same-file",
+      "groups/two-use-sites",
+      "groups/unknown-group",
+    ]);
   });
 
   test("every plain fixture reproduces its expected/css byte-exact", () => {
-    const plain = fixtures.filter((fixture) => !fixture.deferred);
+    const plain = ungroupedFixtures.filter((fixture) => !fixture.deferred);
     expect(plain.length).toBe(39);
 
     for (const fixture of plain) {

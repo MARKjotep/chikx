@@ -187,4 +187,367 @@ describe("token rename", () => {
     if (!plan.ok) return;
     expect(plan.edits.map((edit) => edit.newText)).toEqual(["brand", "$brand"]);
   });
+
+  test("token rename stays single-file and leaves group edits untouched", async () => {
+    const { state } = await analyze(TOKEN_DOCUMENT);
+    const offset = TOKEN_DOCUMENT.indexOf("padding: $gap") + "padding: $".length;
+    const plan = renameAt(TOKEN_DOCUMENT, offset, "space", { analysis: state.analysis });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    // The existing contract: token edits carry no module and apply to the document.
+    expect(plan.edits.every((edit) => edit.file === undefined)).toBe(true);
+    expect(plan.edits).toHaveLength(3);
+  });
+});
+
+const GROUP_RENAME_DOCUMENT = [
+  "@group.card {",
+  "  padding: 12px;",
+  "  color: black;",
+  "}",
+  "",
+  ".a { @group.card { padding: 20px; } }",
+  ".b { @group.card { } }",
+].join("\n");
+
+function groupNameOffset(text: string, name: string, from = 0): number {
+  return text.indexOf(`@group.${name}`, from) + "@group.".length + 1;
+}
+
+describe("group rename", () => {
+  test("renames the definition and every same-file use site", async () => {
+    const { state } = await analyze(GROUP_RENAME_DOCUMENT);
+    const plan = renameAt(
+      GROUP_RENAME_DOCUMENT,
+      groupNameOffset(GROUP_RENAME_DOCUMENT, "card"),
+      "panel",
+      {
+        analysis: state.analysis,
+      },
+    );
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.placeholder).toBe("card");
+    const edits = plan.edits.map((edit) => ({
+      ...rangeToOffsets(state.analysis, edit.range),
+      newText: edit.newText,
+      file: edit.file,
+    }));
+    expect(edits).toHaveLength(3);
+    expect(edits.map((edit) => edit.newText)).toEqual(["panel", "panel", "panel"]);
+    const documentPath = join(ROOT, "rename.cssx");
+    expect(edits.every((edit) => edit.file === documentPath)).toBe(true);
+    expect(edits.map((edit) => edit.start).sort((left, right) => left - right)).toEqual(
+      [
+        GROUP_RENAME_DOCUMENT.indexOf("@group.card") + "@group.".length,
+        GROUP_RENAME_DOCUMENT.indexOf(".a { @group.card") + ".a { @group.".length,
+        GROUP_RENAME_DOCUMENT.indexOf(".b { @group.card") + ".b { @group.".length,
+      ].sort((left, right) => left - right),
+    );
+  });
+
+  test("the same plan is produced from a use-site member", async () => {
+    const { state } = await analyze(GROUP_RENAME_DOCUMENT);
+    const offset = groupNameOffset(GROUP_RENAME_DOCUMENT, "card", 40);
+    const plan = renameAt(GROUP_RENAME_DOCUMENT, offset, "panel", { analysis: state.analysis });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.placeholder).toBe("card");
+    expect(plan.edits).toHaveLength(3);
+  });
+
+  test("renames definitions and references in styles-imported modules", async () => {
+    const relative = "tests/fixtures/groups/style-import/entry.cssx";
+    const text = readFileSync(join(ROOT, relative), "utf8");
+    const { state } = await analyze(text, relative);
+    const offset = groupNameOffset(text, "card");
+    const plan = renameAt(text, offset, "surface", { analysis: state.analysis });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.placeholder).toBe("card");
+    expect(plan.edits).toHaveLength(2);
+    expect(plan.edits.map((edit) => edit.newText)).toEqual(["surface", "surface"]);
+    const definition = plan.edits.find((edit) => edit.file?.endsWith("chrome.cssx"));
+    expect(definition).toBeDefined();
+    expect(definition?.range.start.character).toBe(7);
+    const reference = plan.edits.find((edit) => edit.file?.endsWith("entry.cssx"));
+    expect(reference).toBeDefined();
+    if (reference === undefined) return;
+    expect(rangeToOffsets(state.analysis, reference.range)).toEqual({
+      start: text.indexOf("@group.card") + "@group.".length,
+      end: text.indexOf("@group.card") + "@group.".length + "card".length,
+    });
+  });
+
+  test("refuses an ambiguous group and names both modules", async () => {
+    const relative = "tests/fixtures/groups/ambiguous-import/entry.cssx";
+    const text = readFileSync(join(ROOT, relative), "utf8");
+    const { state } = await analyze(text, relative);
+    const plan = renameAt(text, groupNameOffset(text, "card"), "surface", {
+      analysis: state.analysis,
+    });
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.reason).toContain("Ambiguous group");
+    expect(plan.reason).toContain("@group.card");
+    expect(plan.reason).toContain("a.cssx");
+    expect(plan.reason).toContain("b.cssx");
+  });
+
+  test("refuses unknown groups and invalid names", async () => {
+    const unknown = ".a { @group.nope { padding: 1px; } }";
+    const { state: unknownState } = await analyze(unknown);
+    const unknownPlan = renameAt(unknown, groupNameOffset(unknown, "nope"), "other", {
+      analysis: unknownState.analysis,
+    });
+    expect(unknownPlan.ok).toBe(false);
+    if (unknownPlan.ok) return;
+    expect(unknownPlan.reason).toContain("Unknown group");
+
+    const { state } = await analyze(GROUP_RENAME_DOCUMENT);
+    const invalid = renameAt(
+      GROUP_RENAME_DOCUMENT,
+      groupNameOffset(GROUP_RENAME_DOCUMENT, "card"),
+      "1bad",
+      {
+        analysis: state.analysis,
+      },
+    );
+    expect(invalid.ok).toBe(false);
+    if (invalid.ok) return;
+    expect(invalid.reason).toContain("Group names");
+  });
+});
+
+const KEYFRAME_RENAME_DOCUMENT = [
+  "@keyframes spin {",
+  "  from { opacity: 0; }",
+  "  to { opacity: 1; }",
+  "}",
+  ".a { animation-name: spin; }",
+  ".b { animation-name: $keyframes.spin; }",
+  ".c { animation: spin 1s linear infinite; }",
+  ".d { animation-name: spin, fade; }",
+].join("\n");
+
+const AMBIGUOUS_KEYFRAMES_PATH = "virtual/keyframes/ambiguous/entry.cssx";
+
+/** Offset of the name in the first `@keyframes <name>` definition. */
+function keyframeDefinitionOffset(text: string, name: string, from = 0): number {
+  return text.indexOf(`@keyframes ${name}`, from) + "@keyframes ".length;
+}
+
+/** Offset of the member name in the first `$keyframes.<name>` reference. */
+function keyframeReferenceOffset(text: string, name: string, from = 0): number {
+  return text.indexOf(`$keyframes.${name}`, from) + "$keyframes.".length;
+}
+
+/** Virtual styles modules for the two-imports-one-name ambiguity case. */
+function ambiguousKeyframeModules(): Readonly<Record<string, string>> {
+  const directory = join(ROOT, "virtual/keyframes/ambiguous");
+  return {
+    [join(directory, "a.cssx")]:
+      '@setup { prefix: "a"; }\n@keyframes spin {\n  from { opacity: 0; }\n  to { opacity: 1; }\n}\n',
+    [join(directory, "b.cssx")]:
+      '@setup { prefix: "b"; }\n@keyframes spin {\n  from { opacity: 0.25; }\n  to { opacity: 0.75; }\n}\n',
+  };
+}
+
+function virtualReader(modules: Readonly<Record<string, string>>) {
+  return (path: string): string | undefined => modules[path] ?? readModule(path);
+}
+
+describe("keyframe rename", () => {
+  test("renames the definition, $keyframes reference and exact animation-name value", async () => {
+    const { state } = await analyze(KEYFRAME_RENAME_DOCUMENT);
+    const plan = renameAt(
+      KEYFRAME_RENAME_DOCUMENT,
+      keyframeDefinitionOffset(KEYFRAME_RENAME_DOCUMENT, "spin"),
+      "turn",
+      { analysis: state.analysis },
+    );
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.placeholder).toBe("spin");
+    const edits = plan.edits.map((edit) => ({
+      ...rangeToOffsets(state.analysis, edit.range),
+      newText: edit.newText,
+      file: edit.file,
+    }));
+    expect(edits).toHaveLength(3);
+    expect(edits.map((edit) => edit.newText)).toEqual(["turn", "turn", "turn"]);
+    const documentPath = join(ROOT, "rename.cssx");
+    expect(edits.every((edit) => edit.file === documentPath)).toBe(true);
+    expect(edits.map((edit) => edit.start).sort((left, right) => left - right)).toEqual(
+      [
+        keyframeDefinitionOffset(KEYFRAME_RENAME_DOCUMENT, "spin"),
+        KEYFRAME_RENAME_DOCUMENT.indexOf("animation-name: spin") + "animation-name: ".length,
+        keyframeReferenceOffset(KEYFRAME_RENAME_DOCUMENT, "spin"),
+      ].sort((left, right) => left - right),
+    );
+
+    // The `animation:` shorthand and the multi-name value are never rewritten.
+    const untouched = [
+      {
+        start: KEYFRAME_RENAME_DOCUMENT.indexOf("animation: spin") + "animation: ".length,
+        end: KEYFRAME_RENAME_DOCUMENT.indexOf("animation: spin") + "animation: spin".length,
+      },
+      {
+        start:
+          KEYFRAME_RENAME_DOCUMENT.indexOf("animation-name: spin,") + "animation-name: ".length,
+        end:
+          KEYFRAME_RENAME_DOCUMENT.indexOf("animation-name: spin,") +
+          "animation-name: spin,".length,
+      },
+    ];
+    for (const edit of edits) {
+      for (const range of untouched) {
+        expect(edit.start >= range.end || edit.end <= range.start).toBe(true);
+      }
+    }
+  });
+
+  test("the same plan is produced from a $keyframes reference", async () => {
+    const { state } = await analyze(KEYFRAME_RENAME_DOCUMENT);
+    const plan = renameAt(
+      KEYFRAME_RENAME_DOCUMENT,
+      keyframeReferenceOffset(KEYFRAME_RENAME_DOCUMENT, "spin"),
+      "turn",
+      { analysis: state.analysis },
+    );
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.placeholder).toBe("spin");
+    expect(plan.edits).toHaveLength(3);
+  });
+
+  test("renames a styles-imported definition and reference across modules", async () => {
+    const relative = "tests/fixtures/keyframes/style-import/entry.cssx";
+    const text = readFileSync(join(ROOT, relative), "utf8");
+    const { state } = await analyze(text, relative);
+    const plan = renameAt(text, keyframeReferenceOffset(text, "spin"), "rotate", {
+      analysis: state.analysis,
+    });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.placeholder).toBe("spin");
+    expect(plan.edits).toHaveLength(2);
+    expect(plan.edits.map((edit) => edit.newText)).toEqual(["rotate", "rotate"]);
+    const definition = plan.edits.find((edit) => edit.file?.endsWith("motion.cssx"));
+    expect(definition).toBeDefined();
+    expect(definition?.range.start.character).toBe(11);
+    const reference = plan.edits.find((edit) => edit.file?.endsWith("entry.cssx"));
+    expect(reference).toBeDefined();
+    if (reference === undefined) return;
+    expect(rangeToOffsets(state.analysis, reference.range)).toEqual({
+      start: keyframeReferenceOffset(text, "spin"),
+      end: keyframeReferenceOffset(text, "spin") + "spin".length,
+    });
+    // The imported module's `animation: spin …` shorthand stays untouched.
+    expect(
+      plan.edits.some(
+        (edit) => edit.file?.endsWith("motion.cssx") && edit.range.start.character > 11,
+      ),
+    ).toBe(false);
+  });
+
+  test("refuses an ambiguous keyframe and names both modules", async () => {
+    const text = [
+      '@use "./a.cssx" styles;',
+      '@use "./b.cssx" styles;',
+      ".page { animation-name: $keyframes.spin; }",
+    ].join("\n");
+    const { state } = await analyze(text, AMBIGUOUS_KEYFRAMES_PATH, {
+      compile: false,
+      readModule: virtualReader(ambiguousKeyframeModules()),
+    });
+    const plan = renameAt(text, keyframeReferenceOffset(text, "spin"), "rotate", {
+      analysis: state.analysis,
+    });
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.reason).toContain("Ambiguous keyframe");
+    expect(plan.reason).toContain("$keyframes.spin");
+    expect(plan.reason).toContain("a.cssx");
+    expect(plan.reason).toContain("b.cssx");
+  });
+
+  test("refuses invalid identifiers, unknown names and a name already in scope", async () => {
+    const { state } = await analyze(KEYFRAME_RENAME_DOCUMENT);
+    const offset = keyframeDefinitionOffset(KEYFRAME_RENAME_DOCUMENT, "spin");
+    for (const invalidName of ["1bad", "-1bad", "has space", "semi;colon"]) {
+      const plan = renameAt(KEYFRAME_RENAME_DOCUMENT, offset, invalidName, {
+        analysis: state.analysis,
+      });
+      expect(plan.ok).toBe(false);
+      if (plan.ok) continue;
+      expect(plan.reason).toContain("valid CSS identifier");
+    }
+
+    const unknown = ".page { animation-name: $keyframes.nope; }";
+    const { state: unknownState } = await analyze(unknown);
+    const unknownPlan = renameAt(unknown, keyframeReferenceOffset(unknown, "nope"), "other", {
+      analysis: unknownState.analysis,
+    });
+    expect(unknownPlan.ok).toBe(false);
+    if (unknownPlan.ok) return;
+    expect(unknownPlan.reason).toContain("Unknown keyframe");
+
+    const collision = [
+      "@keyframes spin { from { opacity: 0; } }",
+      "@keyframes fade { from { opacity: 0; } }",
+      ".page { animation-name: $keyframes.spin; }",
+    ].join("\n");
+    const { state: collisionState } = await analyze(collision);
+    const collisionPlan = renameAt(collision, keyframeReferenceOffset(collision, "spin"), "fade", {
+      analysis: collisionState.analysis,
+    });
+    expect(collisionPlan.ok).toBe(false);
+    if (collisionPlan.ok) return;
+    expect(collisionPlan.reason).toContain('"fade"');
+    expect(collisionPlan.reason).toContain("already exists in scope");
+  });
+
+  test("refuses a later duplicate definition header (first definition wins)", async () => {
+    const text = [
+      "@keyframes spin { from { opacity: 0; } }",
+      "@keyframes spin { from { opacity: 1; } }",
+      ".page { animation-name: $keyframes.spin; }",
+    ].join("\n");
+    const { state } = await analyze(text);
+    const plan = renameAt(text, keyframeDefinitionOffset(text, "spin", 10), "turn", {
+      analysis: state.analysis,
+    });
+    expect(plan.ok).toBe(false);
+    if (plan.ok) return;
+    expect(plan.reason).toContain("Duplicate keyframe definition");
+  });
+
+  test("token and group rename contracts are unchanged in a document with keyframes", async () => {
+    const text = [
+      "@variables { gap: 8px; }",
+      "@keyframes spin { from { opacity: 0; } }",
+      "@group.card { padding: 8px; }",
+      ".a { @group.card { } animation-name: $keyframes.spin; color: $gap; }",
+    ].join("\n");
+    const { state } = await analyze(text);
+
+    const tokenPlan = renameAt(text, text.indexOf("$gap") + 1, "space", {
+      analysis: state.analysis,
+    });
+    expect(tokenPlan.ok).toBe(true);
+    if (tokenPlan.ok) {
+      expect(tokenPlan.edits.every((edit) => edit.file === undefined)).toBe(true);
+      expect(tokenPlan.edits).toHaveLength(2);
+    }
+
+    const groupPlan = renameAt(text, text.indexOf("@group.card") + "@group.".length, "panel", {
+      analysis: state.analysis,
+    });
+    expect(groupPlan.ok).toBe(true);
+    if (groupPlan.ok) {
+      expect(groupPlan.placeholder).toBe("card");
+      expect(groupPlan.edits).toHaveLength(2);
+    }
+  });
 });

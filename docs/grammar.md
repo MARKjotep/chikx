@@ -36,7 +36,9 @@ None of the `@` characters above are modifiers or directives. An unknown modifie
 depth is reported (`CHIKX3001`) rather than emitted as CSS.
 
 A file-level directive (`@setup`, `@use`, `@variables`, `@runtime`, `@media-types`) is recognised
-only at the **top level**. The same names inside a rule are not directives.
+only at the **top level**. The same names inside a rule are not directives. `@group.<name>` is
+defined at the top level as well, but its identical form inside a rule is a *use site* rather than a
+definition (§3).
 
 ### Strings and escapes
 
@@ -66,18 +68,25 @@ other declaration values.
 ## 2. Grammar (EBNF)
 
 ```ebnf
-file          = { setup | use | variables | runtime | mediaTypes | rule | nativeAtRule } ;
+file          = { setup | use | variables | runtime | mediaTypes | groupDefinition | rule
+                | nativeAtRule } ;
 setup         = "@setup" "{" { setting } "}" ;
 setting       = identifier ":" scalar ";" ;
 use           = "@use" string [ "as" identifier ] [ "styles" ] ";" ;
 variables     = "@variables" "{" { tokenDeclaration } "}" ;
 runtime       = "@runtime" "{" { declaration } "}" ;
 mediaTypes    = "@media-types" "{" { aliasDeclaration } "}" ;
-rule          = selector "{" { declaration | rule | conditionalBlock | nativeAtRule } "}" ;
+rule          = selector "{" { declaration | rule | conditionalBlock | nativeAtRule
+                | groupUseSite } "}" ;
 declaration   = property ":" cssValue { modifier cssValue } ";" ;
 modifier      = "@" alias { "+" alias } ;
 conditionalBlock = modifier "{" { declaration | rule | conditionalBlock } "}" ;
+groupDefinition = "@group" "." groupName "{" { declaration } "}" ;
+groupUseSite    = "@group" "." groupName "{" { declaration } "}" ;
 ```
+
+`groupDefinition` is top level only and `groupUseSite` is a block item inside a rule; the two
+productions are textually identical, because position decides which one a `@group.<name>` block is.
 
 This is **structural** grammar. CSS values and selectors are parsed as balanced token sequences:
 `calc(100% - 2rem)`, `url(a(b).png)`, quoted strings, comments and escaped braces are not structural
@@ -95,6 +104,7 @@ setting key — within one block or across blocks — is rejected.
 | `@variables { name: tokens; }` | top level | Compile-time token definitions. Values substitute token sequences, not JavaScript. |
 | `@runtime { name: value [@alias value]; }` | top level | Native custom properties with optional conditional values. |
 | `@media-types { alias: condition; }` | top level | File-local media aliases, merged over built-ins and project config. |
+| `@group.<name> { declaration; }` | top level (definition), rule body (use site) | Reusable declaration defaults (ADR-0017). A definition emits nothing; a use site splices the defaults and then its overrides. |
 
 `@use` imports compile-time tokens by default; without the `styles` clause it never imports rules.
 The optional `styles` clause makes the import rule-bearing (ADR-0014): the module's rules are merged
@@ -105,6 +115,46 @@ export-alias collision, is `CHIKX4001`. A module that should never emit artifact
 `@setup { module: true; }`, which suppresses its CSS, map, types and CSS import unless those keys are
 authored explicitly. Modules are imported once; there is no implicit transitive re-export and no
 network or executable import.
+
+### Reusable declaration groups (`@group.<name>`)
+
+A group is a named, non-parametric set of declarations, written once and spliced into rules with
+per-use-site overrides. See [ADR-0017](decisions/ADR-0017-reusable-declaration-groups.md) and
+[SPECIFICATION.md](../SPECIFICATION.md) §3.7.
+
+```chikx
+@group.card {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  color: black;
+}
+
+.panel {
+  @group.card {
+    padding: 20px;
+    color: navy;
+  }
+}
+```
+
+- A **definition** (`@group.<name> { declaration… }`) is top level only, beside the other
+  directives. The block accepts declarations and nothing else; the dotted form is contiguous
+  (`@group.card`, never `@group .card`); and the name matches exactly and case-sensitively. A
+  definition **emits nothing**: an unused group has no output, and an empty definition is legal and
+  inert.
+- A **use site** is the identical syntax inside a rule body at any nesting depth. The block is
+  required — a bare `@group.card;` is `CHIKX1001` — and accepts declarations only. Nested rules,
+  conditional blocks and native at-rules inside either block are `CHIKX1001`; the v1 exclusions are
+  listed in [known-limitations.md](known-limitations.md).
+- **Expansion** splices the group's defaults in definition order, followed by the use-site
+  declarations in authored order, at the authored position, as one declaration run. Nothing is
+  filtered, reordered, deduplicated or rewritten: overrides win through the ordinary cascade, as
+  [cascade.md](cascade.md#2-precedence) shows.
+- A module sees its own groups and those of `@use "…" styles` modules, mirroring
+  `$keyframes.<name>`; a token-only import exposes none. `group` is a reserved directive name, so
+  `@use "…" as group` is `CHIKX2001`, and groups are not values — `$group.<name>` is
+  `CHIKX2001`.
 
 ## 4. Declarations and inline variants
 

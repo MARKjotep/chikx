@@ -1,0 +1,12 @@
+.c-note {
+  color: silver;
+}
+
+.b-note {
+  color: gray;
+}
+
+.panel {
+  padding: 12px;
+  padding: 20px;
+}

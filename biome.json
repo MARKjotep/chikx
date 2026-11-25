@@ -10,6 +10,7 @@
       "node_modules",
       "dist",
       ".ai",
+      ".pi",
       "docs",
       "bun.lock",
       "opencode.jsonc",

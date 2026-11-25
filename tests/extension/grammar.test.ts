@@ -173,6 +173,49 @@ describe("regex safety", () => {
   });
 });
 
+describe("group directive scoping structure", () => {
+  test("definitions and use sites have distinct containers and a member scope", () => {
+    const definition = grammar.repository["group-definition"];
+    const use = grammar.repository["group-use"];
+    expect(definition?.name).toBe("meta.directive.group.chikx");
+    expect(use?.name).toBe("meta.group.use.chikx");
+    for (const rule of [definition, use]) {
+      expect(rule?.begin ?? "").toContain("@group");
+      expect(rule?.beginCaptures?.["1"]?.name).toBe("keyword.control.directive.chikx");
+      expect(rule?.beginCaptures?.["2"]?.name).toBe("punctuation.accessor.chikx");
+      expect(rule?.beginCaptures?.["3"]?.name).toBe("entity.name.type.group.chikx");
+      expect(rule?.endCaptures?.["0"]?.name).toBe("punctuation.section.block.css");
+    }
+    expect(definition?.name).not.toBe(use?.name);
+    expect(definition?.beginCaptures?.["3"]?.name).not.toBe("variable.other.member.chikx");
+    expect(definition?.beginCaptures?.["3"]?.name).not.toBe("entity.name.function.chikx");
+  });
+
+  test("definitions match at the root before aliases and use sites live in block bodies", () => {
+    const definitionIndex = rootIndex("#group-definition");
+    expect(definitionIndex).toBeGreaterThan(rootIndex("#directives"));
+    expect(definitionIndex).toBeLessThan(rootIndex("#native-at-rule"));
+    expect(definitionIndex).toBeLessThan(rootIndex("#alias-block-start"));
+    const body = (grammar.repository["block-body"]?.patterns ?? []).map(
+      (pattern) => pattern.include ?? "",
+    );
+    expect(body).toContain("#group-use");
+    expect(body).toContain("#group-keyword");
+    expect(grammar.repository["group-keyword"]?.match).toContain("@group");
+  });
+
+  test("the alias matcher and variant block matchers reserve @group", () => {
+    const alias = grammar.repository.alias?.match ?? "";
+    const matcher = anchoredRegex(alias);
+    expect(matcher.test("@group")).toBe(false);
+    expect(matcher.test("@group.card")).toBe(false);
+    expect(matcher.test("@group+dark")).toBe(false);
+    expect(matcher.test("@groupie")).toBe(true);
+    expect(grammar.repository["conditional-block"]?.begin ?? "").toContain("group");
+    expect(grammar.repository["alias-block-start"]?.begin ?? "").toContain("group");
+  });
+});
+
 describe("UI acceptance scopes", () => {
   test("every scope named by the UI contract is reachable in the grammar", () => {
     const scopes = new Set(referencedScopes(grammar));

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "CHIKX1001",
+    "severity": "error",
+    "messageContains": "conditional group use site",
+    "span": { "line": 6, "col": 3 }
+  }
+]

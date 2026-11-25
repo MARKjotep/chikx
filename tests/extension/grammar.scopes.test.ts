@@ -166,3 +166,94 @@ scopeSuite("rendered scopes — synthetic coverage", () => {
     expectScoped(tokens, ".b", "entity.other.attribute-name.class.css");
   });
 });
+
+scopeSuite("rendered scopes — @group definitions, use sites and members", () => {
+  test("a top-level definition and a rule-body use site have distinct containers", () => {
+    const definition = tokenize("@group.card {\n  padding: 12px;\n}");
+    expectScoped(definition, "@group", "meta.directive.group.chikx");
+    expectScoped(definition, "@group", "keyword.control.directive.chikx");
+    expectNeverScoped(definition, "@group", "meta.group.use.chikx");
+    expectNeverScoped(definition, "@group", "entity.name.function.chikx");
+    expectNeverScoped(definition, "@group", "keyword.control.at-rule.css");
+    expectScoped(definition, "card", "entity.name.type.group.chikx");
+    expectNeverScoped(definition, "card", "entity.name.function.chikx");
+    expectNeverScoped(definition, "card", "variable.other.member.chikx");
+    expectScoped(definition, "padding", "support.type.property-name.css");
+
+    const useSite = tokenize(".panel {\n  @group.card {\n    color: navy;\n  }\n}");
+    expectScoped(useSite, "@group", "meta.group.use.chikx");
+    expectScoped(useSite, "@group", "keyword.control.directive.chikx");
+    expectNeverScoped(useSite, "@group", "meta.directive.group.chikx");
+    expectNeverScoped(useSite, "@group", "entity.name.function.chikx");
+    expectNeverScoped(useSite, "@group", "variable.other.member.chikx");
+    expectScoped(useSite, "card", "entity.name.type.group.chikx");
+    expectScoped(useSite, "navy", "support.constant.property-value.css");
+  });
+
+  test("@group.keyframes is an ordinary group member, unlike $keyframes.spin", () => {
+    const tokens = tokenize(
+      [
+        "@group.keyframes { animation-duration: 0.5s; }",
+        ".spinner { animation: $keyframes.spin 1s; @group.keyframes { animation-name: fade; } }",
+      ].join("\n"),
+    );
+    expectScoped(tokens, "keyframes", "entity.name.type.group.chikx");
+    expectNeverScoped(tokens, "keyframes", "keyword.control.at-rule.css");
+    expectNeverScoped(tokens, "keyframes", "meta.at-rule.keyframes.css");
+    expectNeverScoped(tokens, "keyframes", "variable.other.member.chikx");
+    expectScoped(tokens, "spin", "variable.other.member.chikx");
+    expectNeverScoped(tokens, "spin", "entity.name.type.group.chikx");
+  });
+
+  test("@group stays distinct from media aliases and sibling directives", () => {
+    const tokens = tokenize(
+      [
+        "@group.card {",
+        "  padding: 12px @md 20px;",
+        "}",
+        ".panel {",
+        "  @group.card {",
+        "    padding: 20px;",
+        "  }",
+        "}",
+        "@setup {",
+        '  prefix: "ui";',
+        "}",
+      ].join("\n"),
+    );
+    expectScoped(tokens, "@md", "entity.name.function.chikx");
+    expectScoped(tokens, "@md", "meta.variant.chikx");
+    expectNeverScoped(tokens, "@md", "keyword.control.directive.chikx");
+    expectScoped(tokens, "@setup", "keyword.control.directive.chikx");
+    expectNeverScoped(tokens, "@setup", "entity.name.function.chikx");
+    expectNeverScoped(tokens, "@group", "entity.name.function.chikx");
+    expectNeverScoped(tokens, "@group", "meta.variant.chikx");
+  });
+
+  test("bare and spaced @group forms degrade without mis-scoping following content", () => {
+    const tokens = tokenize(
+      [
+        "@group",
+        ".after { color: red; }",
+        "@group .card {",
+        "  color: blue;",
+        "}",
+        ".panel {",
+        "  @group .card { color: green; }",
+        "  @group;",
+        "  color: black;",
+        "}",
+        ".tail { margin: 0; }",
+      ].join("\n"),
+    );
+    expectScoped(tokens, "@group", "keyword.control.directive.chikx");
+    expectNeverScoped(tokens, "@group", "meta.directive.group.chikx");
+    expectNeverScoped(tokens, "@group", "meta.group.use.chikx");
+    expectNeverScoped(tokens, "@group", "entity.name.function.chikx");
+    expectScoped(tokens, ".after", "entity.other.attribute-name.class.css");
+    expectScoped(tokens, ".panel", "entity.other.attribute-name.class.css");
+    expectScoped(tokens, ".tail", "entity.other.attribute-name.class.css");
+    expectScoped(tokens, "color", "support.type.property-name.css");
+    expectScoped(tokens, "margin", "support.type.property-name.css");
+  });
+});

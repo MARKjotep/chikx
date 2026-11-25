@@ -10,6 +10,12 @@
  *
  * Digits may start an alias (`@2xl`) and `-` is a name character, so the scan
  * uses the name grammar rather than the stricter identifier-start rule.
+ *
+ * `@group.<name>` is deliberately not joined into one token: the frozen
+ * at-keyword contract covers an `@` name, so `@group` stays an at-keyword and
+ * `.name` stays a delim plus an identifier. The parser recognises the
+ * contiguous dotted form from adjacent token offsets and rejects whitespace
+ * between the parts (ADR-0017, SPECIFICATION.md §3.7).
  */
 
 import { escapeEnd, isNameCode } from "./characters.js";

@@ -1087,7 +1087,13 @@ describe("value token sequences (ADR-0005)", () => {
 
 describe("total parsing and recovery guarantees", () => {
   test("every fixture input parses; only parser-owned error fixtures diagnose", () => {
-    const parserOwned = new Set<string>(PARSER_ERROR_FIXTURES);
+    const parserOwned = new Set<string>([
+      ...PARSER_ERROR_FIXTURES,
+      // ADR-0017 §3.7 authored group syntax misuse: declarations-only blocks and
+      // out-of-v1 conditional use sites are parser diagnostics by design.
+      "groups/nested-rule-in-definition",
+      "groups/conditional-use-site",
+    ]);
     const groups = readdirSync(fixturesRoot)
       .filter((entry) => statSync(join(fixturesRoot, entry)).isDirectory())
       .sort();

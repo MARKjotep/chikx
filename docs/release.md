@@ -22,8 +22,8 @@ It runs, in order:
    points, extension icon and the `chikx` language contribution with `.cssx` files.
 5. `npm pack --dry-run --json --workspace @chikx/compiler` and `@chikx/cli` — assert the tarball
    contains `package.json`, `README.md`, `LICENSE` and `dist/**`.
-6. Build all six examples through the CLI with `--config examples/<name>/chikx.config.json`
-   (`basic`, `responsive`, `variables`, `jsx`, `custom-output`, `overrides`).
+6. Build all seven examples through the CLI with `--config examples/<name>/chikx.config.json`
+   (`basic`, `responsive`, `variables`, `jsx`, `custom-output`, `overrides`, `groups`).
 7. `bun run --cwd packages/vscode build` and `bunx @vscode/vsce package --no-dependencies` in
    `packages/vscode`; the gate fails if packaging fails, and the produced `chikx-<version>.vsix` is
    the release artifact.

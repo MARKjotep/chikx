@@ -1,7 +1,10 @@
 /**
- * Chikx navigation providers: definition, references and single-file rename for
- * `$tokens`. All ranges come from parser AST spans, so strings, comments,
- * selectors (including `:global(...)` classes) and import paths are untouched.
+ * Chikx navigation providers: definition, references and rename for `$tokens`,
+ * `@group.<name>` declarations/use sites and `@keyframes <name>` /
+ * `$keyframes.<name>` constructs. All ranges come from parser AST spans, so
+ * strings, comments, selectors (including `:global(...)` classes) and import
+ * paths are untouched. Group and keyframe renames return edits for every visible
+ * module; the other token edits stay single-file.
  */
 
 import * as vscode from "vscode";
@@ -10,10 +13,13 @@ import type { DocumentState } from "../analysis.js";
 import {
   type RenamePlan,
   definitionsAt,
+  groupAt,
+  keyframeAt,
   referencesAt,
   renameAt,
   tokenAt,
 } from "../intelligence.js";
+import { normalizePath } from "../paths.js";
 import type { AnalysisService } from "../service.js";
 
 async function stateOf(
@@ -63,7 +69,7 @@ export class ChikxReferenceProvider implements vscode.ReferenceProvider {
   }
 }
 
-/** Rename for local `$tokens` (namespace members direct the user to the module). */
+/** Rename for local `$tokens` and groups; multi-file group edits span modules. */
 export class ChikxRenameProvider implements vscode.RenameProvider {
   constructor(private readonly service: AnalysisService) {}
 
@@ -75,11 +81,26 @@ export class ChikxRenameProvider implements vscode.RenameProvider {
     const source = sourceTextOf(document);
     const state = await stateOf(this.service, document);
     if (token.isCancellationRequested) return undefined;
-    const found = tokenAt(source.text, document.offsetAt(position), state.analysis);
-    if (found === undefined || found.symbol.namespace !== undefined) return undefined;
+    const offset = document.offsetAt(position);
+    const found = tokenAt(source.text, offset, state.analysis);
+    if (found !== undefined && found.symbol.namespace === undefined) {
+      return {
+        range: toEditorRange(found.symbol.declaration),
+        placeholder: found.symbol.name,
+      };
+    }
+    const group = groupAt(state.analysis, offset);
+    if (group !== undefined) {
+      return {
+        range: toEditorRange(group.nameRange),
+        placeholder: group.name,
+      };
+    }
+    const keyframe = keyframeAt(source.text, offset, state.analysis);
+    if (keyframe === undefined) return undefined;
     return {
-      range: toEditorRange(found.symbol.declaration),
-      placeholder: found.symbol.name,
+      range: toEditorRange(keyframe.nameRange),
+      placeholder: keyframe.name,
     };
   }
 
@@ -97,8 +118,13 @@ export class ChikxRenameProvider implements vscode.RenameProvider {
     });
     if (!plan.ok) throw new Error(plan.reason);
     const edit = new vscode.WorkspaceEdit();
+    const currentPath = normalizePath(state.analysis.path);
     for (const change of plan.edits) {
-      edit.replace(document.uri, toEditorRange(change.range), change.newText);
+      const target =
+        change.file === undefined || normalizePath(change.file) === currentPath
+          ? document.uri
+          : vscode.Uri.file(change.file);
+      edit.replace(target, toEditorRange(change.range), change.newText);
     }
     return edit;
   }

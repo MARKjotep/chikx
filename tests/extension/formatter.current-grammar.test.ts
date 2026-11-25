@@ -2,10 +2,11 @@
  * Formatter round-trip coverage for the currently shipped grammar.
  *
  * The extension formats through the compiler's public `format()`, so these
- * tests pin the two just-landed grammar features from the editor's point of
- * view: `$keyframes.<name>` value references (ADR-0015) and rule-merge imports
- * (`@use "…" as x styles;`, ADR-0014). Compiler-owned formatter code and its
- * shared tests are out of this task's scope.
+ * tests pin the grammar features the editor ships format-on-save for:
+ * `$keyframes.<name>` value references (ADR-0015), rule-merge imports
+ * (`@use "…" as x styles;`, ADR-0014) and `@group.<name>` definitions/use sites
+ * (ADR-0017, plan G5). Compiler-owned formatter code and its shared tests are
+ * out of this task's scope.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -98,5 +99,43 @@ describe("formatter round trip: current grammar", () => {
       ].join("\n"),
     );
     expect(format(formatted, FILE).formatted).toBe(formatted);
+  });
+
+  // Regression for the G5 release blocker (ADR-0017 item 8): format-on-save is
+  // enabled via `chikx.editor.formatOnSave`, and a parse→print formatter that
+  // cannot print `@group` silently deletes authored groups on save.
+  test("@group definitions and use sites survive a format-on-save round trip", () => {
+    const source = [
+      "@group.card {",
+      "padding: 12px;",
+      "border-radius: 8px;",
+      "}",
+      ".panel {",
+      "@group.card {",
+      "padding: 20px;",
+      "}",
+      "}",
+      "",
+    ].join("\n");
+
+    const formatted = canonical(source);
+    expect(formatted).toBe(
+      [
+        "@group.card {",
+        "  padding: 12px;",
+        "  border-radius: 8px;",
+        "}",
+        "",
+        ".panel {",
+        "  @group.card {",
+        "    padding: 20px;",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    expect(format(formatted, FILE).formatted).toBe(formatted);
+    // One definition plus one use site, never fewer.
+    expect(formatted.match(/@group\.card/g)).toHaveLength(2);
   });
 });

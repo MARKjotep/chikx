@@ -9,7 +9,10 @@
  *
  * Variable substitution itself is A08: this stage only reports import, cycle
  * and scope-definition errors (CHIKX2001) and records enough provenance for
- * substitution to resolve values in their defining module.
+ * substitution to resolve values in their defining module. Reusable declaration
+ * groups (ADR-0017) are collected and resolved here as well: `ModuleRecord.groups`
+ * carries the definitions a module may use, while use-site diagnostics and
+ * expansion belong to the later expansion pass (plan G3).
  */
 
 import type { CompileOptions, ModuleHost } from "../types/options.js";
@@ -17,6 +20,7 @@ import { resolveModuleGraph } from "./graph.js";
 import type { ModuleGraph } from "./types.js";
 
 export type {
+  GroupResolution,
   ImportSymbolOrigin,
   KeyframeName,
   LocalSymbolOrigin,
@@ -27,6 +31,7 @@ export type {
   ScopedTokenType,
   SymbolOrigin,
   TokenScope,
+  VisibleGroup,
 } from "./types.js";
 export { KEYFRAMES_NAMESPACE } from "./keyframes.js";
 export { styleModuleOrder } from "./rules.js";

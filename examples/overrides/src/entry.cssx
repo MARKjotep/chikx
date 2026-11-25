@@ -40,6 +40,7 @@
   primary: #0f766e @dark #2dd4bf;
 }
 
+
 /*
  * Strategy: compile-time local override — $radius/$gap are the local 12px/20px,
  * not the imported 4px/8px.
@@ -60,6 +61,8 @@
   outline-offset: $tokens.radius;
   border-color: $tokens.primary;
   background: $base.surface;
+  
+  
 }
 
 /*

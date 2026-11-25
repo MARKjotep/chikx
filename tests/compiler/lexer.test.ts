@@ -332,6 +332,51 @@ describe("lexical diagnostics and recovery", () => {
   });
 });
 
+describe("group dotted form", () => {
+  test("@group.<name> stays three adjacent tokens", () => {
+    const source = "@group.card";
+    const tokens = run(source);
+    expect(tokens.map((token) => token.kind)).toEqual(["at-keyword", "delim", "ident", "eof"]);
+    expect(tokens.map((token) => token.value)).toEqual(["@group", ".", "card", ""]);
+    expect(tokens[0]?.end).toBe(tokens[1]?.start);
+    expect(tokens[1]?.end).toBe(tokens[2]?.start);
+    expect(tokens[0]?.value).toBe("@group");
+  });
+
+  test("@group.keyframes keeps keyframes as an ordinary name", () => {
+    const tokens = run("@group.keyframes");
+    expect(tokens.map((token) => token.kind)).toEqual(["at-keyword", "delim", "ident", "eof"]);
+    expect(tokens[2]?.value).toBe("keyframes");
+    // No native at-rule token is produced: the name is data for the parser.
+    expect(
+      tokens.some((token) => token.kind === "at-keyword" && token.value === "@keyframes"),
+    ).toBe(false);
+  });
+
+  test("whitespace inside the dotted form is visible as a token", () => {
+    expect(kinds("@group .card")).toEqual(["at-keyword", "whitespace", "delim", "ident", "eof"]);
+    expect(kinds("@group. card")).toEqual(["at-keyword", "delim", "whitespace", "ident", "eof"]);
+    expect(kinds("@group\n.card")).toEqual(["at-keyword", "whitespace", "delim", "ident", "eof"]);
+    expect(kinds("@group/* gap */.card")).toEqual([
+      "at-keyword",
+      "comment",
+      "delim",
+      "ident",
+      "eof",
+    ]);
+  });
+
+  test("a missing or non-identifier name never becomes a dotted construct", () => {
+    expect(kinds("@group")).toEqual(["at-keyword", "eof"]);
+    expect(kinds("@group.")).toEqual(["at-keyword", "delim", "eof"]);
+    // `@group.2xl`: a digit-leading tail is one number token, so the parser can
+    // reject it as a non-identifier group name.
+    expect(kinds("@group.2xl")).toEqual(["at-keyword", "number", "eof"]);
+    expect(run("@group.2xl")[1]?.value).toBe(".2xl");
+    expect(kinds("@group.-x")).toEqual(["at-keyword", "delim", "ident", "eof"]);
+  });
+});
+
 describe("termination", () => {
   test("tokenizes adversarial input without throwing or looping", () => {
     const sources = [

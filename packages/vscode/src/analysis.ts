@@ -23,19 +23,16 @@ import type {
   TokenDeclaration,
   UseImport,
 } from "../../compiler/src/index.js";
+import type { GroupVisibility } from "./groups.js";
+import { collectGroupVisibility } from "./groups.js";
+import type { KeyframeVisibility } from "./keyframes.js";
+import { collectKeyframeVisibility } from "./keyframes.js";
 import { dirnamePath, joinPath } from "./paths.js";
+import type { Position, Range } from "./positions.js";
+import { computeLineStarts, positionAt, rangeAt } from "./positions.js";
 
-/** Zero-based editor position. */
-export interface Position {
-  readonly line: number;
-  readonly character: number;
-}
-
-/** Half-open editor range. */
-export interface Range {
-  readonly start: Position;
-  readonly end: Position;
-}
+export { computeLineStarts, positionAt, rangeAt } from "./positions.js";
+export type { Position, Range } from "./positions.js";
 
 /** Plain document input shared with the extension host shell. */
 export interface SourceText {
@@ -178,7 +175,10 @@ export interface ColorOccurrence {
 
 /** Result of the synchronous part of document analysis. */
 export interface AnalyzeResult {
+  /** Span label of the document (workspace-relative POSIX path by default). */
   readonly file: string;
+  /** Absolute document path used as the module identity for group resolution. */
+  readonly path: string;
   readonly version: number;
   readonly lineStarts: readonly number[];
   readonly ast: Stylesheet;
@@ -186,6 +186,10 @@ export interface AnalyzeResult {
   readonly mediaAliases: readonly MediaAlias[];
   readonly tokens: readonly TokenSymbol[];
   readonly imports: readonly ImportedModule[];
+  /** Groups visible from this document with the compiler's resolution rule. */
+  readonly groups: readonly GroupVisibility[];
+  /** `@keyframes` names visible to `$keyframes.<name>` (ADR-0015). */
+  readonly keyframes: readonly KeyframeVisibility[];
   readonly settings: readonly SetupSetting[];
   /** Effective class prefix after strategy and `@setup` precedence. */
   readonly prefix: string;
@@ -227,35 +231,6 @@ export interface AnalyzeOptions {
   readonly output?: OutputOptions;
   /** Run `compile` after parsing. Default `true`. */
   readonly compile?: boolean;
-}
-
-/** Compute line start offsets for offset→position mapping. */
-export function computeLineStarts(text: string): readonly number[] {
-  const starts: number[] = [0];
-  for (let index = 0; index < text.length; index += 1) {
-    if (text.charCodeAt(index) === 10) starts.push(index + 1);
-  }
-  return starts;
-}
-
-/** Convert an offset to a zero-based line/character position. */
-export function positionAt(lineStarts: readonly number[], offset: number): Position {
-  let low = 0;
-  let high = lineStarts.length - 1;
-  while (low < high) {
-    const middle = Math.ceil((low + high) / 2);
-    if ((lineStarts[middle] ?? 0) <= offset) low = middle;
-    else high = middle - 1;
-  }
-  return { line: low, character: Math.max(0, offset - (lineStarts[low] ?? 0)) };
-}
-
-/** Convert an offset pair to an editor range. */
-export function rangeAt(lineStarts: readonly number[], start: number, end: number): Range {
-  return {
-    start: positionAt(lineStarts, start),
-    end: positionAt(lineStarts, Math.max(start, end)),
-  };
 }
 
 /**
@@ -787,6 +762,7 @@ export function analyzeText(source: SourceText, options: AnalyzeOptions = {}): A
   const prefix = resolvePrefix(parsed.ast, options.prefix, options.namingStrategy);
   return {
     file,
+    path: source.path,
     version: source.version,
     lineStarts,
     ast: parsed.ast,
@@ -794,6 +770,14 @@ export function analyzeText(source: SourceText, options: AnalyzeOptions = {}): A
     mediaAliases: resolveMediaAliases(parsed.ast, lineStarts, options.media),
     tokens: collectTokens(parsed.ast, lineStarts, file, undefined),
     imports: collectImports(parsed.ast, source, options),
+    groups: collectGroupVisibility(
+      { file: source.path, ast: parsed.ast, lineStarts },
+      options.readModule,
+    ),
+    keyframes: collectKeyframeVisibility(
+      { file: source.path, ast: parsed.ast, text: source.text, lineStarts },
+      options.readModule,
+    ),
     settings: collectSettings(parsed.ast, lineStarts),
     prefix,
     classes: collectClasses(parsed.ast, lineStarts, prefix),

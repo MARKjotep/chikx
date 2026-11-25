@@ -1,9 +1,8 @@
 # Chikx Plan — Reusable declaration groups (`@group.<name>`)
 
-**Status:** planned, **not implemented**. No code may land on this plan before
-`docs/decisions/ADR-0017-*` is written, accepted by the owner and integrated into
-`SPECIFICATION.md` (invariants 10 and 11 in `.ai/framework/chikx/FRAMEWORK.md` §7). This plan is the
-actionable form of a sanction that already exists:
+**Status:** **complete and shipped** (G0–G6; the editor release landed as CSSX-A39/A40/A42). This
+plan remains the historical design record for the sanction below; ADR-0017 is the normative decision
+text. The sanction it records:
 
 - `.ai/CSSX-MASTERPLAN.md` §12 "Future features" lists reusable declaration groups (`@group`/`@apply`);
   each such feature "requires an ADR and regression fixtures before implementation".
@@ -19,13 +18,13 @@ Owner proposal and design decisions: 2026-11-25 (owner + lead). Board context li
 
 | Phase | Deliverable | Acceptance condition | Status |
 |---|---|---|---|
-| G0 | ADR-0017 plus normative `SPECIFICATION.md` text; owner answers open decisions (a)–(c) | ADR accepted; spec section, §3.6 reserved names and §13 deferred list updated; no code | 🔴 |
-| G1 | Grammar: lexer/parser support for `@group.<name>` definitions and use sites; additive AST nodes | Parser/lexer tests green; definitions top-level only; declarations-only recovery; frozen-AST change approved | 🔴 |
-| G2 | Resolver: per-module group collection, `group` symbol kind, `styles` visibility, duplicate/ambiguity rules, alias reservation | Resolver tests green; `@use … as group` is CHIKX2001; precedence documented and pinned | 🔴 |
-| G3 | Expansion: use sites splice into declaration runs; defining-module token scope; spans; diagnostics; empty-rule pruning | Unit tests + fixture inputs compile to the intended CSS; every rejection omits only what §2.5 allows | 🔴 |
-| G4 | Fixtures/goldens (G4a), browser gate (G4b), author docs (G4c) | `bun run verify` and `bun run test:browser` green; golden diffs reviewed line by line; docs updated | 🔴 |
-| G5 | Formatter round-trip for `@group` (parse→print) | `format()` reproduces group definitions/use sites; format-on-save never drops a group; tests green | 🔴 |
-| G6 | Editor support (G6a–G6c): completion, hover, outline, rename, TextMate scopes | Extension provider tests green; the §7 G6 provider criteria met; no compiler semantics change | 🔴 |
+| G0 | ADR-0017 plus normative `SPECIFICATION.md` text; owner answers open decisions (a)–(c) | ADR accepted; spec section, §3.6 reserved names and §13 deferred list updated; no code | 🟢 (CSSX-A30: ADR-0017 + §3.7/§3.6/§13 written; owner answers recorded 2026-11-25 — (a) styles-only, (b) compile-time-only defaults, (c) reuse CHIKX2001) |
+| G1 | Grammar: lexer/parser support for `@group.<name>` definitions and use sites; additive AST nodes | Parser/lexer tests green; definitions top-level only; declarations-only recovery; frozen-AST change approved | 🟢 (CSSX-A31: `GroupDefinition`/`GroupUseSite` AST nodes, contiguous-dotted-form parser with declarations-only CHIKX1001 recovery, declaration-scoped spans; 712 tests green. In-rule group statements parse as use sites — see `.ai/reports/CSSX-A31.md` §"Spec contradiction") |
+| G2 | Resolver: per-module group collection, `group` symbol kind, `styles` visibility, duplicate/ambiguity rules, alias reservation | Resolver tests green; `@use … as group` is CHIKX2001; precedence documented and pinned | 🟢 (CSSX-A32: `resolver/groups.ts` collection + memoized styles closure; `ModuleRecord.groups` resolved/ambiguous; duplicate CHIKX2001 at the later definition; `as group` CHIKX2001 at the `@use`; 11 new resolver tests, no lowering change — see `.ai/reports/CSSX-A32.md`) |
+| G3 | Expansion: use sites splice into declaration runs; defining-module token scope; spans; diagnostics; empty-rule pruning | Unit tests + fixture inputs compile to the intended CSS; every rejection omits only what §2.5 allows | 🟢 (CSSX-A33: `lowering/expand-groups.ts` splices defaults-then-overrides at the authored position per module before `lower`; `substitute` attributes `$refs` by authored `span.file`, so defaults resolve in the defining module and `@runtime` defaults are CHIKX2001; unknown/ambiguous groups omit exactly the use-site block; 22 new tests in `tests/compiler/groups.expansion.test.ts`, `bun run verify` 745/44 green, zero golden changes. Fixture goldens and the browser gate remain G4a/G4b — see `.ai/reports/CSSX-A33.md`) |
+| G4 | Fixtures/goldens (G4a), browser gate (G4b), author docs (G4c) | `bun run verify` and `bun run test:browser` green; golden diffs reviewed line by line; docs updated | 🟢 (G4a 🟢 CSSX-A34: 13 single-file + 7 merged `tests/fixtures/groups/**` cases with byte-exact `expected/{css,diagnostics.json}` reviewed line by line, `tests/compiler/groups.golden.test.ts` 30 tests, README rows + catalogue counts; `bun run verify` 798/45 green, no pre-existing golden changed. G4b 🟢 CSSX-A37: `groups`/`chip` browser scenario + `tests/browser/specs/groups.pw.ts` D1–D5 computed-style assertions at 320/767/768/1279/1280 in chromium/firefox/webkit, with the D2 base-beats-`@md`-default and D4 `!important` cases pinned by design and the scenario also covered by the pretty/minify and safe/`none` parity specs; `bun run test:browser` 96/96 green, `bun run verify` 798/45 green. G4c 🟢 CSSX-A35: author docs updated. See `.ai/reports/CSSX-A34.md`, `.ai/reports/CSSX-A37.md`, `.ai/reports/CSSX-A35.md`) |
+| G5 | Formatter round-trip for `@group` (parse→print) | `format()` reproduces group definitions/use sites; format-on-save never drops a group; tests green | 🟢 (CSSX-A36: shared `printGroup` prints `@group.<name>` definitions and use sites like sibling at-rule blocks (one declaration per line, authored depth, existing blank-line rules), and embedded-comment ranges now cover both node kinds so comments inside group values are never duplicated. Tests: round-trip node/declaration byte compare, idempotence, never-emptied, all 13 `groups/` fixtures keep every `@group.` statement, semicolonless final declaration, parse-error unchanged, group-free canonical layout byte-for-byte, compiled CSS unchanged; 54 pre-existing fixtures byte-identical. See `.ai/reports/CSSX-A36.md`) |
+| G6 | Editor support (G6a–G6c): completion, hover, outline, rename, TextMate scopes | Extension provider tests green; the §7 G6 provider criteria met; no compiler semantics change | 🟢 (G6a/G6b CSSX-A39, G6c CSSX-A40; `bun run verify` 849/45 green at the CSSX-A43 record close-out. Detail in the G6a–G6c rows below) |
 
 ## 1. Motivation
 
@@ -69,8 +68,11 @@ groupDefinition = "@group" "." groupName "{" { declaration } "}" ;
 groupUseSite    = "@group" "." groupName "{" { declaration } "}" ;
 ```
 
-- **Top-level only**, alongside `@setup`, `@use`, `@variables`, `@runtime`, `@media-types`. A
-  definition inside a rule is a syntax error (CHIKX1001 family) with statement-scoped recovery.
+- **Top-level only**, alongside `@setup`, `@use`, `@variables`, `@runtime`, `@media-types`. The
+  identical syntax inside a rule body is a use site, never a definition: position decides
+  (`SPECIFICATION.md` §3.2). CHIKX1001 with statement-scoped recovery covers *malformed* group
+  statements inside rules (bad dotted form, bare `@group`, non-declaration statement), not
+  well-formed use sites.
 - **Declarations only.** A definition block accepts declarations and nothing else. Nested rules,
   conditional blocks (`@md { … }`), native at-rules and further `@group.` use sites inside a
   definition are CHIKX1001-family syntax errors, one diagnostic per offending statement, and the
@@ -285,12 +287,12 @@ approval. Every task writes `.ai/tasks/<id>.md`, `.ai/reports/<id>.md` and
 | G2 | resolve | Per-module group collection, `group` symbol kind, `styles` closure, `as group` rejection, duplicate/ambiguity/precedence rules; `ModuleRecord` field (resolver-internal) | `packages/compiler/src/resolver/`, `tests/compiler/modules/`, `tests/compiler/groups/` (resolver half), owns task/report/log | G1 |
 | G3 | expand | Splice use sites into declaration runs before/during lowering with defining-module token attribution, spans, CHIKX2001 recovery, empty-rule pruning; pipeline wiring in `index.ts` | `packages/compiler/src/lowering/`, `packages/compiler/src/variables/` (expansion attribution only), `packages/compiler/src/index.ts` (wiring, lead-approved), `tests/compiler/lowering/`, `tests/compiler/groups/` (expansion half) | G1, G2 |
 | G4a | fixtures | `tests/fixtures/groups/**` goldens for the matrix in §8 (single-file + merged); byte-exact `expected/{css,diagnostics.json}`; fixture README rows | `tests/fixtures/groups/`, `tests/fixtures/README.md`, `tests/compiler/groups.golden.test.ts`, `tests/compiler/golden.test.ts` (fixture-count row only) | G3 |
-| G4b | browser | Playwright scenarios and computed-style assertions per §8 (D1–D5), 3 engines, pretty/minify and safe/none parity | `tests/browser/harness/**`, `tests/browser/specs/**` | G4a |
-| G4c | docs | Author-facing docs: `docs/grammar.md` (syntax), `docs/compatibility.md` (feature row + rejected constructs), `docs/known-limitations.md` (v1 exclusions), `docs/cascade.md` §override example | `docs/grammar.md`, `docs/compatibility.md`, `docs/known-limitations.md`, `docs/cascade.md` | G3 (behaviour frozen) |
+| G4b | browser | Playwright scenarios and computed-style assertions per §8 (D1–D5), 3 engines, pretty/minify and safe/none parity — 🟢 (CSSX-A37: `groups` scenario + `tests/browser/specs/groups.pw.ts`, 5 tests × 3 engines; the scenario is also auto-covered by `parity.pw.ts`/`grouping.pw.ts`; `bun run test:browser` 96/96 green, `bun run verify` 798/45 green) | `tests/browser/harness/**`, `tests/browser/specs/**` | G4a |
+| G4c | docs | Author-facing docs: `docs/grammar.md` (syntax), `docs/compatibility.md` (feature row + rejected constructs), `docs/known-limitations.md` (v1 exclusions), `docs/cascade.md` §override example — 🟢 (CSSX-A35: all four updated; `bun run verify` 745/44 green) | `docs/grammar.md`, `docs/compatibility.md`, `docs/known-limitations.md`, `docs/cascade.md` | G3 (behaviour frozen) |
 | G5 | format | `format()` round-trip for definitions and use sites; semicolon/interpolation-free printing; no construct loss | `packages/compiler/src/formatter/`, `tests/compiler/formatter.test.ts`, `tests/extension/formatter.current-grammar.test.ts` | G1 (AST), G3 (semantics) |
-| G6a | editor | Completion after `@group.` (visible names, local first), hover showing resolved defaults and which base properties the current use site overrides, diagnostics already flow | `packages/vscode/src/intelligence.ts`, `packages/vscode/src/providers/completion.ts`, `packages/language-service/`, `tests/extension/provider.intelligence.test.ts` | G3 |
-| G6b | editor | Outline nodes (definition + use sites) and rename of a group definition/references, workspace-scoped | `packages/vscode/src/**` (outline/rename owners), `tests/extension/**` | G6a |
-| G6c | editor | TextMate scopes for `@group` definitions vs `@group.` members, distinct from media aliases and other directives | `packages/vscode/syntaxes/chikx.tmLanguage.json`, `tests/extension/grammar` | G1 |
+| G6a | editor | Completion after `@group.` (visible names, local first), hover showing resolved defaults and which base properties the current use site overrides, diagnostics already flow — 🟢 (CSSX-A39: `packages/vscode/src/groups.ts` mirrors the compiler's styles-only visibility closure from the document AST + `readModule` (local shadow, transitive `styles`, ambiguity, token-only exclusion); `@group.` completion offers local names first, imported names labelled with their module and ambiguous names marked, inserting the `name {\n  \n}` skeleton, and the `@group` directive appears in both top-level and rule-body `@` lists; hover shows the resolved definition module + defaults and the override list computed from base property names; definitions and use sites appear in the outline; `bun run verify` 824/45 green) | `packages/vscode/src/intelligence.ts`, `packages/vscode/src/providers/completion.ts`, `packages/language-service/`, `tests/extension/provider.intelligence.test.ts` | G3 |
+| G6b | editor | Outline nodes (definition + use sites) and rename of a group definition/references, workspace-scoped — 🟢 (CSSX-A39: outline nodes delivered with G6a; `renameAt` renames the definition and every use-site reference across the visible module set (reads via the existing `readModule` host), returning multi-file edits that `providers/navigation.ts` applies as a `WorkspaceEdit`, and refuses ambiguous/unknown names naming both defining modules; the single-file `$token` rename contract is unchanged; `bun run verify` 824/45 green) | `packages/vscode/src/**` (outline/rename owners), `tests/extension/**` | G6a |
+| G6c | editor | TextMate scopes for `@group` definitions vs `@group.` members, distinct from media aliases and other directives — 🟢 (CSSX-A40: root `meta.directive.group.chikx` vs rule-body `meta.group.use.chikx`, member `entity.name.type.group.chikx`, `group` reserved in the alias/variant matchers, malformed bare/spaced forms keyword-only; 36/36 grammar tests (29 unchanged + 7 new) and 805/45 full suite green. The `bun run verify` gate A40 could not clear (pre-existing untracked `.pi/settings.json` lint failure and transient parallel A39 typecheck state) was cleared once A39 landed: `bun run verify` 849/45 green at the CSSX-A43 close-out; see `.ai/reports/CSSX-A40.md`) | `packages/vscode/syntaxes/chikx.tmLanguage.json`, `tests/extension/grammar` | G1 |
 
 Sequencing: **G0 is a hard gate** — G1 may not start before ADR-0017 is accepted and (a)–(c) are
 answered. G2 needs the AST shape from G1; G3 needs G2's visibility. After G3 lands, G4a must precede
@@ -304,11 +306,11 @@ disjoint files. G6a/G6b are in the editor release after the compiler phase, neve
   visibility rule, diagnostics/recovery, the v1 exclusions and the three owner answers. SPECIFICATION
   grammar/§3.6/§13 are updated; `bun run verify` is untouched-but-green (docs only) and no golden
   changed.
-- **G1** — `@group.x { … }` parses at top level; a use site parses in a rule body; definitions inside
-  rules, non-declaration blocks inside either, and malformed dotted names are CHIKX1001 with
-  statement-level recovery and no crash. AST nodes carry spans and are documented as ADR-0017
-  additions. Parser/lexer tests prove acceptance *and* rejection; no output change for group-free
-  sources (existing goldens untouched).
+- **G1** — `@group.x { … }` parses at top level; the same syntax is a use site in a rule body
+  (position decides); malformed group statements inside rules, non-declaration blocks inside either,
+  and malformed dotted names are CHIKX1001 with statement-level recovery and no crash. AST nodes
+  carry spans and are documented as ADR-0017 additions. Parser/lexer tests prove acceptance *and*
+  rejection; no output change for group-free sources (existing goldens untouched).
 - **G2** — Resolver collects top-level definitions per module in sorted/canonical order; visibility is
   own + transitive `styles` closure (or the (a) answer), memoized and cycle-safe; `@use … as group` is
   CHIKX2001; duplicate/local-shadow/ambiguous cases resolve exactly as §2.4. Tests cover every row of
@@ -344,7 +346,7 @@ Single-file fixtures (`tests/fixtures/groups/<case>/input.cssx` → `expected/cs
 | `two-use-sites` | independent expansion, no cross-contamination, safe grouping unchanged |
 | `unknown-group` | CHIKX2001, block omitted, emptied rule dropped |
 | `duplicate-definition` | CHIKX2001 at the later definition, first wins |
-| `definition-in-rule` | CHIKX1001, definition omitted |
+| `group-position` | the same `@group.card { … }` syntax is a definition at top level and a use site inside a rule body (position decides; no diagnostic) |
 | `nested-rule-in-definition` | CHIKX1001, statement omitted, rest of group survives |
 | `conditional-use-site` | CHIKX1001 (`@group.x @md { … }` is out of v1) |
 | `inline-variant-default` | variant segments in defaults expand in order (§5 item 1 of this plan) |

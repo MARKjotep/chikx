@@ -57,6 +57,18 @@ export const messages = {
   expectedSettingColon: "syntax error: expected ':' after a setup setting key",
   expectedTokenName: "syntax error: expected a token name inside @variables",
   expectedAliasName: "syntax error: expected an alias name inside @media-types",
+  groupMissingName:
+    'syntax error: expected a group name after "@group."; write @group.<name> contiguously (ADR-0017)',
+  groupMalformedName:
+    'syntax error: malformed group name; "@group", "." and the name must be contiguous and the name a CSS identifier (ADR-0017)',
+  groupNeedsBlock: (group: string) =>
+    `syntax error: expected '{' to open the ${group} block; the block is required in v0.1 (ADR-0017)`,
+  groupConditionalUseSite: (group: string) =>
+    `syntax error: conditional group use site "${group} @…" is not supported; an unconditional use-site block is required in v0.1 (ADR-0017)`,
+  groupDeclarationsOnly: (group: string) =>
+    `syntax error: ${group} accepts declarations only; nested rules, conditional blocks and at-rules are not allowed (ADR-0017)`,
+  groupNotAllowedHere: (group: string, context: string) =>
+    `syntax error: ${group} is not allowed inside ${context}; group use sites belong in a rule body (ADR-0017)`,
   unclosedTypeBlock: (construct: string) =>
     `unclosed block: expected '}' before end of file for ${construct}`,
   internalRecovery: "syntax error: parser recovered from an unexpected token",

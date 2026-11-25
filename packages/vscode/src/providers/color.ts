@@ -1,14 +1,19 @@
 /**
- * Chikx color provider: hex colors authored in declaration values become color
- * swatches, with hex/alpha-preserving presentations on edit.
+ * Chikx color provider: named and hex colors authored in declaration values
+ * become inline swatches, with hex/alpha-preserving presentations on edit.
+ *
+ * The detection is the pure `colorsAt` helper; this adapter only converts its
+ * ranges and channels into `vscode` types. VS Code renders the swatch inline and
+ * opens the native color picker on click; picking a color writes back
+ * `#rrggbb` (lowercase, alpha only when it is not 1).
  */
 
 import * as vscode from "vscode";
 import { sourceTextOf, toEditorRange } from "../adapter.js";
-import { colorsOf, hexColorToRgba, rgbaToHex } from "../intelligence.js";
+import { colorsAt, rgbaToHex } from "../intelligence.js";
 import type { AnalysisService } from "../service.js";
 
-/** Color swatches for hex values in declarations. */
+/** Color swatches for named and hex values in declarations. */
 export class ChikxColorProvider implements vscode.DocumentColorProvider {
   constructor(private readonly service: AnalysisService) {}
 
@@ -16,26 +21,25 @@ export class ChikxColorProvider implements vscode.DocumentColorProvider {
     document: vscode.TextDocument,
     token: vscode.CancellationToken,
   ): Promise<vscode.ColorInformation[]> {
-    const state = await this.service.analyzeNow(sourceTextOf(document));
+    const source = sourceTextOf(document);
+    const state = await this.service.analyzeNow(source);
     if (token.isCancellationRequested) return [];
-    const colors: vscode.ColorInformation[] = [];
-    for (const occurrence of colorsOf(state.analysis)) {
-      const rgba = hexColorToRgba(occurrence.value);
-      if (rgba === undefined) continue;
-      colors.push(
+    return colorsAt(source.text, state.analysis).map(
+      ({ color, range }) =>
         new vscode.ColorInformation(
-          toEditorRange(occurrence.range),
-          new vscode.Color(rgba.red, rgba.green, rgba.blue, rgba.alpha),
+          toEditorRange(range),
+          new vscode.Color(color.red, color.green, color.blue, color.alpha),
         ),
-      );
-    }
-    return colors;
+    );
   }
 
   provideColorPresentations(
     color: vscode.Color,
     context: { readonly document: vscode.TextDocument; readonly range: vscode.Range },
   ): vscode.ColorPresentation[] {
+    // One hex presentation replaces exactly the authored value: a named color
+    // (`red`) is rewritten only when the author actively picks a color, never by
+    // an implicit edit.
     const presentation = new vscode.ColorPresentation(
       rgbaToHex(color.red, color.green, color.blue, color.alpha),
     );

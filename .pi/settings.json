@@ -1,0 +1,23 @@
+{
+  "$schema": "https://pi.dev/schemas/settings.schema.json",
+  "defaultProvider": "opencode-go",
+  "defaultModel": "glm-5.3-flash",
+  "defaultThinkingLevel": "medium",
+  "enabledModels": [
+    "opencode-go/glm-5.3-flash",
+    "opencode-go/deepseek-v4.1-flash",
+    "opencode-go/glm-5.3",
+    "opencode-go/mimo-v2.6-flash"
+  ],
+  "modelThinkingLevels": {
+    "opencode-go/glm-5.3-flash": "medium",
+    "opencode-go/deepseek-v4.1-flash": "high",
+    "opencode-go/glm-5.3": "high",
+    "opencode-go/mimo-v2.6-flash": "low"
+  },
+  "defaultTools": ["read", "grep", "find", "ls", "bash"],
+  "showCacheMissNotices": true,
+  "compaction": {
+    "enabled": true
+  }
+}

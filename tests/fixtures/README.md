@@ -24,6 +24,9 @@ tests/fixtures/<group>/<fixture>/
   `<fixture-id>/input.cssx` relative to the workspace root. A fixture that needs a different source
   location ships `source-path.txt` containing one workspace-relative POSIX path; the harness reads
   it and uses that path instead. Only `output/nested-source` does this today.
+- Merged-build fixtures (`keyframes/*`, `runtime/override-*`, `groups/*` merged cases) ship
+  `entry.cssx` and are compiled by their feature suite through `compileProject`; they are not part
+  of the plain `input.cssx` entry catalog.
 - Sibling `.cssx` files are token-only modules resolved exactly as the fixture's `@use` specifiers
   say; they are not independent entries.
 - `chikx.config.json` is read only for project-configuration fixtures. The document schema is frozen
@@ -49,7 +52,10 @@ syntax/lexical rules and the diagnostic registry in
 
 Semantic fixtures (`variables/*` errors, `runtime/collision-with-compile-time`, naming and output
 fixtures) keep `null` until their phase lands; their intended outcome is recorded in the table
-below.
+below. Reusable-declaration-group fixtures (`groups/**`) author their complete expectation set now:
+`tests/compiler/groups.golden.test.ts` compiles every one of them through the real
+`compileProject` build and pins the codes, messages and spans (G4a of
+`.ai/plans/CSSX-PLAN-GROUPS.md`).
 
 ## Diagnostics format and matching policy
 
@@ -130,6 +136,26 @@ points at end of file, where an unclosed block is reported.
 | `keyframes/style-import` | ADR-0015: a keyframe from a `@use "…" styles` module is referenceable from the importing file; the merged build emits the block (merged fixture: `entry.cssx`). |
 | `keyframes/token-only` | ADR-0015: a token-only import does not expose keyframe names (`CHIKX2001`, empty CSS) because its block is not emitted. |
 | `keyframes/duplicate-name` | ADR-0015: two merged modules may declare the same keyframe name; both blocks are emitted and the cascade decides, with no diagnostic (merged fixture: `entry.cssx`). |
+| `groups/same-file` | ADR-0017 item 3: definition plus one use site with overrides; **all** repeated properties are emitted in authored order (`padding: 12px` and `padding: 20px`) — no filter, no dedupe, no reorder. |
+| `groups/no-override` | ADR-0017 item 2: an empty use-site block is valid and expands the defaults only. |
+| `groups/two-use-sites` | ADR-0017 item 3: two use sites expand independently (no cross-contamination) and `groupRuns("safe")` still merges the two adjacent `.status` runs without reordering the spliced declarations. |
+| `groups/unknown-group` | ADR-0017 item 7: an unknown group is CHIKX2001, exactly the use-site block is omitted, and the rule it emptied is dropped. |
+| `groups/duplicate-definition` | ADR-0017 item 5: CHIKX2001 spans the later definition, the first definition wins, and that first group still expands with the use-site override. |
+| `groups/group-position` | ADR-0017 item 1: the same `@group.card { … }` syntax is a definition at top level and a use site inside a rule body (also nested under `&:hover`); position decides, so there is no diagnostic. |
+| `groups/nested-rule-in-definition` | ADR-0017 items 1/7: a nested rule inside a definition is CHIKX1001, that statement is omitted, and the surviving defaults (`padding`, `color`) still expand. |
+| `groups/conditional-use-site` | ADR-0017 item 7 / §9.1: `@group.card @md { … }` is out of v0.1 — CHIKX1001, the whole statement is omitted, and the rule's own declaration continues. |
+| `groups/inline-variant-default` | ADR-0017 item 8: an inline variant in a default (`padding: 8px @md 12px`) expands as a base segment plus an `@media (min-width: 768px)` segment in authored order. |
+| `groups/important-default` | ADR-0017 item 3: a group default authored `!important` is not beaten by a later plain use-site declaration; both declarations are emitted and the CSS cascade decides. |
+| `groups/empty-group` | ADR-0017 item 1: an empty definition is legal, inert and reports nothing; an empty use-site block of a non-empty group still expands that group's defaults. |
+| `groups/group-named-keyframes` | ADR-0017 item 5: `@group.keyframes` is legal and expands normally, while `$keyframes.spin` keeps resolving to the `@keyframes` block (the two namespaces stay independent). |
+| `groups/alias-group` | ADR-0017 items 5/7: `@use "…" as group` is CHIKX2001 at the `@use` (reserved directive name); the rejected statement imports nothing and the rest of the file compiles. |
+| `groups/style-import` | ADR-0017 item 4: a group defined in a `@use "…" styles` module is usable in the entry, and its default resolves the defining module's token (`$pad` → `12px`) (merged fixture: `entry.cssx`). |
+| `groups/token-only` | ADR-0017 item 4, owner decision (a): a token-only import exposes no groups — CHIKX2001, the block is omitted and no CSS is emitted (merged fixture: `entry.cssx`). |
+| `groups/ambiguous-import` | ADR-0017 item 5: two `styles` modules define `card` with no local definition — CHIKX2001 naming both modules, both definitions stay inert, and the emptied rule is dropped (merged fixture: `entry.cssx`). |
+| `groups/local-shadows-import` | ADR-0017 item 5: a local definition shadows the imported same-named definition with no diagnostic (merged fixture: `entry.cssx`). |
+| `groups/transitive-visibility` | ADR-0017 item 4: `entry styles→ b styles→ c`; the group defined in `c` is usable in the entry and the merge order stays depth-first (`c`, `b`, entry) (merged fixture: `entry.cssx`). |
+| `groups/cross-module-defining-tokens` | ADR-0017 item 6: a default's `$pad` resolves in the defining module (`12px`), the entry's identically named token (`40px`) never leaks in, and the override stays later (merged fixture: `entry.cssx`). |
+| `groups/runtime-ref` | ADR-0017 item 6, owner decision (b): a `@runtime` reference in a default is CHIKX2001 with that declaration omitted; the rest of the group expands and the runtime declaration still emits (merged fixture: `entry.cssx`). |
 | `runtime/basic` | SPECIFICATION.md §3.4 runtime custom property plus reference. |
 | `runtime/with-variant` | Runtime tokens with `@dark`, `@md` and `@dark+md` overrides. |
 | `runtime/collision-with-compile-time` | Compile-time and runtime `primary` collide; intended CHIKX2001 error. |

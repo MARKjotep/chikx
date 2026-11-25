@@ -34,7 +34,8 @@ such rather than assumed.
 | Safe grouping | ✅ Supported (default) | Merges adjacent compatible runs only; computed styles equal `mediaGrouping: "none"`. | `tests/browser/specs/grouping.pw.ts` |
 | CSS source maps | ✅ Supported (opt-in) | `source-map: true` writes a v3 `<css-name>.map` with declaration-level mappings (one per emitted selector and declaration), `sourcesContent` and a `sourceMappingURL` comment; no map when CSS emission is off. | `tests/compiler/sourcemap.test.ts`, `mapgen.test.ts`, `examples/custom-output` |
 | Formatter | ✅ CLI only | `chikx format [file]` reprints sources canonically in place and is idempotent; `--check` writes nothing and exits 1 when a file would change; `--dry-run` reports. Parse errors return the input unchanged. The VS Code extension does not yet expose a formatting provider. | `tests/integration/format-cli.test.ts`, `tests/compiler/formatter.test.ts` |
-| Mixins / `@group` / `@apply` | ❌ Deferred | Not in the grammar. Requires a future ADR. | SPECIFICATION §13 |
+| Reusable declaration groups (`@group.<name>`) | ✅ Supported | Top-level definitions plus rule-body use sites (ADR-0017, SPECIFICATION §3.7). A definition emits no CSS; a use site expands at compile time to the group's declarations in authored definition order followed by the block's overrides in authored order, at the authored position, as one declaration run. No new runtime concept and no generated code: the output is ordinary CSS declarations that engines cascade normally. The group Playwright scenarios (G4b) are not part of the recorded browser matrix yet. Visible names are the file's own plus those of `@use … styles` modules; token-only imports expose none; `@use … as group` and `$group.<name>` are `CHIKX2001`. | `tests/compiler/groups.parser.test.ts`, `tests/compiler/groups.resolver.test.ts`, `tests/compiler/groups.expansion.test.ts` |
+| Mixins / `@apply` | ❌ Deferred | `@group.<name>` ships, but only in its non-parametric form (row above). `@apply` and parameterised mixins are not in the grammar and require a future ADR. | SPECIFICATION §3.7, §13 |
 | Arbitrary expressions | ❌ Deferred | Variables substitute tokens, not computed expressions. | SPECIFICATION §13 |
 | Container aliases | ❌ Deferred | `@container` itself passes through natively; Chikx aliases for containers do not exist. | SPECIFICATION §13 |
 | Inline pseudo-state modifiers | ❌ Deferred | Write `&:hover { … }` (supported) rather than a modifier alias such as `@hover`. | SPECIFICATION §13 |
@@ -74,7 +75,7 @@ silently altered.
 | VS Code extension | ✅ Implemented | Language ID `chikx`, TextMate grammar, language configuration, diagnostics, completions, hover, definition/references/rename, colors, outline, six commands, preview. Tested on VS Code `1.147.0`; the manifest declares `^1.85.0`, older versions are untested. |
 | Compile on save | ⚠️ Off by default | Opt-in `chikx.compileOnSave`, requires a trusted workspace; no watcher is started by the extension. |
 | Restricted Mode | ✅ Read-only features only | Diagnostics, completion, hover, preview and check work; writing commands are blocked. |
-| CSS language-server projection | ❌ Not implemented | The extension does not project Chikx onto `vscode-css-languageservice`; property hover is intentionally empty and property/value completions are curated lists. |
+| CSS language-server projection | ❌ Not implemented | The extension does not embed `vscode-css-languageservice`; hover and completion documentation use the built-in one-sentence table for the 107 supported properties, and property/value completions are curated lists. Full css-languageservice data (all properties, MDN links) is intentionally not embedded. |
 | Cross-module / cross-file rename (CLI or editor) | ❌ Not implemented | Single-file `$token` rename is supported; namespace members and class rename across JSX are refused. |
 | Class rename across JSX | ❌ Not implemented | Generated names change on prefix changes; update consumers manually. |
 | Browser cascade verification | ✅ Chromium, Firefox, WebKit | 75/75 Playwright tests recorded pass, 25 per engine (CSSX-BROWSER-01). |
@@ -87,6 +88,9 @@ silently altered.
   diagnosed everywhere.
 - **No cascade repair.** Authored order is preserved, including a later base overriding an earlier
   conditional (see [cascade.md](cascade.md)).
+- **Groups are not mixins.** `@group.<name>` takes no parameters, arguments or interpolation, has no
+  conditional use-site form, and cannot include another group. A use site is expanded, never
+  analysed; the full v1 exclusion list is in [known-limitations.md](known-limitations.md).
 - **Output paths** in project mode repeat the workspace-relative source path (for example
   `dist/styles/src/deep/widget.css`). File-level `@setup` directories are exact.
 - **Tokenizer coverage** is tested against `url("image@2x.png")`, strings containing `@dark`,

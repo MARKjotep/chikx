@@ -109,24 +109,31 @@ editor can continue.
 ### 3.2 Grammar (EBNF)
 
 ```ebnf
-file          = { setup | use | variables | runtime | mediaTypes | rule | nativeAtRule } ;
+file          = { setup | use | variables | runtime | mediaTypes | groupDefinition | rule
+                | nativeAtRule } ;
 setup         = "@setup" "{" { setting } "}" ;
 setting       = identifier ":" scalar ";" ;
 use           = "@use" string [ "as" identifier ] [ "styles" ] ";" ;
 variables     = "@variables" "{" { tokenDeclaration } "}" ;
 runtime       = "@runtime" "{" { declaration } "}" ;
 mediaTypes    = "@media-types" "{" { aliasDeclaration } "}" ;
-rule          = selector "{" { declaration | rule | conditionalBlock | nativeAtRule } "}" ;
+rule          = selector "{" { declaration | rule | conditionalBlock | nativeAtRule
+                | groupUseSite } "}" ;
 declaration   = property ":" cssValue { modifier cssValue } ";" ;
 modifier      = "@" alias { "+" alias } ;
 conditionalBlock = modifier "{" { declaration | rule | conditionalBlock } "}" ;
+groupDefinition = "@group" "." groupName "{" { declaration } "}" ;
+groupUseSite    = "@group" "." groupName "{" { declaration } "}" ;
 ```
 
 This is structural grammar. CSS values and selectors require balanced token parsing rather than
 simple strings. Aliases may begin with digits (for example `2xl`). Setup, `@use`, `@variables`,
-`@runtime` and `@media-types` are top-level only. Multiple `@setup` blocks MAY appear at top
-level; they are merged in document order, and a duplicate setting key within a block or across
-blocks is rejected with a CHIKX1001-family diagnostic (masterplan §4 rejects duplicate settings).
+`@runtime`, `@media-types` and `@group` definitions are top-level only. Multiple `@setup` blocks MAY
+appear at top level; they are merged in document order, and a duplicate setting key within a block
+or across blocks is rejected with a CHIKX1001-family diagnostic (masterplan §4 rejects duplicate
+settings).
+
+`@group` definitions and use sites are specified in §3.7 (ADR-0017, owner decision of 2026-11-25).
 
 The optional `styles` clause of `@use` (ADR-0014) marks a rule-merge import: the target's
 stylesheet rules are merged into the importing build in addition to its tokens (§6.3). Without the
@@ -194,8 +201,115 @@ MUST be rejected with diagnostics rather than silently changing semantics.
 
 Chikx directives are reserved and MUST NOT be used as aliases, variables or class-map keys where
 that would conflict. Conflicting alias names are rejected. The built-in `keyframes` namespace name is
-reserved: an `@use` alias named `keyframes` is CHIKX2001 (§6.4). Native CSS keywords keep their native
+reserved: an `@use` alias named `keyframes` is CHIKX2001 (§6.4). The directive name `group` is
+reserved: an `@use` alias named `group` is CHIKX2001 at the `@use` statement, creates no namespace and
+does not shadow the built-in `@group.<name>` construct (§3.7). Native CSS keywords keep their native
 meaning.
+
+### 3.7 Reusable declaration groups
+
+A group is a named, non-parametric set of declarations, defined once and spliced into any rule body
+with per-use-site overrides (ADR-0017, owner decision of 2026-11-25):
+
+```ebnf
+groupDefinition = "@group" "." groupName "{" { declaration } "}" ;
+groupUseSite    = "@group" "." groupName "{" { declaration } "}" ;
+```
+
+**Definition.** `@group.<name> { … }` accepts declarations only. A definition exists only at the top
+level: the identical syntax inside a rule body is a use site, never a definition, because position
+decides (§3.2). CHIKX1001 recovery therefore covers malformed group statements inside rules — a bad
+dotted form, a bare `@group`, or a non-declaration statement in the block — with statement-scoped
+recovery. Nested rules, conditional blocks, native at-rules and further `@group.` statements inside a
+definition are CHIKX1001-family syntax errors: one diagnostic per offending statement, the statement
+is omitted and the rest of the definition survives. `@group` is not a mixin: there are no parameters,
+arguments or interpolation. A definition emits no CSS; unused definitions are inert, and empty
+definitions are legal, inert and produce no diagnostic. Group names are plain CSS identifiers,
+matched exactly and case-sensitively, in their own `group` symbol kind. The three parts of
+`@group.<name>` are contiguous; whitespace inside the dotted form, or a missing name, is CHIKX1001.
+
+**Use site.** `@group.<name> { <overrides> }` is valid inside any rule body at any nesting depth and
+accepts declarations only. The block is required in v0.1: a bare `@group.<name>;` is CHIKX1001; so is
+a nested rule or a conditional block inside the use-site block.
+
+**Expansion.** The group's defaults are spliced at the authored position in definition order,
+followed by the use-site block's declarations in authored order, as one declaration run:
+
+```scss
+@group.card {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  color: black;
+}
+.panel {
+  @group.card {
+    padding: 20px;
+    color: navy;
+  }
+}
+.tile {
+  @group.card {
+    border-radius: 0;
+  }
+}
+```
+
+lowers to the equivalent authored CSS:
+
+```scss
+.panel {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  color: black;
+  padding: 20px;
+  color: navy;
+}
+.tile {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  color: black;
+  border-radius: 0;
+}
+```
+
+The compiler MUST NOT filter, reorder, merge, deduplicate or rewrite the group's lines. Overrides win
+by the ordinary cascade: the use-site declaration is later at equal specificity (§5.2), including
+against a group default authored as an inline variant, at every width. `!important` binds per value
+segment (§3.3, §5.4), so a group default carrying `!important` is not beaten by a plain use-site
+declaration. Expansion never changes selector, ancestors, native-rule context, following declarations
+or safe grouping (§5.1, §5.3), and each use site expands independently.
+
+**Visibility and precedence.** A module sees its own top-level group definitions plus the
+definitions of every module reached through `@use "…" styles;` transitively in authored order (§6.3,
+ADR-0014). Token-only imports expose no groups. A local definition shadows imported definitions of
+the same name without a diagnostic. Two visible imported definitions with no local definition are
+ambiguous: CHIKX2001 at the use site and the use-site block is omitted, while both definitions stay
+inert. Duplicate definitions in one module are CHIKX2001 at the later definition, and the first
+definition wins. Groups are not addressable through an import alias, and `@use "…" as group` is
+CHIKX2001 at the `@use` statement: the rejected alias clause makes the whole statement invalid, so no
+namespace and no tokens are imported, mirroring `as keyframes` (§3.6, §6.4). `$group.<name>` is not a
+value reference: it is the existing unknown-token-namespace case, CHIKX2001 with the declaration
+segment omitted (§6.1, §12). `@group.keyframes` is legal and does not interact with `$keyframes` (§6.4).
+
+**Tokens and spans.** Defaults resolve against the defining module's tokens; use-site declarations
+resolve against the consuming module (§6.1). A `@runtime` reference in a group default is CHIKX2001
+with the declaration omitted (§6.1, §12); runtime customization is authored at the use site.
+Expanded declarations keep their authored spans and files — defaults from the definition, overrides
+from the use site — so diagnostics and source maps point at the authored text (ADR-0005).
+
+**Diagnostics.** Unknown, ambiguous, duplicate, alias and `$group.` failures reuse CHIKX2001; syntax
+misuse is CHIKX1001; no new diagnostic code exists for this feature. Messages name the group, and an
+ambiguity message names the two defining modules. Recovery omits exactly the offending statement or
+the use-site block, and a rule emptied by the omission is dropped like any other (§12).
+
+**Out of scope for v0.1.** Conditional or variant use-site blocks and conditional definitions; nested
+rules or native at-rules inside either block; `@apply`; parameters, interpolation or argument lists;
+group chaining; cross-module renaming and re-export of groups; the bare include form;
+`$group.<name>` value references; and editor support (completion, hover, outline, rename,
+highlighting), which is a follow-up release.
 
 ## 4. Media conditions
 
@@ -437,7 +551,11 @@ prelude is never substituted.
   `$keyframes` are CHIKX2001 at the reference and the affected declaration segment is omitted (§5.5).
   `@use "…" as keyframes` is CHIKX2001 at the `@use` statement and does not shadow the built-in
   namespace. No new diagnostic code exists for this feature.
-- **Editor support.** Completion, hover and rename for keyframe names are not part of v0.1.
+- **Rejected constructs.** String-named keyframes (`@keyframes "fade"`) and keyframes nested in a
+  rule or another at-rule block are not registered and cannot be referenced; both are rejected by
+  ADR-0018, which also confirms the styles-only visibility above as permanent.
+- **Editor support.** Completion, hover and rename for keyframe names are provided by the VS Code
+  extension over exactly the visible set above (CSSX-A42); no name the compiler rejects is offered.
 
 ## 7. Selectors and classes
 
@@ -679,9 +797,10 @@ boundary. Invalid CSS is never emitted; affected constructs are omitted after an
 
 The following are explicitly deferred beyond v0.1 and require an ADR plus regression fixtures:
 
-- mixins and reusable declaration groups (`@group`/`@apply`);
-- keyframe names through token-only imports and keyframe editor support (ADR-0015; use
-  `@use "…" styles` for imported keyframes);
+- mixins and the `@apply` alias;
+- keyframe names through token-only imports (permanent styles-only rule) and string-named or
+  conditional keyframes (rejected for v0.1 by ADR-0015/ADR-0018; use `@use "…" styles` for imported
+  keyframes); keyframe editor support is no longer deferred (CSSX-A42);
 - arbitrary expressions and computation;
 - container aliases and attribute-based theme conditions;
 - inline pseudo-state modifiers;
@@ -692,6 +811,9 @@ The following are explicitly deferred beyond v0.1 and require an ADR plus regres
 - LSP server, cross-language rename and class rename across JSX;
 - safe advanced optimization and richer native CSS support;
 - source formatting beyond the initial formatter task.
+
+Reusable declaration groups (`@group.<name>`) are no longer deferred: they are specified by
+ADR-0017 in §3.7, which also lists the v1 exclusions.
 
 ## 14. Conformance
 

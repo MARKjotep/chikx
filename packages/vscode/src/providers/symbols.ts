@@ -21,6 +21,8 @@ function symbolKind(node: OutlineNode): vscode.SymbolKind {
       return vscode.SymbolKind.Variable;
     case "alias":
       return vscode.SymbolKind.EnumMember;
+    case "group":
+      return vscode.SymbolKind.Interface;
     case "rule":
       return vscode.SymbolKind.Class;
     case "declaration":

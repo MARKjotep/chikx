@@ -8,7 +8,13 @@
  * slashes.
  */
 
-import type { Declaration, Stylesheet, TokenDeclaration, UseImport } from "../types/ast.js";
+import type {
+  Declaration,
+  GroupDefinition,
+  Stylesheet,
+  TokenDeclaration,
+  UseImport,
+} from "../types/ast.js";
 import type { Diagnostic } from "../types/diagnostics.js";
 import type { Span } from "../types/span.js";
 
@@ -52,6 +58,47 @@ export interface KeyframeName {
   /** Span of the declaring `@keyframes` at-rule in that module. */
   readonly span: Span;
 }
+
+/**
+ * One `@group.<name>` definition visible to a module (ADR-0017).
+ *
+ * The definition stays in its declaring module: {@link module} and
+ * {@link definition} always point at the module that authored it, so expansion
+ * can attribute `$refs` to that module (SPECIFICATION.md §6.1).
+ */
+export interface VisibleGroup {
+  /** Group name without the `@group.` prefix, matched exactly and case-sensitively. */
+  readonly name: string;
+  /** Canonical path of the module whose `@group` block declares it. */
+  readonly module: string;
+  /** Span of the declaring `@group` at-rule in that module. */
+  readonly span: Span;
+  /** The declaring definition node, carrying the defaults and their authored spans. */
+  readonly definition: GroupDefinition;
+}
+
+/**
+ * How one group name resolves from a module's point of view (ADR-0017 item 5).
+ *
+ * Both variants stay inert data for the expansion pass: it splices
+ * {@link VisibleGroup.definition} for `resolved` and reports CHIKX2001 at the
+ * use site for `ambiguous` (plan G3). Ambiguity is not a resolver diagnostic
+ * because only a use site makes it actionable.
+ */
+export type GroupResolution =
+  | {
+      /** Exactly one addressable definition: local first, otherwise a single import. */
+      readonly kind: "resolved";
+      readonly group: VisibleGroup;
+    }
+  | {
+      /** Two or more imported definitions and no local one. */
+      readonly kind: "ambiguous";
+      /** The contested group name. */
+      readonly name: string;
+      /** Distinct visible definitions in traversal order; the message names their modules. */
+      readonly candidates: readonly VisibleGroup[];
+    };
 
 /** Origin of a symbol declared in the scope's own file. */
 export interface LocalSymbolOrigin {
@@ -173,6 +220,19 @@ export interface ModuleRecord {
    * build emits. Token-only imports contribute nothing.
    */
   readonly keyframes: ReadonlyMap<string, KeyframeName>;
+  /**
+   * `@group.<name>` definitions visible to this module (ADR-0017): its own
+   * top-level definitions plus those of every module reached through a `styles`
+   * `@use` edge (ADR-0014), transitively in authored order. Token-only imports
+   * contribute no groups.
+   *
+   * A local definition shadows imported definitions of the same name without a
+   * diagnostic; two imported definitions with no local one are
+   * {@link GroupResolution} `ambiguous` and stay inert until a use site reports
+   * CHIKX2001 (plan G3). The map is resolver-internal data: it carries no
+   * expansion state and nothing is emitted for a definition.
+   */
+  readonly groups: ReadonlyMap<string, GroupResolution>;
   /**
    * Whether the module contains top-level stylesheet rules or native at-rules.
    * Token-only modules report `false` so P4/P5 can skip artifact emission

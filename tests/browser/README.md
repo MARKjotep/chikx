@@ -47,6 +47,7 @@ CSS is hand-written: every stylesheet comes from `compile()`.
 | `states` | nested `&:hover`, `&:focus`, `&:disabled` opacity rules |
 | `reduced` | `@reduced` gates transition and animation |
 | `nesting` | `& > .icon` with `@lg` width |
+| `groups` | `@group.<name>` D1–D5 in `specs/groups.pw.ts`: override wins at 320/767/768/1279/1280, a base override beats an `@md` default at every width (by design), `@dark`/`@reduced` keep un-overridden defaults, a group `!important` survives a plain override, pretty/minify and safe/`none` grouping agree |
 
 Every page is checked for console errors, page errors, failed requests and
 HTTP ≥400 responses by the shared `page` fixture in `specs/support.ts`.

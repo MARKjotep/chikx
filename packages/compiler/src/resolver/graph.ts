@@ -13,6 +13,8 @@ import type { Diagnostic } from "../types/diagnostics.js";
 import { error } from "../types/diagnostics.js";
 import type { CompileOptions, ModuleHost } from "../types/options.js";
 import type { Span } from "../types/span.js";
+import { collectGroups, visibleGroups } from "./groups.js";
+import type { GroupSource } from "./groups.js";
 import { collectKeyframes, visibleKeyframes } from "./keyframes.js";
 import type { KeyframeSource } from "./keyframes.js";
 import { decodeCssString, isWithinWorkspace, normalizePosixPath } from "./paths.js";
@@ -83,15 +85,19 @@ export async function resolveModuleGraph(
 
   const modules = new Map<string, ModuleRecord>();
   const keyframeSources = new Map<string, KeyframeSource>();
+  const groupSources = new Map<string, GroupSource>();
   for (const [file, module] of loaded) {
-    keyframeSources.set(file, {
-      own: collectKeyframes(module.ast),
-      styleDependencies: dependencyTargets(module.imports, "styles").filter((target) =>
-        loaded.has(target),
-      ),
+    const styleDependencies = dependencyTargets(module.imports, "styles").filter((target) =>
+      loaded.has(target),
+    );
+    keyframeSources.set(file, { own: collectKeyframes(module.ast), styleDependencies });
+    groupSources.set(file, {
+      own: collectGroups(file, module.ast, report),
+      styleDependencies,
     });
   }
   const keyframes = visibleKeyframes(keyframeSources);
+  const groups = visibleGroups(groupSources);
 
   for (const [file, module] of loaded) {
     const scope = scopes.get(file);
@@ -107,6 +113,7 @@ export async function resolveModuleGraph(
       compileScope: scope.compileScope,
       runtimeScope: scope.runtimeScope,
       keyframes: keyframes.get(file) ?? new Map(),
+      groups: groups.get(file) ?? new Map(),
       hasRules: hasTopLevelRules(module.ast),
     });
   }

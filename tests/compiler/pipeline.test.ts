@@ -59,6 +59,16 @@ const DEFERRED_SEMANTIC_FIXTURES: Readonly<
   },
 };
 
+/**
+ * Group fixtures whose CHIKX1001 is authored syntax misuse inside a group
+ * construct (ADR-0017 §3.7): the only non-`errors/` fixtures that diagnose
+ * during `parse`. `groups.golden.test.ts` pins the full diagnostic set.
+ */
+const GROUP_SYNTAX_FIXTURES: Readonly<Record<string, readonly string[]>> = {
+  "groups/conditional-use-site": ["CHIKX1001"],
+  "groups/nested-rule-in-definition": ["CHIKX1001"],
+};
+
 function readExpected(id: string): readonly ExpectedDiagnostic[] | null {
   const text = readFileSync(join(fixturesRoot, id, "expected", "diagnostics.json"), "utf8");
   return JSON.parse(text) as readonly ExpectedDiagnostic[] | null;
@@ -103,8 +113,8 @@ function expectedCodeSeverity(entries: readonly ExpectedDiagnostic[]): string[] 
 }
 
 describe("fixture catalog through the public pipeline", () => {
-  test("discovers the frozen 54-entry catalog", () => {
-    expect(fixtures).toHaveLength(54);
+  test("discovers the frozen 67-entry catalog", () => {
+    expect(fixtures).toHaveLength(67);
     expect(fixtures.filter((fixture) => fixture.id.startsWith("errors/"))).toHaveLength(9);
   });
 
@@ -144,7 +154,14 @@ describe("fixture catalog through the public pipeline", () => {
           expect(codeSeverity(result.diagnostics)).toEqual(expectedCodeSeverity(fixture.expected));
         }
       } else {
-        expect(result.diagnostics).toEqual([]);
+        const groupSyntax = GROUP_SYNTAX_FIXTURES[fixture.id];
+        if (groupSyntax !== undefined) {
+          // Authored group syntax misuse: the parser reports it, the golden suite
+          // asserts the span and message (ADR-0017 §3.7).
+          expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([...groupSyntax]);
+        } else {
+          expect(result.diagnostics).toEqual([]);
+        }
       }
     });
   }

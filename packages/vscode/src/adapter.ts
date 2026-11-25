@@ -73,6 +73,9 @@ export function toCompletionKind(kind: SuggestionKind): vscode.CompletionItemKin
       return vscode.CompletionItemKind.Property;
     case "value":
       return vscode.CompletionItemKind.Value;
+    case "color":
+      // Colour entries render as swatches in the suggest widget.
+      return vscode.CompletionItemKind.Color;
     case "alias":
       return vscode.CompletionItemKind.EnumMember;
     case "directive":
@@ -83,6 +86,8 @@ export function toCompletionKind(kind: SuggestionKind): vscode.CompletionItemKin
       return vscode.CompletionItemKind.Constant;
     case "member":
       return vscode.CompletionItemKind.Field;
+    case "group":
+      return vscode.CompletionItemKind.Module;
     case "setup-key":
       return vscode.CompletionItemKind.Property;
     case "setup-value":

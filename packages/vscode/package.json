@@ -75,6 +75,11 @@
           "default": false,
           "description": "Format the whole Chikx document with the canonical compiler formatter before saving. Off by default; Format Document (⌥⇧F) and editor.formatOnSave work independently."
         },
+        "chikx.editor.completePropertyWithSemicolon": {
+          "type": "boolean",
+          "default": true,
+          "description": "Insert the semicolon when accepting a CSS property completion (color becomes color: ;) and place the cursor after the colon, before the semicolon. Turning this off inserts only `property: `."
+        },
         "chikx.previewSplitEditor": {
           "type": "boolean",
           "default": true,

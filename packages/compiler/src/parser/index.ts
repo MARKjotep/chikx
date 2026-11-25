@@ -17,9 +17,11 @@ import { parseStylesheet } from "./statements.js";
  *
  * Statement-depth rules worth knowing at the call site:
  *
- * - `@setup`, `@use`, `@variables`, `@runtime`, `@media-types`, rules and
- *   native at-rules are the only top-level constructs; a top-level conditional
- *   block is diagnosed and dropped.
+ * - `@setup`, `@use`, `@variables`, `@runtime`, `@media-types`, `@group`
+ *   definitions, rules and native at-rules are the only top-level constructs; a
+ *   top-level conditional block is diagnosed and dropped. `@group.<name>`
+ *   definitions are inert and declarations-only, and the same construct in a
+ *   rule body parses as a use site (ADR-0017).
  * - Nested rules versus declarations are decided by balanced lookahead: a `{`
  *   before the statement terminator makes a rule (ADR-0002).
  * - `!important` stays raw text per segment and sets only that segment's flag

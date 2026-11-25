@@ -1,0 +1,72 @@
+:root {
+  --eme-surface: #ffffff;
+  --eme-accent: #0f766e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --eme-surface: #0f172a;
+    --eme-accent: #2dd4bf;
+  }
+}
+
+.eme-card {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #d4d4d8;
+  box-sizing: border-box !important;
+  padding: 20px;
+}
+
+.eme-tile {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #d4d4d8;
+  box-sizing: border-box !important;
+  border-radius: 0;
+}
+
+.eme-framed {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #d4d4d8;
+  box-sizing: border-box !important;
+  box-sizing: content-box;
+}
+
+.eme-raised {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  background: #ffffff;
+  padding: 12px;
+}
+
+@media (min-width: 768px) {
+  .eme-raised {
+    padding: 20px;
+  }
+}
+
+.eme-raised {
+  background: var(--eme-surface);
+  color: var(--eme-accent);
+}
+
+.eme-flush {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  background: #ffffff;
+  padding: 12px;
+}
+
+@media (min-width: 768px) {
+  .eme-flush {
+    padding: 20px;
+  }
+}
+
+.eme-flush {
+  padding: 4px;
+}
+
+.eme-local-token {
+  margin-top: 40px;
+}
