@@ -26,6 +26,9 @@ import { mapIrDeclarations } from "./walk.js";
  *   bare namespace, a reference cycle or an over-deep chain) is CHIKX2001 at
  *   the reference span, and the **declaration segment** is omitted. A `$` never
  *   leaks into CSS.
+ * - The built-in `keyframes` namespace (ADR-0015) is not a variable:
+ *   `$keyframes.<name>` expands to the authored name text of a visible
+ *   `@keyframes` block.
  * - A rule whose declarations are all omitted is dropped, and a native block
  *   whose children are all dropped is dropped too, so no empty shells that
  *   could change cascade or at-rule validity are emitted. Statement at-rules

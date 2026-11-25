@@ -13,6 +13,8 @@ import type { Diagnostic } from "../types/diagnostics.js";
 import { error } from "../types/diagnostics.js";
 import type { CompileOptions, ModuleHost } from "../types/options.js";
 import type { Span } from "../types/span.js";
+import { collectKeyframes, visibleKeyframes } from "./keyframes.js";
+import type { KeyframeSource } from "./keyframes.js";
 import { decodeCssString, isWithinWorkspace, normalizePosixPath } from "./paths.js";
 import { buildScopes, collectLocalSymbols } from "./scopes.js";
 import type { LocalSymbols } from "./scopes.js";
@@ -80,6 +82,17 @@ export async function resolveModuleGraph(
   }
 
   const modules = new Map<string, ModuleRecord>();
+  const keyframeSources = new Map<string, KeyframeSource>();
+  for (const [file, module] of loaded) {
+    keyframeSources.set(file, {
+      own: collectKeyframes(module.ast),
+      styleDependencies: dependencyTargets(module.imports, "styles").filter((target) =>
+        loaded.has(target),
+      ),
+    });
+  }
+  const keyframes = visibleKeyframes(keyframeSources);
+
   for (const [file, module] of loaded) {
     const scope = scopes.get(file);
     if (scope === undefined) continue;
@@ -89,12 +102,11 @@ export async function resolveModuleGraph(
       file,
       ast: module.ast,
       dependencies: dependencyTargets(module.imports).filter((target) => loaded.has(target)),
-      styleDependencies: dependencyTargets(module.imports, "styles").filter((target) =>
-        loaded.has(target),
-      ),
+      styleDependencies: keyframeSources.get(file)?.styleDependencies ?? [],
       importedBy,
       compileScope: scope.compileScope,
       runtimeScope: scope.runtimeScope,
+      keyframes: keyframes.get(file) ?? new Map(),
       hasRules: hasTopLevelRules(module.ast),
     });
   }

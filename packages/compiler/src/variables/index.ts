@@ -9,10 +9,12 @@
  *    runtime references to `var(--...)`. Undefined symbols, unknown namespaces
  *    or members and reference cycles are CHIKX2001 at the reference span and the
  *    affected declaration segment is omitted, so a literal `$` never reaches
- *    CSS.
+ *    CSS. The built-in `keyframes` namespace (ADR-0015) expands
+ *    `$keyframes.<name>` to the authored keyframe name text.
  * 2. {@link emitRuntimeTokens} — emits `:root` custom-property rules for
  *    `@runtime` tokens (prefix-aware) with conditional `:root` overrides for
- *    inline variants, and rewrites runtime references in declaration values.
+ *    inline variants, resolves duplicate property names in merge order with the
+ *    entry last (ADR-0016), and rewrites runtime references in declaration values.
  *
  * Canonical pipeline position for consumers:
  *

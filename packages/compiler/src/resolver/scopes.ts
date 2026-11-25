@@ -12,6 +12,7 @@ import type { Declaration, Stylesheet, TokenDeclaration } from "../types/ast.js"
 import type { Diagnostic } from "../types/diagnostics.js";
 import { error } from "../types/diagnostics.js";
 import type { Span } from "../types/span.js";
+import { KEYFRAMES_NAMESPACE } from "./keyframes.js";
 import type {
   ImportSymbolOrigin,
   ResolvedImport,
@@ -195,11 +196,13 @@ function resolveUnqualified(
       const conflicting = list[1];
       const span =
         conflicting === undefined ? first.import.item.span : conflicting.import.item.span;
-      const targets = list.map((provider) => `"${provider.target}"`).join(", ");
+      const sources = list
+        .map((provider) => `"${provider.target}" (${labelFor(provider.tokenType)})`)
+        .join(", ");
       report(
         error(
           "CHIKX2001",
-          `Ambiguous unqualified import in "${file}": "$${name}" is exported by ${targets}.`,
+          `Ambiguous unqualified import in "${file}": "$${name}" is exported by ${sources}. Import it with a namespace (@use "..." as <alias>) or define "$${name}" locally to choose one.`,
           span,
         ),
       );
@@ -261,6 +264,20 @@ function collectNamespaceBindings(
   for (const imported of imports) {
     const alias = imported.item.alias;
     if (imported.target === undefined || alias === undefined || alias === "") continue;
+
+    // The built-in `keyframes` namespace is reserved (ADR-0015): an alias would
+    // shadow names that ADR-0015 defines, so it is a CHIKX2001 instead of a
+    // second, competing namespace.
+    if (alias === KEYFRAMES_NAMESPACE) {
+      report(
+        error(
+          "CHIKX2001",
+          `"$${alias}" is a built-in namespace (ADR-0015) and cannot be used as an @use alias in "${file}".`,
+          imported.item.span,
+        ),
+      );
+      continue;
+    }
 
     const existing = bindings.get(alias);
     if (existing === undefined) {

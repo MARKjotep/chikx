@@ -37,6 +37,22 @@ export interface ResolvedImport {
 /** The two symbol spaces a Chikx module can export. */
 export type ScopedTokenType = "compile" | "runtime";
 
+/**
+ * One `@keyframes` name referenceable as `$keyframes.<name>` in a module.
+ *
+ * Names are not symbols with a value: substitution splices {@link name} as
+ * literal CSS text, and the same authored text resolves identically in every
+ * module that can see it (ADR-0015).
+ */
+export interface KeyframeName {
+  /** Authored keyframe name, a plain identifier (no quotes or escapes). */
+  readonly name: string;
+  /** Canonical path of the module whose `@keyframes` block declared it. */
+  readonly module: string;
+  /** Span of the declaring `@keyframes` at-rule in that module. */
+  readonly span: Span;
+}
+
 /** Origin of a symbol declared in the scope's own file. */
 export interface LocalSymbolOrigin {
   readonly kind: "local";
@@ -150,6 +166,13 @@ export interface ModuleRecord {
   readonly compileScope: TokenScope;
   /** Runtime (`@runtime`) scope, including namespace member maps. */
   readonly runtimeScope: TokenScope;
+  /**
+   * `@keyframes` names visible to this module as `$keyframes.<name>` (ADR-0015):
+   * its own top-level blocks plus those of every module reached through a
+   * `styles` `@use` edge (ADR-0014), because that is exactly the CSS this module's
+   * build emits. Token-only imports contribute nothing.
+   */
+  readonly keyframes: ReadonlyMap<string, KeyframeName>;
   /**
    * Whether the module contains top-level stylesheet rules or native at-rules.
    * Token-only modules report `false` so P4/P5 can skip artifact emission

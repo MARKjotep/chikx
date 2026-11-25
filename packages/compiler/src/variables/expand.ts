@@ -1,4 +1,5 @@
 import { tokenize } from "../lexer/index.js";
+import { KEYFRAMES_NAMESPACE } from "../resolver/index.js";
 import type { ModuleGraph, ScopedToken } from "../resolver/index.js";
 import type { Diagnostic } from "../types/diagnostics.js";
 import { error } from "../types/diagnostics.js";
@@ -16,7 +17,9 @@ import type { Span } from "../types/span.js";
  *
  * Expansion is textual, not evaluative: the authored slice is spliced, so
  * whitespace, `calc()` spacing, comments and every non-reference token stay
- * byte-identical.
+ * byte-identical. The built-in `keyframes` namespace (ADR-0015) is the one
+ * reference family with no declaring value: `$keyframes.<name>` resolves to the
+ * authored keyframe name text and is spliced as a literal.
  */
 
 /** Maximum nested compile-time expansions before a chain is rejected. */
@@ -59,10 +62,17 @@ export interface TokenReference {
   readonly namespace?: string;
 }
 
-/** Resolution outcome for one reference. */
+/**
+ * Resolution outcome for one reference.
+ *
+ * `text` is a built-in compile-time reference whose expansion is literal CSS
+ * text rather than another value: `$keyframes.<name>` becomes the authored
+ * keyframe name (ADR-0015). It is spliced as-is and never recursed into.
+ */
 export type ReferenceResolution =
   | { readonly kind: "compile"; readonly token: ScopedToken }
   | { readonly kind: "runtime"; readonly token: ScopedToken }
+  | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "error"; readonly diagnostic: Diagnostic };
 
 /**
@@ -125,6 +135,12 @@ export function resolveReference(
     if (compile !== undefined) return { kind: "compile", token: compile };
     const runtime = record.runtimeScope.tokens.get(reference.name);
     if (runtime !== undefined) return { kind: "runtime", token: runtime };
+    if (reference.name === KEYFRAMES_NAMESPACE) {
+      return fail(
+        `"$${reference.name}" is a built-in namespace, not a token; reference a member such as "$${reference.name}.<name>".`,
+        span,
+      );
+    }
     if (
       record.compileScope.namespaces.has(reference.name) ||
       record.runtimeScope.namespaces.has(reference.name)
@@ -135,6 +151,21 @@ export function resolveReference(
       );
     }
     return fail(`Undefined token "${display}" in "${module}".`, span);
+  }
+
+  // Built-in `keyframes` namespace (ADR-0015): a compile-time reference that
+  // expands to the authored keyframe name. Visibility is resolved by the module
+  // graph (own blocks plus `styles` imports), so an unknown member and an
+  // out-of-scope name both stay CHIKX2001 with the segment omitted.
+  if (reference.namespace === KEYFRAMES_NAMESPACE) {
+    const keyframe = record.keyframes.get(reference.name);
+    if (keyframe === undefined) {
+      return fail(
+        `Unknown keyframe "${display}" in "${module}"; "$keyframes" exposes this file's own @keyframes names and those of modules imported with @use "..." styles (ADR-0015).`,
+        span,
+      );
+    }
+    return { kind: "text", text: keyframe.name };
   }
 
   const compileNamespace = record.compileScope.namespaces.get(reference.namespace);
@@ -213,6 +244,16 @@ export function expandValue(
     if (resolution.kind === "runtime") {
       output += text.slice(cursor, token.start);
       output += hooks.runtimeRef(resolution.token, token.value);
+      cursor = token.end;
+      changed = true;
+      continue;
+    }
+
+    if (resolution.kind === "text") {
+      // Built-in compile-time text (`$keyframes.<name>`, ADR-0015): spliced
+      // verbatim, never expanded recursively, so no `$` can survive here.
+      output += text.slice(cursor, token.start);
+      output += resolution.text;
       cursor = token.end;
       changed = true;
       continue;

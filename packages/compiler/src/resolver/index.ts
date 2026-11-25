@@ -18,6 +18,7 @@ import type { ModuleGraph } from "./types.js";
 
 export type {
   ImportSymbolOrigin,
+  KeyframeName,
   LocalSymbolOrigin,
   ModuleGraph,
   ModuleRecord,
@@ -27,6 +28,7 @@ export type {
   SymbolOrigin,
   TokenScope,
 } from "./types.js";
+export { KEYFRAMES_NAMESPACE } from "./keyframes.js";
 export { styleModuleOrder } from "./rules.js";
 
 /**
