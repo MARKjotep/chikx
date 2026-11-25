@@ -1,10 +1,17 @@
 import type { Declaration } from "../types/ast.js";
 import type { Token } from "../types/token.js";
-import { type TokenCursor, isTrivia, lastContentIndex, tokenAt, trimWhitespace } from "./cursor.js";
+import {
+  type TokenCursor,
+  isTrivia,
+  lastContentIndex,
+  startsNewLine,
+  tokenAt,
+  trimWhitespace,
+} from "./cursor.js";
 import type { DiagnosticBag } from "./diagnostics.js";
 import { messages } from "./diagnostics.js";
 import { recoverStatement, skipBalancedBlock } from "./recovery.js";
-import { containsDollarRef, segmentValue } from "./value.js";
+import { containsDollarRef, findSemicolonlessRuleStart, segmentValue } from "./value.js";
 
 /** Shared mutable parse state for one file. */
 export interface ParseContext {
@@ -20,11 +27,6 @@ interface ScannedValue {
   /** Raw index of the terminator token (or the new statement start). */
   readonly boundaryIndex: number;
   readonly malformed: boolean;
-}
-
-/** True when a whitespace token carries a line break, so a new statement may start. */
-function startsNewLine(token: Token | undefined): boolean {
-  return token !== undefined && token.kind === "whitespace" && token.value.includes("\n");
 }
 
 /** True when `property:` begins at `index` (trivia tolerant). */
@@ -72,8 +74,19 @@ function findPropertyColon(
  * A `;` always ends the statement even when brackets are unbalanced (CHIKX1003
  * recovery), and a `property:` that starts on a later line ends a declaration
  * that forgot its semicolon (CHIKX1002, errors/missing-semicolon).
+ *
+ * A balanced `{` ends the statement too: when the prefix is a declaration and
+ * the brace opens a nested rule (`color: red` then `&:hover {`), the boundary
+ * moves to the selector start so the declaration keeps its authored value and
+ * CHIKX1002 recovery can resume at the rule (ADR-0011). Otherwise the brace
+ * stays malformed (CHIKX1003).
  */
-function scanValue(tokens: readonly Token[], startIndex: number, eofOffset: number): ScannedValue {
+function scanValue(
+  tokens: readonly Token[],
+  statementStart: number,
+  startIndex: number,
+  eofOffset: number,
+): ScannedValue {
   const closers: Array<"rparen" | "rbracket"> = [];
   let malformed = false;
   let index = startIndex;
@@ -98,7 +111,12 @@ function scanValue(tokens: readonly Token[], startIndex: number, eofOffset: numb
       };
     }
     if (token.kind === "lbrace" && closers.length === 0) {
-      return { terminator: "lbrace", boundaryIndex: index, malformed: true };
+      if (malformed) return { terminator: "lbrace", boundaryIndex: index, malformed: true };
+      const ruleIndex = findSemicolonlessRuleStart(tokens, statementStart, index);
+      if (ruleIndex === -1) {
+        return { terminator: "lbrace", boundaryIndex: index, malformed: true };
+      }
+      return { terminator: "lbrace", boundaryIndex: ruleIndex, malformed: false };
     }
     if (token.kind === "lparen") closers.push("rparen");
     else if (token.kind === "lbracket") closers.push("rbracket");
@@ -135,9 +153,11 @@ function endOfRawRange(
  *
  * Terminator policy (ADR-0011): a plain CSS final declaration without `;`
  * before `}` is accepted; one carrying a modifier or `$` reference is reported
- * as CHIKX1002 and omitted. Malformed values report CHIKX1003 once and recover
- * at the next statement boundary. The returned node is frozen and its span
- * stops at the last value character, excluding the `;`.
+ * as CHIKX1002 and omitted. A declaration that runs into a nested rule's `{`
+ * is reported as CHIKX1002, kept, and parsing resumes at that rule, so the
+ * authored value and the nested rule both survive. Malformed values report
+ * CHIKX1003 once and recover at the next statement boundary. The returned node
+ * is frozen and its span stops at the last value character, excluding the `;`.
  */
 export function parseDeclaration(ctx: ParseContext): Declaration | undefined {
   const { cursor, bag } = ctx;
@@ -162,7 +182,7 @@ export function parseDeclaration(ctx: ParseContext): Declaration | undefined {
   }
 
   const valueStart = colonIndex + 1;
-  const scan = scanValue(tokens, valueStart, cursor.endOffset);
+  const scan = scanValue(tokens, startIndex, valueStart, cursor.endOffset);
   const valueBounds = trimWhitespace(tokens, valueStart, scan.boundaryIndex);
   const colonToken = tokenAt(tokens, colonIndex, cursor.endOffset);
   const boundaryToken = tokenAt(tokens, scan.boundaryIndex, cursor.endOffset);
@@ -190,25 +210,7 @@ export function parseDeclaration(ctx: ParseContext): Declaration | undefined {
   const chikxValue =
     parts.variants.length > 0 || containsDollarRef(tokens, valueStart, scan.boundaryIndex);
 
-  if (scan.terminator === "semicolon") {
-    cursor.index = scan.boundaryIndex + 1;
-  } else if (scan.terminator === "next-declaration") {
-    bag.add("CHIKX1002", messages.missingSemicolon("a declaration"), statementSpan);
-    cursor.index = Math.min(scan.boundaryIndex, tokens.length);
-    return undefined;
-  } else if (scan.terminator === "rbrace" || scan.terminator === "eof") {
-    if (chikxValue) {
-      bag.add("CHIKX1002", messages.missingSemicolon("a Chikx declaration"), statementSpan);
-      cursor.index = Math.min(scan.boundaryIndex, tokens.length);
-      return undefined;
-    }
-    cursor.index = Math.min(scan.boundaryIndex, tokens.length);
-  } else {
-    cursor.index = Math.min(scan.boundaryIndex, tokens.length);
-    return undefined;
-  }
-
-  return Object.freeze({
+  const declaration: Declaration = Object.freeze({
     kind: "declaration",
     property,
     value: parts.base.value,
@@ -217,4 +219,29 @@ export function parseDeclaration(ctx: ParseContext): Declaration | undefined {
     ...(parts.base.important === undefined ? {} : { important: parts.base.important }),
     span: statementSpan,
   });
+
+  if (scan.terminator === "semicolon") {
+    cursor.index = scan.boundaryIndex + 1;
+    return declaration;
+  }
+  if (scan.terminator === "next-declaration") {
+    bag.add("CHIKX1002", messages.missingSemicolon("a declaration"), statementSpan);
+    cursor.index = Math.min(scan.boundaryIndex, tokens.length);
+    return undefined;
+  }
+  if (scan.terminator === "lbrace") {
+    // `color: red` immediately before `&:hover { … }`: the declaration lost its
+    // semicolon. Keep the authored declaration, report once and resume at the
+    // nested rule so it still parses (ADR-0011, invariant 2).
+    bag.add("CHIKX1002", messages.missingSemicolon("a declaration"), statementSpan);
+    cursor.index = Math.min(scan.boundaryIndex, tokens.length);
+    return declaration;
+  }
+  if (chikxValue) {
+    bag.add("CHIKX1002", messages.missingSemicolon("a Chikx declaration"), statementSpan);
+    cursor.index = Math.min(scan.boundaryIndex, tokens.length);
+    return undefined;
+  }
+  cursor.index = Math.min(scan.boundaryIndex, tokens.length);
+  return declaration;
 }

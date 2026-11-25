@@ -11,6 +11,7 @@ import { type ParseContext, parseDeclaration } from "./declaration.js";
 import { messages } from "./diagnostics.js";
 import { readModifier } from "./modifier.js";
 import { recoverStatement, skipAtRule, skipBalancedBlock } from "./recovery.js";
+import { findSemicolonlessRuleStart } from "./value.js";
 
 /**
  * Native CSS at-rules keep their authored meaning (SPECIFICATION.md §3.5) and
@@ -67,6 +68,13 @@ export type StatementKind = "rule" | "declaration" | "unknown";
  * rule; a `;` or the enclosing `}` first means it is a declaration. Colon
  * presence alone is never decisive, and strings, URLs, functions, parentheses
  * and brackets are already single tokens or tracked depth.
+ *
+ * One exception protects ADR-0011: when the statement opens as a declaration
+ * and the `{` is preceded by a selector-start token (for example
+ * `color: red` then `&:hover {`), the statement is a declaration that lost its
+ * semicolon, not a rule whose selector swallowed the value. It classifies as a
+ * declaration so the caller reports CHIKX1002 and keeps the nested rule
+ * (`findSemicolonlessRuleStart` owns the lookahead).
  */
 export function classifyStatement(cursor: TokenCursor): StatementKind {
   const tokens = cursor.tokens;
@@ -81,7 +89,11 @@ export function classifyStatement(cursor: TokenCursor): StatementKind {
     else if (token.kind === "rparen" || token.kind === "rbracket") {
       if (closers.pop() !== token.kind) return "unknown";
     } else if (closers.length === 0) {
-      if (token.kind === "lbrace") return "rule";
+      if (token.kind === "lbrace") {
+        return findSemicolonlessRuleStart(tokens, cursor.index, index) === -1
+          ? "rule"
+          : "declaration";
+      }
       if (token.kind === "semicolon" || token.kind === "rbrace") return "declaration";
     }
     index++;

@@ -338,6 +338,7 @@ const PARSER_ERROR_FIXTURES = [
   "errors/malformed-value",
   "errors/unclosed-block",
   "errors/semicolonless-modifier",
+  "errors/semicolonless-before-nested-rule",
 ] as const;
 
 describe("parser diagnostics reproduce authored error fixtures", () => {
@@ -445,6 +446,90 @@ describe("parser-owned diagnostics carry statement/construct spans", () => {
     );
     const rule = expectRule(itemAt(ast, 1));
     expect(rule.body).toHaveLength(0);
+  });
+});
+
+describe("semicolonless declaration before a nested rule (ADR-0011, CHIKX1002)", () => {
+  const file = "errors/semicolonless-before-nested-rule/input.cssx";
+
+  test("keeps the authored declaration, reports once and keeps the nested rule", () => {
+    const source = fixtureSource("errors/semicolonless-before-nested-rule");
+    const { ast, diagnostics } = parseSource(source, file);
+    expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["CHIKX1002"]);
+
+    const statementStart = indexOfText(source, "color: red");
+    const statementEnd = endOfText(source, "color: red");
+    expect(diagnostics[0]?.span).toEqual(spanFor(file, statementStart, statementEnd));
+
+    const rule = expectRule(itemAt(ast, 1));
+    expect(rule.selector).toBe(".button");
+    expect(rule.body.map((item) => item.kind)).toEqual(["declaration", "rule"]);
+
+    const declaration = expectDeclaration(rule.body[0]);
+    expect(declaration.property).toBe("color");
+    expect(declaration.value).toBe("red");
+    expect(declaration.span).toEqual(spanFor(file, statementStart, statementEnd));
+
+    const hover = expectRule(rule.body[1]);
+    expect(hover.selector).toBe("&:hover");
+    expect(hover.selectorSpan).toEqual(
+      spanFor(file, indexOfText(source, "&:hover"), endOfText(source, "&:hover")),
+    );
+    expect(expectDeclaration(hover.body[0]).property).toBe("color");
+    expect(expectDeclaration(hover.body[0]).value).toBe("blue");
+  });
+
+  test("an inline reproduction parses the same way with one diagnostic", () => {
+    const source = ".button {\n  color: red\n  &:hover { color: blue; }\n}\n";
+    const { ast, diagnostics } = parseSource(source);
+    expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["CHIKX1002"]);
+    const body = expectRule(itemAt(ast, 0)).body;
+    expect(body.map((item) => item.kind)).toEqual(["declaration", "rule"]);
+    expect(expectDeclaration(body[0]).value).toBe("red");
+    expect(expectRule(body[1]).selector).toBe("&:hover");
+  });
+
+  test("a plain-CSS final declaration still omits its semicolon without a diagnostic", () => {
+    const source = fixtureSource("lexical/final-no-semicolon");
+    const { ast, diagnostics } = parseSource(source, "lexical/final-no-semicolon/input.cssx");
+    expect(diagnostics).toEqual([]);
+    const body = expectRule(itemAt(ast, 0)).body.map((item) => expectDeclaration(item));
+    expect(body.map((declaration) => declaration.property)).toEqual(["color", "padding"]);
+    expect(body[1]?.value).toBe("10px");
+  });
+
+  test("valid nested selectors on one line stay rules, not missing semicolons", () => {
+    const source =
+      ".list {\n  div:hover .child { color: red; }\n  li:nth-child(2n) > a { color: blue; }\n}\n";
+    const { ast, diagnostics } = parseSource(source);
+    expect(diagnostics).toEqual([]);
+    const body = expectRule(itemAt(ast, 0)).body;
+    expect(body.map((item) => item.kind)).toEqual(["rule", "rule"]);
+    expect(
+      body.map((item) => {
+        if (item.kind !== "rule") throw new Error("expected nested rule");
+        return item.selector;
+      }),
+    ).toEqual(["div:hover .child", "li:nth-child(2n) > a"]);
+  });
+
+  test("a selector list continued after a line break is not a declaration", () => {
+    const source = ".list {\n  div:hover,\n  .child { color: red; }\n}\n";
+    const { ast, diagnostics } = parseSource(source);
+    expect(diagnostics).toEqual([]);
+    const body = expectRule(itemAt(ast, 0)).body;
+    expect(body).toHaveLength(1);
+    expect(expectRule(body[0]).selector).toBe("div:hover,\n  .child");
+  });
+
+  test("a hash value before the nested rule is never the selector start", () => {
+    const source = '.a {\n  background: #fff\n  &::before { content: ""; }\n}\n';
+    const { ast, diagnostics } = parseSource(source);
+    expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["CHIKX1002"]);
+    const body = expectRule(itemAt(ast, 0)).body;
+    expect(body.map((item) => item.kind)).toEqual(["declaration", "rule"]);
+    expect(expectDeclaration(body[0]).value).toBe("#fff");
+    expect(expectRule(body[1]).selector).toBe("&::before");
   });
 });
 

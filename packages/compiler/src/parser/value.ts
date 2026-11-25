@@ -1,6 +1,6 @@
 import type { Modifier, Variant } from "../types/ast.js";
 import type { Token } from "../types/token.js";
-import { isWhitespace, textOf, trimWhitespace } from "./cursor.js";
+import { isWhitespace, skipTriviaAt, textOf, trimWhitespace } from "./cursor.js";
 import { readModifier } from "./modifier.js";
 
 /**
@@ -25,6 +25,127 @@ export function containsDollarRef(tokens: readonly Token[], start: number, end: 
     if (tokens[i]?.kind === "dollar-ref") return true;
   }
   return false;
+}
+
+/**
+ * A token that can only begin a selector where a declaration value would have
+ * ended, so no line break is needed to be sure (`&` is never value content).
+ */
+function isDefiniteSelectorStart(token: Token): boolean {
+  return token.kind === "delim" && token.value === "&";
+}
+
+/**
+ * A token that can begin a selector but also occur inside a value (`.`, `#`,
+ * `[`, `>` and `*`), so it counts only at a line break.
+ */
+function isAmbiguousSelectorStart(token: Token): boolean {
+  if (token.kind === "hash" || token.kind === "lbracket") return true;
+  if (token.kind !== "delim") return false;
+  return token.value === "." || token.value === ">" || token.value === "*";
+}
+
+/** Index of the last non-trivia token before `index`, or `-1`. */
+function previousContentIndex(tokens: readonly Token[], index: number): number {
+  let cursor = index - 1;
+  while (cursor >= 0) {
+    const token = tokens[cursor];
+    if (token === undefined) return -1;
+    if (token.kind !== "whitespace" && token.kind !== "comment") return cursor;
+    cursor--;
+  }
+  return -1;
+}
+
+/** True when only whitespace or comments separate `index` from a line break. */
+function hasLineBreakBefore(tokens: readonly Token[], index: number): boolean {
+  let cursor = index - 1;
+  while (cursor >= 0) {
+    const token = tokens[cursor];
+    if (token === undefined) return false;
+    if (token.kind === "whitespace") {
+      if (token.value.includes("\n")) return true;
+      cursor--;
+      continue;
+    }
+    if (token.kind === "comment") {
+      cursor--;
+      continue;
+    }
+    return false;
+  }
+  return false;
+}
+
+/**
+ * Raw index where a nested rule's selector begins when a declaration lost its
+ * terminating `;`, or `-1` when the statement is not that shape.
+ *
+ * This is the recovery side of ADR-0011: `color: red` immediately before
+ * `&:hover { ... }` is an unterminated declaration, not one combined rule
+ * selector (`color: red &:hover`). The statement must unambiguously open as a
+ * declaration — an identifier, `:`, then a non-empty value — and the nested
+ * rule must start at a selector-start token:
+ *
+ * - `&` is decisive on its own: it is never part of a CSS declaration value.
+ * - `.`, `#`, `[`, `>` and `*` also occur in values, so they count only at a
+ *   line break and never directly after a `,` (which continues a selector list
+ *   such as `a:hover,\n.b { ... }`). Valid nested selectors written on one line
+ *   — `div:hover .child { ... }`, `li:nth-child(2n) > a { ... }` — stay rules.
+ *
+ * The caller reports CHIKX1002 for the declaration and resumes at the returned
+ * index, so the nested rule is preserved.
+ */
+export function findSemicolonlessRuleStart(
+  tokens: readonly Token[],
+  statementStart: number,
+  openIndex: number,
+): number {
+  const property = tokens[statementStart];
+  if (property === undefined || property.kind !== "ident") return -1;
+
+  const colonIndex = skipTriviaAt(tokens, statementStart + 1);
+  if (colonIndex >= openIndex || tokens[colonIndex]?.kind !== "colon") return -1;
+
+  const closers: Array<"rparen" | "rbracket"> = [];
+  let index = colonIndex + 1;
+
+  while (index < openIndex) {
+    const token = tokens[index];
+    if (token === undefined) return -1;
+
+    if (token.kind === "lparen") {
+      closers.push("rparen");
+      index++;
+      continue;
+    }
+    if (token.kind === "rparen" || token.kind === "rbracket") {
+      if (closers.pop() !== token.kind) return -1;
+      index++;
+      continue;
+    }
+    if (closers.length > 0) {
+      if (token.kind === "lbracket") closers.push("rbracket");
+      index++;
+      continue;
+    }
+
+    const definite = isDefiniteSelectorStart(token);
+    if (definite || isAmbiguousSelectorStart(token)) {
+      const valueBounds = trimWhitespace(tokens, colonIndex + 1, index);
+      if (valueBounds.start < valueBounds.end) {
+        if (definite) return index;
+        const previous = previousContentIndex(tokens, index);
+        const continuesList = previous !== -1 && tokens[previous]?.kind === "comma";
+        if (!continuesList && hasLineBreakBefore(tokens, index)) return index;
+      }
+    }
+
+    if (token.kind === "lbracket") closers.push("rbracket");
+    index++;
+  }
+
+  return -1;
 }
 
 /**

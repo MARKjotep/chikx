@@ -21,6 +21,11 @@ export function isWhitespace(token: Token | undefined): boolean {
   return token !== undefined && token.kind === "whitespace";
 }
 
+/** True when a whitespace token carries a line break, so a new statement may start. */
+export function startsNewLine(token: Token | undefined): boolean {
+  return token !== undefined && token.kind === "whitespace" && token.value.includes("\n");
+}
+
 /** A zero-width `eof` token at the given source offset. */
 export function eofToken(offset: number): Token {
   return { kind: "eof", value: "", start: offset, end: offset };
