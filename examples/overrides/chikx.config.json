@@ -1,0 +1,6 @@
+{
+  "include": ["src/**/*.cssx"],
+  "exclude": ["src/theme-base.cssx", "src/theme-alt.cssx", "src/tokens.cssx", "generated"],
+  "classes": { "strategy": "prefix", "prefix": "ui" },
+  "compiler": { "strict": true, "mediaGrouping": "safe" }
+}

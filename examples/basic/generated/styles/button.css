@@ -36,10 +36,6 @@
   }
 }
 
-.ui-button:hover {
-  opacity: 0.85;
-}
-
 .ui-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
