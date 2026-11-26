@@ -3,10 +3,13 @@
 This page records what `bun run release:check` validates, how to release, and the remaining manual
 steps for the package owners.
 
-**Current status (2026-11-26):** nothing is published. **PP4a — npm publication of
-`@chikx/compiler` and `@chikx/cli` — is the next authorized action; PP4b, the VS Code Marketplace
-extension, is deferred by the owner.** Publishing still needs explicit authorization; the local
-VSIX is the interim extension distribution.
+**Current status (2026-11-26):** **PP4a is complete — `@chikx/compiler@0.1.0` and `@chikx/cli@0.1.0`
+are published on npm** (compiler first; CLI pins the compiler to the exact `0.1.0`). **PP5a passed**
+on 2026-11-26 against the registry: clean install, `npx`/`bunx` versions, and the `docs/usage.md`
+quick start end to end with `chikx build`/`check`/`clean`
+([report](../.ai/reports/CSSX-PP5A.md)). **PP4b — the VS Code Marketplace extension — remains
+deferred by the owner**; the local VSIX is the interim extension distribution. Publishing anything
+further needs new explicit owner authorization.
 
 Source files use the `.cssx` extension; the language ID, packages, CLI command and diagnostics stay
 Chikx ([ADR-0013](decisions/ADR-0013-cssx-file-extension.md)).
@@ -45,12 +48,14 @@ Each sub-result is printed. `release:check` does not publish anything and does n
    `/issues` bugs). `release:check` asserts the extension manifest has a repository URL, homepage and
    bugs URL; no placeholder remains.
 2. **Tag and publish**:
-   - **2a · npm (PP4a):** `npm publish --workspace @chikx/compiler --access public`, then
-     `npm publish --workspace @chikx/cli --access public` (compiler first). The CLI pins the
-     compiler to an exact version (`"@chikx/compiler": "0.1.0"`): npm does not rewrite the
-     `workspace:` protocol at pack/publish, so **every new compiler release requires bumping the CLI
-     dependency in `packages/cli/package.json` to the same version, rebuilding and re-packing the
-     CLI before its own publish**. Confirm the packed manifest before publishing:
+   - **2a · npm (PP4a, executed 2026-11-26):**
+     `npm publish --workspace @chikx/compiler --access public`, then
+     `npm publish --workspace @chikx/cli --access public` (compiler first). Both resolved at `0.1.0`
+     with integrity `sha512-aAKqebvb…kzFRqw==` (compiler) and `sha512-tbRmwcP+qdZQ…rXd0/Q==` (CLI).
+     The CLI pins the compiler to an exact version (`"@chikx/compiler": "0.1.0"`): npm does not
+     rewrite the `workspace:` protocol at pack/publish, so **every new compiler release requires
+     bumping the CLI dependency in `packages/cli/package.json` to the same version, rebuilding and
+     re-packing the CLI before its own publish**. Confirm the packed manifest before publishing:
      `tar -xzOf chikx-cli-0.1.0.tgz package/package.json | grep '@chikx/compiler'`.
    - **2b · VS Code Marketplace (PP4b, deferred by owner 2026-11-26):**
      `cd packages/vscode && vsce publish` (publisher `chikx`; needs a PAT with Marketplace *Manage*

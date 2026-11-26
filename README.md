@@ -7,10 +7,14 @@ runtime**, no framework dependency and no editor requirement: `@chikx/compiler` 
 with zero runtime dependencies, the `chikx` CLI drives it from Node or Bun, and the VS Code extension
 is an interface to the same compiler.
 
-Chikx is at **v0.1** — implementation complete; publication and post-release verification are parked pending owner field testing. It is an MVP with a deliberately small, honest feature set —
-read [compatibility](docs/compatibility.md) and [known limitations](docs/known-limitations.md) before
-adopting it. The normative language definition is [SPECIFICATION.md](SPECIFICATION.md); architecture
-decisions are recorded in [`docs/decisions/`](docs/decisions/).
+Chikx is at **v0.1** — implementation complete. `@chikx/compiler` and `@chikx/cli` **0.1.0 are
+published on npm** (2026-11-26) and passed clean-environment post-release checks
+([PP5a](.ai/reports/CSSX-PP5A.md)). The VS Code extension is **not on the Marketplace yet**: it ships
+as the local VSIX produced by `bun run release:check` (PP4b deferred). It is an MVP with a
+deliberately small, honest feature set — read [compatibility](docs/compatibility.md) and
+[known limitations](docs/known-limitations.md) before adopting it. The normative language definition
+is [SPECIFICATION.md](SPECIFICATION.md); architecture decisions are recorded in
+[`docs/decisions/`](docs/decisions/).
 
 Source files use the `.cssx` extension; the language ID, packages, CLI command and `CHIKX####`
 diagnostics keep the Chikx name ([ADR-0013](docs/decisions/ADR-0013-cssx-file-extension.md)).
@@ -74,18 +78,27 @@ tour, CLI/editor reference and theming recipes, read the **[full usage guide](do
 
 ## Install
 
-The packages are not on the npm registry yet — the 0.1.0 publication is parked — so use the
-source-checkout path below to try Chikx today. The `bun add` commands describe the packages once
-they are published.
+`@chikx/compiler` and `@chikx/cli` are published at **0.1.0** (2026-11-26):
 
 ```sh
 bun add @chikx/compiler        # programmatic compiler API
 bun add -d @chikx/cli          # the chikx CLI (build, check, watch, clean)
+# or with npm
+npm install @chikx/compiler
+npm install --save-dev @chikx/cli
 ```
 
 Requires Node.js ≥ 20 or Bun. The compiler is ESM and has no runtime dependencies; the CLI is ESM,
 ships built `dist` output, and its `bin` entry points at `dist/index.js` — run `bunx chikx` with Bun,
-or `node <path>/dist/index.js` with Node.
+or `npx chikx` (or `node node_modules/@chikx/cli/dist/index.js`) with Node.
+
+The VS Code extension is **not published to the Marketplace yet** (PP4b deferred). Build the local
+VSIX from this checkout and install it by hand:
+
+```sh
+bun run release:check      # also produces packages/vscode/chikx-0.1.0.vsix
+# Extensions view → … → Install from VSIX
+```
 
 ## Quick start
 

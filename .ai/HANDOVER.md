@@ -1,20 +1,30 @@
 # Chikx Handover — 2026-11-26
 
-**Read this file alone to run the release when it is authorized.** It is self-contained; the plan,
-board and reports are linked at the end for detail only.
+**Read this file alone to run the remaining release steps when they are authorized.** It is
+self-contained; the plan, board and reports are linked at the end for detail only.
 
 ## Release status
 
-**Owner decision (2026-11-26): split PP4.** **PP4a — npm publication of `@chikx/compiler` and
-`@chikx/cli` — is the next authorized action** (owner-run, still parked until explicitly authorized).
-**PP4b — the VS Code Marketplace extension — is deferred.** **Nothing is published** — not npm, not
-the Marketplace. Do not tag, publish or push release artifacts without new explicit owner
-authorization.
+**PP4a 🟢 — both npm artifacts are published.** `@chikx/compiler@0.1.0` and `@chikx/cli@0.1.0` are
+live on the public registry (2026-11-26; compiler first, CLI pinned to the exact compiler version).
+Registry metadata, tarball integrity and byte-reproducibility are recorded in
+`.ai/reports/CSSX-PP4A-COMPILER-PUBLISHED.md`.
+
+**PP5a 🟢 — clean-environment verification passed** against the registry: install, `npx`/`bunx`
+versions, and the `docs/usage.md` quick start end to end, with two documentation mismatches recorded
+as follow-ups (`format --check` on the guide's inline nested rules; the map's ESM-only plain-Node
+import). Report: `.ai/reports/CSSX-PP5A.md`.
+
+**PP4b — the VS Code Marketplace extension — and PP5b remain 🔴 deferred by the owner.** The local
+VSIX from `release:check` is the interim extension distribution. Do not tag, publish a new version or
+push release artifacts without new explicit owner authorization.
 
 ## State
 
-- **Working tree is clean and pushed to `origin/main`.** `1ec431f`
-  (`chore(release): v0.1.0`) is the v0.1.0 source-release commit; the docs-cleanup commit follows it.
+- **Working tree is clean and pushed to `origin/main`.** `8c4c64c`
+  (`fix(release): pin the CLI compiler dependency and add npm metadata`) is the release-metadata
+  commit built on `1ec431f` (`chore(release): v0.1.0`); the docs/report commit recording the 0.1.0
+  publication follows it.
 - **Final gates, re-run on 2026-11-26:**
   - `bun run verify` exit 0 — **1351 pass / 2 skip / 0 fail** (1353 tests, **99 files**); extension
     host **15 scenarios / 928 assertions** (`navigation=42`); typecheck and Biome green
@@ -56,9 +66,9 @@ The feature wave and the editor wave landed on top. The authoritative per-item r
 
 ## Plans and board
 
-- Production plan: **PP0–PP3 🟢**; **PP4a (npm) is the next authorized action**, **PP4b
-  (Marketplace) is deferred**, **PP5a/PP5b 🔴** — all parked until explicit owner authorization
-  (owner decision 2026-11-26). Testing and UI campaigns are closed.
+- Production plan: **PP0–PP3 🟢**, **PP4a 🟢** (both npm packages live at 0.1.0), **PP5a 🟢**
+  (`.ai/reports/CSSX-PP5A.md`); **PP4b (Marketplace) and PP5b 🔴 deferred** by the owner
+  (2026-11-26). Testing and UI campaigns are closed.
 - Board (`.ai/todo.md`): feature items **18–28** and bugs **25–27** are 🟢. Item **24** was reused
   for zero-config defaults; the old CSS→cssx converter idea was scrapped — **do not resurrect it**.
 - `.ai/PROGRESS.md` is the historical execution log; `.ai/reports/` holds the evidence for every
@@ -76,7 +86,10 @@ The feature wave and the editor wave landed on top. The authoritative per-item r
 - Retired framework bug records were removed; the macOS launcher workaround is documented in
   `docs/release.md`, `docs/known-limitations.md` and `packages/vscode/README.md`.
 
-## ⏭ PP4a — npm publication (compiler + CLI; owner-run, parked until authorized)
+## ⏭ PP4a — npm publication (executed 2026-11-26; PP4b still deferred)
+
+**Executed 2026-11-26: both packages are live at `0.1.0`.** The runbook below is retained verbatim
+for the next version. PP4b (the VS Code Marketplace extension) remains deferred.
 
 The owner decided on 2026-11-26 to split the release: **npm first (`@chikx/compiler` + `@chikx/cli`),
 the VS Code Marketplace extension later**. Everything below is release execution only. No source
@@ -146,12 +159,12 @@ bunx @chikx/cli@0.1.0 --version
 - `npx chikx` alone resolves a package literally named `chikx`; the CLI package is `@chikx/cli`,
   so install it first (as above) or use the specifier.
 
-### 7. Docs follow-up after success
+### 7. Docs follow-up after success (done 2026-11-26 for 0.1.0)
 
-Only after the publish succeeds, update the docs that carry the "not yet published" caveat: drop the
-registry caveat in `README.md`, `docs/usage.md`, `packages/compiler/README.md` and
-`packages/cli/README.md`, and state that the **extension is not yet on the Marketplace**. Never claim
-a publish before it succeeds.
+Update the docs that carried the "not yet published" caveat: `README.md`, `docs/usage.md`,
+`packages/compiler/README.md` and `packages/cli/README.md` no longer claim the packages are
+unpublished, and they state that the **extension is not yet on the Marketplace**. Never claim a
+publish before it succeeds.
 
 ### 8. Failure rules
 
@@ -197,7 +210,10 @@ needed) and can be distributed by hand in the meantime.
 Marketplace failure after npm success: npm artifacts stay; retry `vsce publish` or publish the VSIX
 from the Marketplace UI. Never re-publish npm to "match". Record the outcome in `.ai/reports/`.
 
-## ⏭ PP5a — npm post-release verification
+## ✅ PP5a — npm post-release verification (executed 2026-11-26)
+
+**Executed against the registry — 🟢.** Report with exact commands and outputs:
+`.ai/reports/CSSX-PP5A.md`.
 
 From a clean environment (fresh profile, no workspace symlinks):
 
@@ -213,6 +229,19 @@ From a clean environment (fresh profile, no workspace symlinks):
 2. Check activation, diagnostics, completion, semantic token colours, color swatches and preview.
 3. Write the checklist with **actual outputs** to `.ai/reports/CSSX-PP5B.md`. Any mismatch opens a
    follow-up task.
+
+## 0.1.1 follow-ups (not authorized yet)
+
+1. Shipped `packages/compiler/README.md` in the 0.1.0 tarball still says "Not on npm yet — the 0.1.0
+   publication is parked" and omits `await` on the async `compile()` (both already fixed in the repo
+   for the next version).
+2. Stale build artifact shipped in `@chikx/cli@0.1.0`: `dist/output/importPath.{js,d.ts,*.map}` —
+   renamed source is `import-path.ts`; clean `dist` before the next pack.
+3. Source-map policy vs shipping `src/`: compiler maps point at unshipped `src/` with no
+   `sourcesContent`, while the CLI tarball ships `src/**` (89 files). Decide one policy.
+4. Deprecate `@chikx/compiler@0.0.0-stage` (`npm deprecate`), which remains installable.
+5. PP5a mismatches: the `docs/usage.md` §1.2 example is not `format --check` clean, and the ESM map's
+   plain-Node import needs a `"type": "module"` project (or `.mjs`).
 
 ## Caveats and known non-issues
 

@@ -9,8 +9,7 @@ configuration file (`chikx.config.json`) and diagnostic codes (`CHIKX####`) keep
 
 ## Install
 
-Not on npm yet — the 0.1.0 publication is parked; use the source checkout in the repository README
-until then.
+Published on npm as **0.1.0** (2026-11-26):
 
 ```sh
 npm install @chikx/compiler
@@ -18,17 +17,18 @@ npm install @chikx/compiler
 
 ## Use
 
+`compile()` is async; await it. It returns artifacts and never writes files.
+
 ```ts
 import { compile } from "@chikx/compiler";
 
-const result = compile(source, { sourceFile: "src/button.cssx" });
+const result = await compile(source, { sourceFile: "src/button.cssx" });
 if (result.diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
   throw new Error(result.diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
 }
 ```
 
-`compile` returns artifacts and never writes files. Project builds, output planning, the CLI and the
-VS Code extension are built on the same entry points.
+Project builds, output planning, the CLI and the VS Code extension are built on the same entry points.
 
 ## Documentation
 

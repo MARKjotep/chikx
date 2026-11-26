@@ -19,9 +19,8 @@ specification disagree, the specification wins. Related references:
 
 ### 1.1 Install
 
-Chikx requires Node.js ≥ 20 or Bun. The compiler is pure ESM with no runtime dependencies. The
-packages are not on the npm registry yet — the 0.1.0 publication is parked — so build from the source
-checkout described below for now.
+Chikx requires Node.js ≥ 20 or Bun. The compiler is pure ESM with no runtime dependencies.
+`@chikx/compiler` and `@chikx/cli` are published at **0.1.0** (2026-11-26).
 
 ```sh
 bun add @chikx/compiler        # programmatic compiler API
@@ -29,9 +28,9 @@ bun add -d @chikx/cli          # chikx build/check/watch/clean/format
 ```
 
 The published `bin` points at the built `dist/index.js`, so with Bun `bunx chikx` runs directly. With
-Node, use the same built entry: `node packages/cli/dist/index.js`. The source entry carries the
-`#!/usr/bin/env node` shebang, so a plain `bin` symlink also runs on a Node-only machine, and Bun
-executes the same file.
+Node, use the same built entry: `node node_modules/@chikx/cli/dist/index.js` (or `npx chikx` in an
+installed project). The source entry carries the `#!/usr/bin/env node` shebang, so a plain `bin`
+symlink also runs on a Node-only machine, and Bun executes the same file.
 
 To build from a source checkout instead:
 

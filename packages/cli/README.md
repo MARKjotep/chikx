@@ -8,8 +8,7 @@ Source files use the `.cssx` extension (ADR-0013). The command, configuration fi
 
 ## Install
 
-Not on npm yet — the 0.1.0 publication is parked; use the source checkout in the repository README
-until then.
+Published on npm as **0.1.0** (2026-11-26):
 
 ```sh
 npm install --global @chikx/cli
