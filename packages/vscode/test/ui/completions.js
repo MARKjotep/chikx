@@ -427,6 +427,19 @@ async function run(t) {
         items.every((item) => item.detail === "CSS unit"),
         "every unit item carries the `CSS unit` detail",
       );
+      // The digit is a registered trigger (board bug 28), so the same request
+      // with a digit trigger must return the unit list too.
+      const triggered = await host.completionItems(document, position, "1");
+      t.equal(triggered.length, 27, `a digit trigger expected 27 units, got ${triggered.length}`);
+      t.deepEqual(
+        triggered.map(host.labelOf),
+        items.map(host.labelOf),
+        "the digit trigger returns the same unit labels",
+      );
+      t.ok(
+        items.every((item) => item.command === undefined),
+        "unit items never carry the property retrigger command",
+      );
       const rem = host.byLabel(items).get("rem");
       t.equal(
         host.rangeOf(rem).start.character,
@@ -483,6 +496,12 @@ async function run(t) {
         "property acceptance inserts `color: ;` with the caret before the semicolon",
       );
       t.equal(color.insertText.value, "color: $0;", "the snippet body parks the caret at $0");
+      // Accepting a property reopens the value list at the cursor (board bug 29).
+      t.equal(
+        color.command?.command,
+        "editor.action.triggerSuggest",
+        "the property item carries the post-accept suggest command",
+      );
       const range = host.rangeOf(color);
       t.equal(
         range.start.character,
@@ -506,6 +525,11 @@ async function run(t) {
         "with the setting off only `color: ` is inserted",
       );
       t.equal(items[0].insertText instanceof vscode.SnippetString, false, "no snippet when off");
+      t.equal(
+        items[0].command?.command,
+        "editor.action.triggerSuggest",
+        "the plain property insert still reopens the value list",
+      );
     } finally {
       await settings.update(
         "editor.completePropertyWithSemicolon",

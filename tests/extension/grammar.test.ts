@@ -317,12 +317,12 @@ describe("VS Code manifest", () => {
     expect(existsSync(join(EXTENSION_ROOT, grammarContribution?.path ?? ""))).toBe(true);
   });
 
-  test("contributes a magenta default for the media variant scope", () => {
+  test("contributes the keyword purple for the media variant scope", () => {
     const defaults = manifest.contributes?.configurationDefaults;
     const rules = defaults?.["editor.tokenColorCustomizations"]?.textMateRules ?? [];
     expect(rules).toContainEqual({
       scope: ["keyword.control.media.chikx"],
-      settings: { foreground: "#D6409F" },
+      settings: { foreground: "#C586C0" },
     });
   });
 });

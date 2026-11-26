@@ -82,6 +82,17 @@ export interface CompletionSuggestion {
    * correctly offered.
    */
   readonly filterText?: string;
+  /**
+   * Reopen the suggest list after accepting this item.
+   *
+   * Accepting a property inserts `property: ` (or `property: ;` with the caret
+   * before the semicolon), so the value position is ready for a second list.
+   * The editor adapter maps this to the `editor.action.triggerSuggest` command,
+   * which VS Code runs after the insert or snippet has been applied. Only the
+   * property family sets it: a value, unit, function, colour, selector or setup
+   * item must leave the list closed.
+   */
+  readonly retriggerSuggest?: boolean;
 }
 
 /** Completion outcome with the range the editor should replace. */
@@ -2753,8 +2764,11 @@ function classDetail(occurrence: ClassOccurrence): string | undefined {
 /**
  * Context-aware completion at one document offset.
  *
- * The registered trigger characters are `@`, `$`, `.`, `:`, `/`, `&`, `(` and
- * `#`; property, value and selector contexts also complete without a trigger.
+ * The registered trigger characters are `@`, `$`, `.`, `:`, `/`, `&`, `(`,
+ * `#`, `!` and the digits `0`–`9`; property, value and selector contexts also
+ * complete without a trigger. A digit is a trigger because the unit list only
+ * exists once a number is typed (`margin: 1` → `1rem`): no other trigger fires
+ * at that position and the editor does not reopen the list on its own.
  *
  * Two value states replace text in front of the typed word and say so per item
  * (`replaceStart`): the call opener `(` (A50) and the colour literal `#` (A51).
@@ -2957,6 +2971,9 @@ export function completionsAt(
           documentation: propertyDoc(property),
           insertText: `${property}: `,
           ...(withSemicolon ? { snippet: `${property}: $0;` } : {}),
+          // The cursor lands in the value position either way, so the value
+          // list reopens without the author retyping the colon (board bug 29).
+          retriggerSuggest: true,
         })),
         replaceStart,
       );

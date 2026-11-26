@@ -22,7 +22,9 @@ chick file icon in both light and dark themes ([ADR-0013](../../docs/decisions/A
 - **Completions** — property names, common values, `@` media aliases (built-in, project config and
   file `@media-types`), `$` tokens and namespace members, `@setup` keys, `@use "` import paths,
   nested selectors, pseudo-classes and the document's own id selectors after `#` (ids are
-  document-global and are never renamed or mapped).
+  document-global and are never renamed or mapped). Accepting a property reopens the value list at
+  the cursor, and typing a digit in a value suggests the CSS units that can follow it
+  (`margin: 1` → `1rem`, `1px`, …).
 - **Navigation and insight** — hover for resolved token values, media conditions and generated class
   names; definition and references for tokens; single-file `$token` rename; color provider; outline.
 - **Commands** (all under the `Chikx` category) — Compile File, Build Project, Preview Compiled CSS,
@@ -43,16 +45,16 @@ references get the kind's colour — with no configuration needed:
 | `runtimeVariable` | `$name` declared in `@runtime`, and runtime namespace members | `keyword.control` | `#C586C0` | `#C586C0` | `#AF00DB` |
 | `customProperty` | `--var` references, including inside `var()` | `keyword.control` | `#C586C0` | `#C586C0` | `#AF00DB` |
 | `keyframe` | a resolved `$keyframes.<name>` member | `entity.name.function` | `#D2A8FF` | `#DCDCAA` | `#795E26` |
-| media variant | `@md`, `@xl+dark`, `@dark {` and `@media-types` captions | `keyword.control.media.chikx` | `#D6409F` | `#D6409F` | `#D6409F` |
+| media variant | `@md`, `@xl+dark`, `@dark {` and `@media-types` captions | `keyword.control.media.chikx` | `#C586C0` | `#C586C0` | `#C586C0` |
 
 The first five rows are semantic token kinds mapped by `contributes.semanticTokenScopes`; the media
 variant row is the TextMate scope used by the grammar's variant rules (inline value variants, block
 variant headers and `@media-types` captions), so it is painted even before analysis completes. That
-scope lives in the `keyword.control` family, and the extension contributes a magenta default
-(`#D6409F`) for it through `contributes.configurationDefaults`, so variant markers stay distinct from
-strings and from all five mapped kinds without any configuration. A user
-`editor.tokenColorCustomizations` entry for `keyword.control.media.chikx` overrides the contributed
-default.
+scope lives in the `keyword.control` family, and the extension contributes the `@`-directive keyword
+colour (`#C586C0`) for it through `contributes.configurationDefaults`, so variant markers match the
+directives' purple while staying distinct from strings and from all five mapped kinds without any
+configuration. A user `editor.tokenColorCustomizations` entry for `keyword.control.media.chikx`
+overrides the contributed default.
 
 Colours follow the active theme; the values above are what the built-in themes resolve, and other
 themes may differ. Text the classifier cannot resolve (before analysis finishes, or after a parse

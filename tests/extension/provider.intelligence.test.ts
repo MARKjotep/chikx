@@ -685,14 +685,15 @@ describe("completion contexts", () => {
     expect(aliasLabels(typedState.analysis, typed, typedOffset)).toEqual(["$keyframes."]);
   });
 
-  test("the completion provider registers & as a trigger character", () => {
+  test("the completion provider registers structural triggers and every digit", () => {
     // The controller imports `vscode`, so the registration list is asserted from
-    // its source: `&` is not a word character and needs an explicit trigger.
+    // its source: `&` is not a word character and needs an explicit trigger, and
+    // a digit opens the unit list (`margin: 1` → `1rem`, board bug 28).
     const source = readFileSync(join(ROOT, "packages/vscode/src/controller.ts"), "utf8");
     const start = source.indexOf("vscode.languages.registerCompletionItemProvider(");
     expect(start).toBeGreaterThan(-1);
-    const registration = source.slice(start, start + 400);
-    for (const trigger of ["@", "$", ".", ":", "/", "&"]) {
+    const registration = source.slice(start, start + 600);
+    for (const trigger of ["@", "$", ".", ":", "/", "&", ..."0123456789"]) {
       expect(registration).toContain(`"${trigger}",`);
     }
   });
@@ -1353,6 +1354,7 @@ describe("semicolon and unit completions (A48)", () => {
     readonly snippet?: string;
     readonly sortText?: string;
     readonly replaceStart?: number;
+    readonly retriggerSuggest?: boolean;
   }
 
   /** The item with `label`, or a failure listing what was offered. */
@@ -1421,6 +1423,8 @@ describe("semicolon and unit completions (A48)", () => {
     );
     expect(filteredApplied.text).toBe(".a {\n  color: ;\n}");
     expect(filteredApplied.caret).toBe(".a {\n  color: ".length);
+    // Accepting a property must reopen the value list (board bug 29).
+    expect(color.retriggerSuggest).toBe(true);
   });
 
   test("the semicolon insert is gated by the setting and leaves other contexts alone", async () => {
@@ -1435,6 +1439,9 @@ describe("semicolon and unit completions (A48)", () => {
     expect(offColor.snippet).toBeUndefined();
     expect(offColor.insertText).toBe("color: ");
     expect(applySnippet(text, off, offColor).text).toBe(".a {\n  color: \n}");
+    // The retrigger is independent of the semicolon setting: the plain insert
+    // still parks the cursor in the value position.
+    expect(offColor.retriggerSuggest).toBe(true);
 
     // Explicit `true` matches the default.
     const on = completionsAt(text, offset, {
@@ -1442,8 +1449,9 @@ describe("semicolon and unit completions (A48)", () => {
       completePropertyWithSemicolon: true,
     });
     expect(pick(on.items, "color").snippet).toBe("color: $0;");
+    expect(pick(on.items, "color").retriggerSuggest).toBe(true);
 
-    // Value, pseudo and selector items never carry a snippet.
+    // Value, pseudo and selector items never carry a snippet or a retrigger.
     const shapes: readonly { readonly text: string; readonly offset: number }[] = [
       { text: ".a {\n  width: \n}", offset: ".a {\n  width: ".length },
       { text: ".a {\n  &:\n}", offset: ".a {\n  &:".length },
@@ -1456,6 +1464,7 @@ describe("semicolon and unit completions (A48)", () => {
       }).items;
       expect(items.length).toBeGreaterThan(0);
       expect(items.every((item) => item.snippet === undefined)).toBe(true);
+      expect(items.every((item) => item.retriggerSuggest === undefined)).toBe(true);
     }
   });
 
@@ -1473,6 +1482,7 @@ describe("semicolon and unit completions (A48)", () => {
     // Nothing in the value list matches `1`, so the units are the whole list.
     expect(result.items.length).toBe(UNITS.length);
     expect(result.items.every((item) => item.snippet === undefined)).toBe(true);
+    expect(result.items.every((item) => item.retriggerSuggest === undefined)).toBe(true);
 
     const rem = pick(result.items, "rem");
     // The replacement starts after the typed number, so the digits stay put.
@@ -3442,8 +3452,8 @@ describe("hex colors, color kind, decorations and filter text (A51)", () => {
     expect(controller).toContain("new ChikxColorProvider(this.service)");
     const start = controller.indexOf("vscode.languages.registerCompletionItemProvider(");
     expect(start).toBeGreaterThan(-1);
-    const registration = controller.slice(start, start + 400);
-    for (const trigger of ["@", "$", ".", ":", "/", "&", "(", "#"]) {
+    const registration = controller.slice(start, start + 600);
+    for (const trigger of ["@", "$", ".", ":", "/", "&", "(", "#", "!", ..."0123456789"]) {
       expect(registration).toContain(`"${trigger}",`);
     }
     const adapter = readFileSync(join(ROOT, "packages/vscode/src/adapter.ts"), "utf8");
@@ -3465,6 +3475,9 @@ describe("hex colors, color kind, decorations and filter text (A51)", () => {
     const header = completionProvider.slice(0, completionProvider.indexOf("import * as vscode"));
     expect(header).toContain("`(`");
     expect(header).toContain("`#`");
+    // The post-accept retrigger and the digit trigger are documented there too.
+    expect(header).toContain("retriggerSuggest");
+    expect(header).toContain("`0`–`9`");
   });
 });
 

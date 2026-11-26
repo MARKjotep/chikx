@@ -52,8 +52,12 @@ deprecated or unpublished.
   - `bun run release:check` exit 0 in about **4 minutes** — **nine** examples built, compiler
     tarball **398 files**, CLI tarball **89**, VSIX **18 files / 140.6 KB**.
 - **Media variant colour:** variants (`@md`, `@dark`, `@xl+dark`, block headers, `@media-types`
-  captions) are magenta via the `keyword.control.media.chikx` TextMate scope plus a contributed
-  `configurationDefaults` entry (`#D6409F`); user `editor.tokenColorCustomizations` rules override it.
+  captions) use the `@`-directive keyword colour via the `keyword.control.media.chikx` TextMate scope
+  plus a contributed `configurationDefaults` entry (`#C586C0`, matching directives); user
+  `editor.tokenColorCustomizations` rules override it.
+- **Completion fixes:** accepting a property reopens the value list (`retriggerSuggest` →
+  `editor.action.triggerSuggest`), and digits `0`–`9` are trigger characters so units appear in the
+  real editor (`margin: 1` → `1rem`).
 - **Runtime:** Node.js **≥ 20** (`engines`) or Bun. Gates ran on Bun 1.4.5; only Node 24.22.3 was
   installed here, so **Node 20/22 are unverified**. The CLI entry is ESM with a node shebang.
 - `opencode.jsonc` is present and carries the agent registrations; it is not deleted. `.ai/agents/`

@@ -9,9 +9,15 @@ All notable changes to Chikx are documented here. The format follows
 ### Editor
 
 - Media variant markers (`@md`, `@dark`, `@xl+dark`, block variant headers and `@media-types`
-  captions) are now magenta: the grammar scopes them as `keyword.control.media.chikx` and the
-  extension contributes a `#D6409F` default for that scope, so they no longer read like strings.
-  A user `editor.tokenColorCustomizations` rule for the scope still wins.
+  captions) now use the `@`-directive keyword colour: the grammar scopes them as
+  `keyword.control.media.chikx` and the extension contributes a `#C586C0` default for that scope, so
+  they read like directives without collapsing into strings. A user
+  `editor.tokenColorCustomizations` rule for the scope still wins.
+- Accepting a property completion now reopens the value list at the cursor, so named colours and hex
+  values appear without retyping the colon.
+- Typing a digit in a declaration value now suggests CSS units in the real editor: `0`–`9` are
+  completion trigger characters, and accepting a unit appends it without deleting the digits
+  (`margin: 1` → `1rem`).
 
 ## [0.1.1] - 2026-11-26
 

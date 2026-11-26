@@ -78,9 +78,9 @@ async function run(t) {
   await extension.activate();
   const manifest = extension.packageJSON;
 
-  // ---- Media variant markers carry a contributed magenta default. ----
+  // ---- Media variant markers carry the keyword colour as a contributed default. ----
   // The grammar scopes variants as `keyword.control.media.chikx`; the manifest
-  // contributes `#D6409F` through configurationDefaults. The host must surface
+  // contributes `#C586C0` through configurationDefaults. The host must surface
   // that default for `editor.tokenColorCustomizations`, otherwise the markers
   // fall back to the theme's keyword colour. A user override still wins.
   const tokenColors = vscode.workspace.getConfiguration("editor").get("tokenColorCustomizations");
@@ -98,8 +98,8 @@ async function run(t) {
   );
   t.equal(
     mediaRule?.settings?.foreground?.toUpperCase(),
-    "#D6409F",
-    "the media variant marker default is not magenta",
+    "#C586C0",
+    "the media variant marker default is not the keyword purple",
   );
 
   // ---- The setting inventory is the manifest's, not this file's. ----

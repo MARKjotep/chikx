@@ -4,9 +4,16 @@
  * The context detection and item construction live in `intelligence.ts`; this
  * adapter only converts pure suggestions to `CompletionItem`s and computes the
  * replacement range. Trigger characters: `@`, `$`, `.`, `:`, `/`, `&`, `(`,
- * `#` and `!` (nested-selector starters, the call opener, a colour literal and
- * `!important` are not word characters, so each needs an explicit trigger;
- * SPECIFICATION.md §8).
+ * `#`, `!` and the digits `0`–`9`. The sigils and punctuation are not word
+ * characters, so each needs an explicit trigger (nested-selector starters, the
+ * call opener, a colour literal and `!important`; SPECIFICATION.md §8). A digit
+ * triggers because units are only meaningful behind a typed number (`margin: 1`
+ * → `1rem`), and nothing else reopens the list there.
+ *
+ * A property item carries `retriggerSuggest`: VS Code runs its
+ * `editor.action.triggerSuggest` command after the insert or snippet, so the
+ * value list opens at the cursor the accepted `property: ` (or `property: ;`)
+ * leaves behind (board bug 29). No other suggestion family sets it.
  */
 
 import * as vscode from "vscode";
@@ -55,6 +62,11 @@ export class ChikxCompletionProvider implements vscode.CompletionItemProvider {
       // other item filters on its label.
       item.filterText = suggestion.filterText ?? suggestion.label;
       if (suggestion.sortText !== undefined) item.sortText = suggestion.sortText;
+      // Accepting a property parks the cursor in the value position, so run the
+      // suggest command again after the insert/snippet to reopen the value list.
+      if (suggestion.retriggerSuggest === true) {
+        item.command = { title: "Trigger suggest", command: "editor.action.triggerSuggest" };
+      }
       if (suggestion.detail !== undefined) item.detail = suggestion.detail;
       if (suggestion.documentation !== undefined) {
         item.documentation = new vscode.MarkdownString(suggestion.documentation);
