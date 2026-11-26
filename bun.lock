@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "chikx",
+      "name": "@chikx/chikx",
       "devDependencies": {
         "@biomejs/biome": "1.9.4",
         "@playwright/test": "^1.65.1",

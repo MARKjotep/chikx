@@ -15,8 +15,9 @@ Report new bugs and feature requests under the matching section; the lead routes
    (2026-11-26), so the extension remains at `0.1.0`; PP5b follows it. The remaining 0.1.1
    follow-ups are in `.ai/HANDOVER.md`. Owner field-testing continues.
 
-3. Unscoped npm name `chikx` is reserved for the owner to publish (root stub only, awaiting
-   `npm publish`; see `docs/release.md` → Unscoped npm name). — 🟡 prepared
+3. npm alias `@chikx/chikx` is prepared for the owner to publish (root stub only, awaiting
+   `npm publish --access public`; npm rejected the unscoped `chikx` name as too similar to `chikuy`
+   and `shiki`; see `docs/release.md` → npm alias). — 🟡 prepared
 
 ## Bug reports
 

@@ -19,10 +19,12 @@ is [SPECIFICATION.md](SPECIFICATION.md); architecture decisions are recorded in
 Source files use the `.cssx` extension; the language ID, packages, CLI command and `CHIKX####`
 diagnostics keep the Chikx name ([ADR-0013](docs/decisions/ADR-0013-cssx-file-extension.md)).
 
-**npm package name:** this unscoped `chikx` package only reserves the name and contains no compiler
-or CLI. The CLI is [`@chikx/cli`](https://www.npmjs.com/package/@chikx/cli) and the compiler is
-[`@chikx/compiler`](https://www.npmjs.com/package/@chikx/compiler). The VS Code extension is `chikx`
-on the Marketplace (publication deferred).
+**npm package name:** npm's name-similarity policy rejects the unscoped `chikx` name as too close to
+`chikuy` and `shiki`, so this repository is published under the scoped alias
+[`@chikx/chikx`](https://www.npmjs.com/package/@chikx/chikx). It contains no compiler or CLI: the CLI
+is [`@chikx/cli`](https://www.npmjs.com/package/@chikx/cli), the compiler is
+[`@chikx/compiler`](https://www.npmjs.com/package/@chikx/compiler), and the VS Code extension is
+`chikx` on the Marketplace (publication deferred).
 
 ## Canonical example
 
@@ -96,7 +98,8 @@ npm install --save-dev @chikx/cli
 Requires Node.js ≥ 20 or Bun. The compiler is ESM and has no runtime dependencies; the CLI is ESM,
 ships built `dist` output, and its `bin` entry points at `dist/index.js` — run `bunx chikx` with Bun,
 or `npx @chikx/cli` (or `node node_modules/@chikx/cli/dist/index.js`) with Node. A bare `npx chikx`
-fetches this name-reservation stub, which exits with a pointer to `@chikx/cli`.
+does not run the CLI: the unscoped name is unavailable, and the `@chikx/chikx` alias is only a
+pointer stub.
 
 The VS Code extension is **not published to the Marketplace yet** (PP4b deferred). Build the local
 VSIX from this checkout and install it by hand:

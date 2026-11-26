@@ -18,10 +18,10 @@ async function readManifest(path: string): Promise<PackageManifest> {
 }
 
 describe("workspace scaffold", () => {
-  test("root package is the private chikx ESM workspace", async () => {
+  test("root package is the public @chikx/chikx ESM workspace", async () => {
     const pkg = await readManifest("package.json");
-    expect(pkg.name).toBe("chikx");
-    expect(pkg.private).toBe(true);
+    expect(pkg.name).toBe("@chikx/chikx");
+    expect(pkg.private).toBeUndefined();
     expect(pkg.type).toBe("module");
     expect(pkg.workspaces).toEqual(["packages/*"]);
   });

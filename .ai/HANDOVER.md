@@ -23,12 +23,12 @@ extension stays at `0.1.0`; the local VSIX from `release:check` is the interim e
 distribution. 0.1.1 does not repackage the extension. Do not tag, publish a new version or push
 release artifacts without new explicit owner authorization.
 
-**Unscoped npm name `chikx` 🟡 — prepared, awaiting the owner's publish.** The registry returned 404
-for the unscoped name, so the root workspace is now a minimal public package (`0.1.1`) that only
-reserves it: `files` is limited to `package.json`, `README.md`, `LICENSE` and `bin/chikx.js`, and the
-stub prints a pointer to `@chikx/cli` and exits 1. Publish from the repository root with
-`npm publish` (no `--access` needed for an unscoped name); this is a name reservation, not the CLI.
-The 0.1.1 packages stay untouched.
+**npm alias `@chikx/chikx` 🟡 — prepared, awaiting the owner's publish.** npm rejected the unscoped
+`chikx` name under its name-similarity policy (`chikuy`, `shiki`), so the root workspace publishes as
+the scoped alias `@chikx/chikx` (`0.1.1`). It only reserves the name: `files` is limited to
+`package.json`, `README.md`, `LICENSE` and `bin/chikx.js`, and the stub prints a pointer to
+`@chikx/cli` and exits 1. Publish from the repository root with `npm publish --access public`; this is
+an alias, not the CLI. The 0.1.1 packages stay untouched.
 
 ## State
 
@@ -60,7 +60,8 @@ behaviour is unchanged, and the extension stays at `0.1.0`.
 - The compiler README example `await`s `compile()`; the `docs/usage.md` quick start is
   formatter-clean with an ESM note for generated maps.
 - Manifests: `@chikx/compiler@0.1.1` (published); `@chikx/cli@0.1.1` with
-  `"@chikx/compiler": "0.1.1"` (staged); root workspace `0.1.1`; VS Code extension `0.1.0`.
+  `"@chikx/compiler": "0.1.1"` (staged); root workspace `@chikx/chikx@0.1.1`; VS Code extension
+  `0.1.0`.
 
 Owner publish (after `bun run release:check` is green and authorization is explicit; the compiler is
 already live, so only the CLI remains):
@@ -193,9 +194,9 @@ npx -y @chikx/cli@0.1.0 --version    # unambiguous package specifier
 bunx @chikx/cli@0.1.0 --version
 ```
 
-- `npx chikx` alone fetches the unscoped name-reservation stub (root `bin/chikx.js`), which exits 1
-  with a pointer to `@chikx/cli`; install the scoped CLI first (as above) so the local `bin` wins, or
-  use `npx @chikx/cli` / the specifier.
+- `npx chikx` alone does not run the CLI: the unscoped name is unavailable, and the
+  `@chikx/chikx` alias is only a pointer stub (root `bin/chikx.js`) that exits 1. Install the scoped
+  CLI first (as above) so the local `bin` wins, or use `npx @chikx/cli` / the specifier.
 
 ### 7. Docs follow-up after success (done 2026-11-26 for 0.1.0)
 

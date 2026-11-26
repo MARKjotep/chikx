@@ -1,5 +1,5 @@
 {
-  "name": "chikx",
+  "name": "@chikx/chikx",
   "version": "0.1.1",
   "type": "module",
   "description": "Chikx — a CSS-first, property-centric stylesheet language and compiler.",
