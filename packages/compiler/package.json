@@ -4,6 +4,21 @@
   "description": "Chikx lexer, parser, resolver, transformer and CSS/JS generators. Zero runtime dependencies.",
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MARKjotep/chikx.git",
+    "directory": "packages/compiler"
+  },
+  "homepage": "https://github.com/MARKjotep/chikx#readme",
+  "bugs": {
+    "url": "https://github.com/MARKjotep/chikx/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

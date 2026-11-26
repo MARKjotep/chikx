@@ -4,7 +4,7 @@ import { expect, open, readScenario, skipBrowserIfMissing, test } from "./suppor
 skipBrowserIfMissing();
 
 /**
- * Masterplan §9: minification must preserve computed styles. For every
+ * Minification must preserve computed styles. For every
  * scenario, the pretty and minified pages are loaded at all required viewports
  * and both color schemes; a broad curated computed-style set (including the
  * runtime custom property) must be deep-equal.

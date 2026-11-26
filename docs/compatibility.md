@@ -1,8 +1,8 @@
 # Compatibility matrix (v0.1)
 
-Chikx is a CSS-first language, but it is **not** a claim of full CSS compatibility. Masterplan §11:
-"avoid claiming full CSS compatibility until tested". This page lists what is implemented and
-verified in v0.1, what is deliberately limited, and what is not supported yet.
+Chikx is a CSS-first language, but it is **not** a claim of full CSS compatibility. The v0.1
+compatibility position is: avoid claiming full CSS compatibility until tested. This page lists what
+is implemented and verified in v0.1, what is deliberately limited, and what is not supported yet.
 
 Legend: **Tested** names the suite that exercises the behaviour. Untested behaviour is marked as
 such rather than assumed.

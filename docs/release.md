@@ -46,7 +46,12 @@ Each sub-result is printed. `release:check` does not publish anything and does n
    bugs URL; no placeholder remains.
 2. **Tag and publish**:
    - **2a · npm (PP4a):** `npm publish --workspace @chikx/compiler --access public`, then
-     `npm publish --workspace @chikx/cli --access public` (compiler first; the CLI pins it).
+     `npm publish --workspace @chikx/cli --access public` (compiler first). The CLI pins the
+     compiler to an exact version (`"@chikx/compiler": "0.1.0"`): npm does not rewrite the
+     `workspace:` protocol at pack/publish, so **every new compiler release requires bumping the CLI
+     dependency in `packages/cli/package.json` to the same version, rebuilding and re-packing the
+     CLI before its own publish**. Confirm the packed manifest before publishing:
+     `tar -xzOf chikx-cli-0.1.0.tgz package/package.json | grep '@chikx/compiler'`.
    - **2b · VS Code Marketplace (PP4b, deferred by owner 2026-11-26):**
      `cd packages/vscode && vsce publish` (publisher `chikx`; needs a PAT with Marketplace *Manage*
      scope via `npx @vscode/vsce login chikx` or `VSCE_PAT`). Until then the local VSIX is

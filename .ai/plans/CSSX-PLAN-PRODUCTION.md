@@ -226,9 +226,11 @@ caveat only after the publish succeeds.
 
 Dependencies: PP0–PP3 complete including the PP2a URL decision; `bun run release:check` green
 immediately before publishing.
-Exit criteria: both npm packages resolvable at 0.1.0, with the compiler first (the CLI pins it via
-`workspace:*`). Publishing is **irreversible** (`docs/release.md` "Rollback"): the only remedy for a
-bad release is a new version.
+Exit criteria: both npm packages resolvable at 0.1.0, with the compiler first (the CLI pins it to the
+exact version `"@chikx/compiler": "0.1.0"`; npm does not rewrite `workspace:*`, so a new compiler
+release means bumping the CLI dependency to the same version before publishing the CLI). Publishing
+is **irreversible** (`docs/release.md` "Rollback"): the only remedy for a bad release is a new
+version.
 
 ## PP4b — VS Code Marketplace (deferred by owner 2026-11-26)
 

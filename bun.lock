@@ -17,7 +17,7 @@
         "chikx": "./dist/index.js",
       },
       "dependencies": {
-        "@chikx/compiler": "workspace:*",
+        "@chikx/compiler": "0.1.0",
       },
     },
     "packages/compiler": {

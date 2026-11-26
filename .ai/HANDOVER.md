@@ -125,8 +125,11 @@ npm publish --workspace @chikx/compiler --access public
 npm publish --workspace @chikx/cli --access public
 ```
 
-- The CLI depends on the compiler; npm rewrites `workspace:*` to the exact published version, so the
-  compiler must exist first.
+- The CLI depends on the compiler by an **exact version** (`"@chikx/compiler": "0.1.0"`); npm does
+  not rewrite `workspace:*`, so the pin is authored in the manifest and a new compiler release
+  requires bumping the CLI dependency to the same version **before** publishing the CLI. Publish the
+  compiler first, and confirm the packed manifest
+  (`tar -xzOf <cli>.tgz package/package.json`) carries the exact version.
 
 ### 6. npm post-checks
 

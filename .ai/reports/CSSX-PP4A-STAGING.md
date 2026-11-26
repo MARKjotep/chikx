@@ -1,82 +1,110 @@
 # CSSX PP4A — npm Staging (@chikx/compiler, @chikx/cli 0.1.0)
 
-**Status: 🔴 BLOCKED — do not publish.** Packed CLI manifest retains `"@chikx/compiler": "workspace:*"`; a clean consumer install fails with `EUNSUPPORTEDPROTOCOL`. Second, independent gate: no npm auth (`npm whoami` fails).
+**Status: 🟢 READY — staged.** The packed CLI manifest now carries `"@chikx/compiler": "0.1.0"`; a
+clean tarball-only consumer install, `npx chikx --version`, an ESM compiler import and a two-file
+`build`/`check` all pass. Remaining gate: npm auth is the owner's step (`npm whoami` fails in this
+environment; publish from the owner's authenticated terminal). Nothing was published.
 
-Repo: `/Users/Marky/Desktop/$/chikx` @ `1ec431f`, npm 11.19.1, Bun 1.4.5, Node 24.22.3.
-Builds: `bun run --cwd packages/compiler build` exit 0; `bun run --cwd packages/cli build` exit 0.
+Repo: `/Users/Marky/Desktop/$/chikx` @ `62aec9b` (+ this change), npm 11.19.1, Bun 1.4.5, Node 24.22.3.
 
 ## Build sanity
 
 | Check | Result |
 | --- | --- |
+| `bun run --cwd packages/compiler build` | exit 0 |
+| `bun run --cwd packages/cli build` | exit 0 |
 | `node packages/cli/dist/index.js --version` | `0.1.0` (exit 0) |
-| `head -1 packages/cli/dist/index.js` | `#!/usr/bin/env node` |
-| `packages/compiler/dist/index.js`, `dist/index.d.ts` | present (32.7 kB / 6.2 kB) |
-| Files on disk (dist) | compiler 320, CLI 68 |
+| `bun -e 'import("@chikx/compiler")…'` in `packages/cli` | `function` (workspace link intact) |
 
-## Tarballs (`npm pack --pack-destination $TMP`)
+## Resolution (2026-11-26)
 
-| Package | Tarball | Bytes | Unpacked | Files | SHA-256 |
-| --- | --- | --- | --- | --- | --- |
-| @chikx/compiler | chikx-compiler-0.1.0.tgz | 242801 | 1036105 | 323 | `4091673425ceaffe6d6d7e0ee87f588172f1b440f12ef8e411faa3880aac89a6` |
-| @chikx/cli | chikx-cli-0.1.0.tgz | 85436 | 386768 | 89 | `68419af610a038f4d993a60e4d9c6519049a9bc85b68685d60dbe580c0abf32e` |
+Root cause: npm 11.19.1 does **not** rewrite the `workspace:` protocol at pack/publish; the previous
+staging packed `"@chikx/compiler": "workspace:*"` verbatim and a clean install died with
+`EUNSUPPORTEDPROTOCOL`. Applied fix and additions:
 
-File counts match expectation (323 / 89). Each tarball contains `package.json`, `README.md`, `LICENSE`, `dist/**`; compiler adds no `src/`, CLI adds 18 `src/` files (intended by `files: ["dist","src"]`). Compiler tarball has no `dependencies` key; `files: ["dist"]`, `main`/`types`/`exports` all point at `./dist/*`.
+1. `packages/cli/package.json` — `"dependencies": { "@chikx/compiler": "0.1.0" }` (exact pin replaces
+   `workspace:*`). A new compiler release therefore requires bumping this pin to the same version
+   before the CLI is published.
+2. Both manifests — `engines.node >=20`, `repository` (`https://github.com/MARKjotep/chikx.git` with
+   per-package `directory`), `homepage`, `bugs`, `publishConfig.access: "public"`.
+3. `bun install` refreshed `bun.lock` (only the CLI dependency spec changed); local workspace
+   resolution still links `packages/cli/node_modules/@chikx/compiler → ../../../compiler`.
+4. No `prepack`/`prepublishOnly` added — the release gate builds before publish.
 
-## Blocker 1 — `workspace:*` survives packing (verbatim, from tarball)
+## Tarballs (fresh `npm pack --pack-destination $TMP`, outside the repo)
 
-`tar -xzOf chikx-cli-0.1.0.tgz package/package.json`:
+| Package | Bytes | Unpacked | Files | SHA-256 |
+| --- | --- | --- | --- | --- |
+| @chikx/compiler | 242913 | 1036456 | 323 | `effa054ac083be0db127ce2a30061dd10fe4ed5703bf45194d4c30c50ebfc232` |
+| @chikx/cli | 85551 | 387108 | 89 | `d984fc9f086d7d78877ab3fa48c691010462904f911058ad4b0abc9e88c12252` |
+
+Packed CLI manifest (verbatim, from the tarball):
 
 ```json
 "dependencies": {
-  "@chikx/compiler": "workspace:*"
+  "@chikx/compiler": "0.1.0"
 }
 ```
 
-npm 11.19.1 does not rewrite the `workspace:` protocol at pack/publish (that rewrite is a pnpm/bun-pack feature). Proven consumer impact (temp dir, tarballs only):
+File counts unchanged (323 / 89), matching the recorded release table in `docs/release.md`.
+
+## Dry-run publish (safe, nothing written to registry)
+
+| Command | Exit | Notes |
+| --- | --- | --- |
+| `npm publish --workspace @chikx/compiler --access public --dry-run` | 0 | 323 files, 242.9 kB, shasum `c1918d98…`, public/latest |
+| `npm publish --workspace @chikx/cli --access public --dry-run` | 0 | 89 files, 85.6 kB, shasum `4d814c16…`, public/latest |
+
+npm repacks for publish, so the dry-run shasums differ from the recorded pack above; both exit 0 and
+neither writes to the registry. Dry-run still does not prove dependency resolvability — the consumer
+smoke test below does.
+
+## Consumer smoke test (tarballs only, new temp project)
+
+```sh
+TMP=<pack destination>; C=$(mktemp -d); cd "$C"
+npm init -y
+npm install "$TMP/chikx-compiler-0.1.0.tgz" "$TMP/chikx-cli-0.1.0.tgz"   # exit 0
+```
+
+`added 2 packages` — no registry lookup was needed and none occurred. `npm ls --all` shows
+`@chikx/cli@0.1.0 └── @chikx/compiler@0.1.0 deduped` with both packages as real directories (not
+symlinks), proving the packed CLI resolves the packed compiler, not the workspace.
+
+| Check | Result |
+| --- | --- |
+| `npx chikx --version` | `0.1.0`, exit 0 |
+| ESM `import { compile } from "@chikx/compiler"` | `function` |
+| `compile(".btn {…} .card {…}", { file: "snippet.cssx" })` | 0 diagnostics; `.btn{color:red;padding:4px;}.card{color:blue;}` |
+| Two-file project (`tokens.cssx` `module: true`; `button.cssx` `@use "./tokens.cssx"`) → `npx chikx build` | exit 0, `2 entries, 2 files written, 0 warnings` |
+| Generated CSS | `.button{color:#4f46e5;padding:8px;}` (token values merged from the module) |
+| Generated map | `app.map.js` written; `export const button = "button";` |
+| `npx chikx check` | exit 0, `2 entries checked, 0 errors, 0 warnings` |
+
+## Blocker history (2026-11-26, before the fix — kept for the record)
+
+Packed CLI manifest retained the protocol verbatim; a clean consumer install failed:
 
 ```
 npm error code EUNSUPPORTEDPROTOCOL
 npm error Unsupported URL Type "workspace:": workspace:*
-INSTALL_EXIT=1
 ```
 
-Per instructions the smoke test was stopped here; no manifest was modified.
+No manifest was modified during that first staging pass; both candidate fixes were recorded, and the
+exact-pin fix above was applied.
 
-Candidate fixes (both unapplied):
-1. Set `packages/cli/package.json` → `"@chikx/compiler": "0.1.0"`, then refresh `bun.lock` (`bun install`) and re-pack/verify.
-2. Publish via a tool that substitutes the protocol at pack time (e.g. `pnpm pack`/`pnpm publish` on the workspace, or `bun publish`), leaving the manifest source unchanged — verify the resulting tarball manifest before pushing.
+## Remaining owner step
 
-## Blocker 2 — npm auth
+`npm whoami` → `E401 Unauthorized` in this environment. The owner must authenticate and run, from the
+repo root (order matters — compiler first):
 
-`npm whoami` → failure (no usable credential/2FA session). `npm config get registry` → `https://registry.npmjs.org/`. Owner must authenticate locally before any real publish (no login performed by this task).
-
-## Dry-run publish (safe, nothing written to registry)
-
-| Command | Exit | name@version | Files | Package size | shasum |
-| --- | --- | --- | --- | --- | --- |
-| `npm publish --workspace @chikx/compiler --access public --dry-run` | 0 | `@chikx/compiler@0.1.0` | 323 | 242.8 kB | `5068435d…` |
-| `npm publish --workspace @chikx/cli --access public --dry-run` | 0 | `@chikx/cli@0.1.0` | 89 | 85.4 kB | `ba646f97…` |
-
-Both logged `Publishing to https://registry.npmjs.org/ with tag latest and public access (dry-run)`. Dry-run does not validate dependency resolvability, so exit 0 does not clear Blocker 1.
-
-## Consumer smoke test
-
-Not run — blocked at step 4 by the surviving `workspace:*` (install itself fails, see evidence above). The ESM-import, `npx chikx --version`, and `build`/`check` checks remain unverified and must be rerun after the fix.
-
-## Commands for the owner (only after both blockers clear)
-
-```bash
-cd "/Users/Marky/Desktop/$/chikx"
+```sh
 npm publish --workspace @chikx/compiler --access public
 npm publish --workspace @chikx/cli --access public
 ```
 
 ## Observations
 
-- Neither package declares `engines` (root does: node >=20); consumers get no Node floor warning.
-- Neither declares `publishConfig` (fine for public scoped publish with `--access public`, but explicit `{"access":"public"}` would prevent accidental private scoping).
-- No `repository`/`homepage`/`bugs` in either manifest — npm pages will lack source links.
-- `dist/` is gitignored and there is no `prepack`/`prepublishOnly` build, so publishing from a clean checkout would ship stale or missing output.
-- CLI ships TypeScript `src/` (18 files) plus `.map` files in both packages; intentional but adds ~40% to CLI tarball.
+- CLI ships TypeScript `src/` (18 files) plus `.map` files in both packages; intentional but adds
+  ~40% to the CLI tarball.
 - Source maps reference `../../src/*.ts` that consumers do not receive for the compiler.

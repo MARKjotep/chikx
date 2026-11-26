@@ -7,8 +7,11 @@ Report new bugs and feature requests under the matching section; the lead routes
 1. colors for $variable - deepblue? $runtimeVariables or --var in magenta?, and imported variables vis namespace must match - green for example then the variable color. — 🟢 done in CSSX-COLOR-TOKENS (semantic tokens now work zero-config: `contributes.semanticTokenScopes` maps variable→`variable.language`, namespace→`entity.name.type`, runtimeVariable/customProperty→`keyword.control`, keyframe→`entity.name.function`, so colors follow the active theme; compile-time `$token` `#4C8DF8`, runtime tokens and `--var` `#D6409F`, the `$ns` prefix `#4EC9B0`, resolved `$keyframes.<name>` `#D18616` remain the documented literal override in the README settings snippet. See `.ai/reports/CSSX-COLOR-TOKENS.md`)
 
 2. v0.1 implementation is complete and committed (`1ec431f`). Release plan: **PP4a — npm
-   publication of `@chikx/compiler` + `@chikx/cli` — is next; PP4b (VS Code Marketplace) is deferred
-   by the owner (2026-11-26)**; nothing is published yet. Owner field-testing continues.
+   publication of `@chikx/compiler` + `@chikx/cli` — staging is unblocked and READY (CLI pins the
+   compiler to exact `0.1.0`; tarball-only consumer install/build/check pass — see
+   `.ai/reports/CSSX-PP4A-STAGING.md`), awaiting the owner's authenticated `npm publish`; PP4b (VS
+   Code Marketplace) is deferred by the owner (2026-11-26)**; nothing is published yet. Owner
+   field-testing continues.
 
 ## Bug reports
 

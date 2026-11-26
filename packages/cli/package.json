@@ -4,8 +4,23 @@
   "description": "Chikx command line interface: build, check, watch, format and clean.",
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MARKjotep/chikx.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/MARKjotep/chikx#readme",
+  "bugs": {
+    "url": "https://github.com/MARKjotep/chikx/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
-    "@chikx/compiler": "workspace:*"
+    "@chikx/compiler": "0.1.0"
   },
   "bin": {
     "chikx": "./dist/index.js"

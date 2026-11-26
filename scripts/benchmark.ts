@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Masterplan §9 benchmark harness.
+ * Benchmark harness.
  *
  * Generates a deterministic synthetic project of N `.cssx` sources, then
  * measures, five times each and reporting the median:

@@ -4,7 +4,7 @@ import { expect, open, readScenario, skipBrowserIfMissing, test } from "./suppor
 skipBrowserIfMissing();
 
 /**
- * Masterplan §9 and ADR-0024: no grouping mode may change computed styles.
+ * ADR-0024: no grouping mode may change computed styles.
  * Each scenario is compiled with `mediaGrouping: "safe"` (the default),
  * `"none"` and the opt-in `"merge"` optimizer; the resulting pages must be
  * computed-style equal at every required viewport and color scheme. The
