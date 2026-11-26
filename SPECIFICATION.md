@@ -570,6 +570,15 @@ specificity is preserved: mixed-specificity parent lists use `:is(...)` where ne
 flattening is rejected rather than naïvely expanded. Multiple `&` references and escaped class
 identifiers are validated. Text inside attribute strings and declaration values is never rewritten.
 
+Flattening is bounded per rule: a flattened selector list may not exceed **8 388 608 characters** or
+**100 000 alternatives**, checked at every expansion step. Exceeding either limit rejects that rule
+with a single **CHIKX1001** naming the nesting depth and offending selector — message
+`Cannot flatten selector "…": selector expansion exceeded the flattening limit of 8388608 characters
+and 100000 selectors at nesting depth N; reduce repeated "&" or nested selector lists` — and
+compilation continues with the rest of the file. The code is the existing syntax-family anchor rather
+than a new one; a finer `CHIKX1004` subcode for expansion-limit failures is a recorded optional
+follow-up (`docs/known-limitations.md` §4).
+
 ### 7.2 Class renaming
 
 All local class tokens, including nested references, use the same naming table. `:global(.external-icon)`

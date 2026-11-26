@@ -257,3 +257,50 @@ scopeSuite("rendered scopes — @group definitions, use sites and members", () =
     expectScoped(tokens, "margin", "support.type.property-name.css");
   });
 });
+
+scopeSuite("rendered scopes — semantic-token fallbacks", () => {
+  test("a namespaced reference splits the $ns prefix from the member", () => {
+    const tokens = tokenize('@use "./theme.cssx" as theme;\n.a { color: $theme.primary; }');
+    expectScoped(tokens, "$theme", "variable.other.chikx");
+    expectScoped(tokens, "$theme", "variable.other.namespace.chikx");
+    expectNeverScoped(tokens, "$theme", "variable.other.member.chikx");
+    expectScoped(tokens, "primary", "variable.other.member.chikx");
+    expectNeverScoped(tokens, "primary", "variable.other.namespace.chikx");
+  });
+
+  test("a bare $token stays a plain variable, never a namespace", () => {
+    const tokens = tokenize("@variables { spacing: 4px; }\n.a { padding: $spacing; }");
+    expectScoped(tokens, "$spacing", "variable.other.chikx");
+    expectNeverScoped(tokens, "$spacing", "variable.other.namespace.chikx");
+  });
+
+  test("a $keyframes member carries the member and keyframe fallback scopes", () => {
+    const tokens = tokenize(".a { animation: $keyframes.spin 1s; }");
+    expectScoped(tokens, "$keyframes", "variable.other.chikx");
+    expectScoped(tokens, "$keyframes", "variable.other.namespace.chikx");
+    expectScoped(tokens, "spin", "variable.other.member.chikx");
+    expectScoped(tokens, "spin", "variable.other.keyframe.chikx");
+  });
+
+  test("--custom-property references are scoped in values but not as property names", () => {
+    const value = tokenize(".a { background: var(--brand); }");
+    expectScoped(value, "--brand", "variable.other.custom-property.chikx");
+
+    const declaration = tokenize(".a { --brand: red; }");
+    expectScoped(declaration, "--brand", "support.type.property-name.css");
+    expectNeverScoped(declaration, "--brand", "variable.other.custom-property.chikx");
+
+    const atProperty = tokenize('@property --gap { syntax: "<length>"; }');
+    expectScoped(atProperty, "--gap", "variable.other.custom-property.chikx");
+  });
+
+  test("@runtime declarations expose the runtime declaration scope only there", () => {
+    const runtime = tokenize("@runtime { accent: #2563eb; }");
+    expectScoped(runtime, "accent", "support.type.property-name.css");
+    expectScoped(runtime, "accent", "variable.other.declared.runtime.chikx");
+
+    const rule = tokenize(".a { accent: #2563eb; }");
+    expectScoped(rule, "accent", "support.type.property-name.css");
+    expectNeverScoped(rule, "accent", "variable.other.declared.runtime.chikx");
+  });
+});

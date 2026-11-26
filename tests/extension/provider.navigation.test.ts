@@ -16,6 +16,7 @@ import {
   type Range,
   type SourceText,
   analyzeDocument,
+  tokenNameConflict,
 } from "../../packages/vscode/src/analysis.ts";
 import {
   definitionsAt,
@@ -197,6 +198,56 @@ describe("token rename", () => {
     // The existing contract: token edits carry no module and apply to the document.
     expect(plan.edits.every((edit) => edit.file === undefined)).toBe(true);
     expect(plan.edits).toHaveLength(3);
+  });
+
+  test("a rename target that already exists is a token conflict (CSSX-U04)", async () => {
+    const text = [
+      "@variables {",
+      "  accent: #2563eb;",
+      "  gap: 4px;",
+      "}",
+      ".card { color: $accent; padding: $gap; }",
+    ].join("\n");
+    const { state } = await analyze(text);
+    const accentAt = text.indexOf("color: $accent") + "color: $".length;
+    const accent = tokenAt(text, accentAt, state.analysis);
+    if (accent === undefined) throw new Error("expected the accent token");
+
+    const conflict = tokenNameConflict(state.analysis, "gap", accent.symbol);
+    expect(conflict?.name).toBe("gap");
+    expect(conflict?.kind).toBe("compile");
+    // The renamed symbol itself never counts, and a free name is accepted.
+    expect(tokenNameConflict(state.analysis, "accent", accent.symbol)).toBeUndefined();
+    expect(tokenNameConflict(state.analysis, "space", accent.symbol)).toBeUndefined();
+  });
+
+  test("token rename covers group definition and use-site bodies (CSSX-U05)", async () => {
+    const text = [
+      "@variables { gap: 8px; }",
+      "@group.card { padding: $gap; }",
+      ".a {",
+      "  padding: $gap;",
+      "  @group.card {",
+      "    border-radius: $gap;",
+      "  }",
+      "}",
+    ].join("\n");
+    const { state } = await analyze(text);
+    const offset = text.indexOf("padding: $gap;") + "padding: $".length;
+    const plan = renameAt(text, offset, "space", { analysis: state.analysis });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    const edits = plan.edits.map((edit) => ({
+      ...rangeToOffsets(state.analysis, edit.range),
+      newText: edit.newText,
+    }));
+    // Declaration + rule body + group definition body + group use-site body.
+    expect(edits).toHaveLength(4);
+    expect(edits.map((edit) => edit.newText)).toEqual(["space", "$space", "$space", "$space"]);
+    const editedSlices = edits
+      .map((edit) => text.slice(edit.start, edit.end))
+      .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+    expect(editedSlices).toEqual(["$gap", "$gap", "$gap", "gap"]);
   });
 });
 

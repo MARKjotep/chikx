@@ -15,6 +15,13 @@ import { emitReport, executeBuild, reportExitCode } from "./build.js";
 export async function runCheck(invocation: CliInvocation, cwd: string): Promise<number> {
   const prepared = await prepareProject(invocation, cwd);
   if (!prepared.ok) return invocationFailure(invocation.command, prepared.message, invocation.json);
+  if (!prepared.context.singleEntry && prepared.context.entries.length === 0) {
+    return invocationFailure(
+      invocation.command,
+      "No .cssx sources matched the project include globs.",
+      invocation.json,
+    );
+  }
 
   let outcome: Awaited<ReturnType<typeof executeBuild>>;
   try {

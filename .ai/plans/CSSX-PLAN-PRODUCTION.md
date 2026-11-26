@@ -1,6 +1,8 @@
 # Chikx Plan — Production readiness (v0.1 release)
 
 **Status:** all phases open 🔴. This plan defines future work only; nothing in it has been executed.
+**Parked pending the stress-testing campaign** `.ai/plans/CSSX-PLAN-TESTING.md` (TT0–TT8), which runs
+first; PP0 re-verifies the baseline on the post-campaign tree before any phase here executes.
 Created 2026-11-26 against the editor-intelligence handover `.ai/HANDOVER.md` (A45–A51 landed,
 `bun run verify` 892 pass / 0 fail across 45 files).
 
@@ -20,15 +22,15 @@ explicit owner authorization before any commit, push, tag or publish.
 
 | Phase / item | Deliverable | Acceptance condition | Status |
 |---|---|---|---|
-| PP0 · Baseline re-verification | Run `bun run verify`, `bun run test:browser`, full `bun run release:check`; record actual numbers/durations in this table | All three green; recorded results match the plan (test files, pass counts, browser totals, VSIX size) | 🔴 |
+| PP0 · Baseline re-verification | Run `bun run verify`, `bun run test:browser`, full `bun run release:check`; record actual numbers/durations in this table | All three green; recorded results match the plan (test files, pass counts, browser totals, VSIX size). **The stress campaign `.ai/plans/CSSX-PLAN-TESTING.md` (TT0–TT8) completed 2026-11-26** — PP0 must run on that post-campaign tree (1 160 pass / 0 fail / 85 files, 96 browser tests), not on the 892/45 baseline quoted below | 🔴 |
 | PP1a · CLI `bin` entry | `@chikx/cli` `bin` → Node-compatible `dist` entry; affected tests and docs updated | `node packages/cli/dist/index.js --version` works from a clean checkout after build; `bun test`/`bun run verify` green; `docs/known-limitations.md` §2 row and `docs/release.md` payload rows updated | 🔴 |
 | PP1b · VSIX payload | `.vscodeignore` in `packages/vscode` excluding `src/`, `test/`, `tsconfig.json` | `vsce package` succeeds; recorded file count/size in `docs/release.md` refreshed; extension still activates from the trimmed VSIX | 🔴 |
 | PP1 · Packaging gate | Both fixes integrated | `bun run release:check` green; tarball and VSIX contents inspected (`npm pack --dry-run --json`, `unzip -l`) | 🔴 |
-| PP2a · Manifest URLs | Replace placeholder `https://github.com/chikx/chikx` repository/homepage URLs | **Owner decision required** (canonical repo URL); manifest consistent across compiler/CLI/extension | 🔴 |
+| PP2a · Manifest URLs | Replace placeholder `https://github.com/chikx/chikx` repository/homepage URLs with the owner-decided canonical URL `https://github.com/MARKjotep/chikx` (decision recorded 2026-11-26; replacement not yet executed) | Manifest consistent across compiler/CLI/extension; no placeholder URLs remain | 🔴 |
 | PP2b · CHANGELOG 0.1.0 | `CHANGELOG.md` entry for 0.1.0 | Entry lists the shipped feature set and links the known limitations; matches tag date | 🔴 |
 | PP2c · Docs consistency | README (already refreshed), `docs/known-limitations.md`, `docs/release.md` aligned with PP1/PP2 changes | No stale counts, paths or placeholder URLs remain in the v0.1 docs; lint green | 🔴 |
 | PP3 · Editor manual smoke | Run the 7-item checklist from `.ai/HANDOVER.md` in an Extension Development Host | Each item verified, or explicitly recorded as not verifiable in this environment with the reason | 🔴 |
-| PP3 · Deferred harness (optional) | Extend `packages/vscode/test/suite.js` for A51 adapter behavior (suggest-widget swatches, native picker via `colorsAt()`) | New smoke assertions pass in the extension host; no assertion weakening elsewhere | 🔴 |
+| PP3 · Deferred harness (optional) | Extend `packages/vscode/test/suite.js` for A51 adapter behavior (suggest-widget swatches, native picker via `colorsAt()`) — **superseded** by `.ai/plans/CSSX-PLAN-UI.md` U1/U2 (see its “Relationship to the other plans”); this plan does not implement it | Closed by pointing at U7's report; no new smoke assertions are written here | 🔴 |
 | PP4 · Release execution | Tag v0.1.0, commit per owner instructions, publish compiler + CLI + extension | **Explicit owner authorization first**; `npm publish --workspace @chikx/compiler`, `--workspace @chikx/cli`, `vsce publish` all succeed | 🔴 |
 | PP5 · Post-release verification | Install from registry and marketplace in a clean environment; run the README quick start end to end | Checklist recorded in `.ai/reports/`: `npx chikx --version`, `bunx chikx --version`, VSIX/marketplace install, quick start builds and renders | 🔴 |
 
@@ -74,8 +76,9 @@ recorded docs.
 ## PP2 — Metadata and docs finalization
 
 - Replace the placeholder `https://github.com/chikx/chikx` repository/homepage URLs in
-  `packages/vscode/package.json` (and any identical placeholders elsewhere). **Blocked on an owner
-  decision**: the plan cannot invent the canonical URL, so this row stays 🔴 until the owner answers.
+  `packages/vscode/package.json` (and any identical placeholders elsewhere). **Owner decision
+  recorded 2026-11-26**: canonical repo URL is `https://github.com/MARKjotep/chikx`. The decision is
+  answered; the manifest replacement itself is still unexecuted, so this row stays 🔴 until it lands.
 - Author the 0.1.0 `CHANGELOG.md` entry from the shipped surface (compiler, CLI, VS Code extension,
   groups, keyframes, editor intelligence) and the honest limits in `docs/known-limitations.md`.
 - README refresh is done as part of creating this plan; re-check its counts and install note after
@@ -99,6 +102,13 @@ A51's adapter behavior (suggest-widget swatches, native picker) is unit-tested a
 only. Optionally extend `packages/vscode/test/suite.js` with smoke assertions that drive
 `colorsAt()` and the colour-provider registration; anything the harness cannot observe stays on the
 manual list.
+
+**Reduced by the UI campaign (U2, `.ai/reports/CSSX-U2.md`):** the 7-item checklist is now automated in
+`packages/vscode/test/ui/checklist.js` (96 host assertions, all 7 rows end-to-end, including the
+caret-before-`;` acceptance and the lowercase-hex write-back). The manual residue is **exactly one item**:
+clicking a swatch to open the native colour picker and choosing a value in it — no `vscode` API opens the
+native dialog. PP3's editor smoke therefore reduces to that single interaction (plus the two defect checks
+that flip with `CSSX-U01`/`CSSX-U02`).
 
 Dependencies: PP0 (green baseline); can run in parallel with PP1/PP2.
 Exit criteria: all 7 items verified, or recorded as not verifiable here with the exact reason. Do not

@@ -12,7 +12,14 @@
  *   with `;`, and the file ends with a single `\n`;
  * - one blank line between top-level constructs, and inside a rule or at-rule
  *   block a blank line whenever either side is a nested rule/conditional block;
- * - inline variants stay on the declaration line (`padding: 12px @md 20px;`);
+ * - inline variants stay on the declaration line (`padding: 12px @md 20px;`),
+ *   and adjacent authored markers stay adjacent (`x: 1 @a@b 2;`) because
+ *   `@a@b` and `@a @b` split into different variants;
+ * - a directive entry keeps its authored `$` sigil (`$layout.margin: 4px;`), so
+ *   a namespaced token declaration still reparses as the same declaration;
+ * - a statement at-rule whose prelude leaves a `[` or `(` open prints without a
+ *   terminator, because that `;` would be read back as prelude text and grow on
+ *   every pass;
  * - directive blocks (`@setup`, `@variables`, `@runtime`, `@media-types`) hold
  *   one entry per line, and `@group.<name>` definitions and use sites print
  *   like other at-rule blocks with one declaration per line (ADR-0017);
@@ -190,11 +197,20 @@ function embeddedCommentRanges(
 class Printer {
   private readonly comments: readonly Token[];
   private readonly embedded: readonly EmbeddedRange[];
+  private readonly source: string;
+  private readonly file: string;
   private commentIndex = 0;
 
-  constructor(comments: readonly Token[], embedded: readonly EmbeddedRange[]) {
+  constructor(
+    comments: readonly Token[],
+    embedded: readonly EmbeddedRange[],
+    source: string,
+    file: string,
+  ) {
     this.comments = comments;
     this.embedded = embedded;
+    this.source = source;
+    this.file = file;
   }
 
   /** Comments to print before `offset`, skipping any embedded in raw slices. */
@@ -288,7 +304,7 @@ class Printer {
     const lines = [`${pad(level)}@variables {`];
     for (const token of block.tokens) {
       lines.push(...this.takeComments(token.span.start, level + 1));
-      lines.push(`${pad(level + 1)}${printTokenDeclaration(token)}`);
+      lines.push(`${pad(level + 1)}${printTokenDeclaration(token, this.source)}`);
     }
     lines.push(...this.takeComments(block.span.end, level + 1));
     lines.push(`${pad(level)}}`);
@@ -364,7 +380,8 @@ class Printer {
   private printNative(item: NativeAtRule, level: number): Chunk {
     const header = item.prelude.length === 0 ? `@${item.name}` : `@${item.name} ${item.prelude}`;
     if (item.block === undefined) {
-      return { lines: [`${pad(level)}${header};`], block: false };
+      const terminator = preludeSwallowsTerminator(item.prelude, this.file) ? "" : ";";
+      return { lines: [`${pad(level)}${header}${terminator}`], block: false };
     }
     const lines = [`${pad(level)}${header} {`];
     lines.push(...this.printBlockItems(item.block, level + 1, item.span.end));
@@ -430,8 +447,47 @@ function printSetting(setting: Setting): string {
   return `${setting.key}: ${setting.value};`;
 }
 
-function printTokenDeclaration(token: TokenDeclaration): string {
-  return `${token.name}: ${token.value};`;
+/**
+ * Whether a `;` printed after this prelude would be read back as part of it.
+ *
+ * The parser ends a statement at-rule's prelude only at a top-level `{`, `;` or
+ * `}`; while a `[` or `(` is still open, those tokens are prelude text. A
+ * prelude with a dangling opener therefore swallows the formatter's terminator,
+ * and re-formatting would add one `;` per pass. In that case the authored form
+ * has no terminator to restore, so printing none is both stable and lossless.
+ * The token stack mirrors `parseNativeAtRule`, so strings and comments (which
+ * the lexer already collapsed) cannot be miscounted.
+ */
+function preludeSwallowsTerminator(prelude: string, file: string): boolean {
+  if (prelude.length === 0) return false;
+  let tokens: readonly Token[];
+  try {
+    tokens = tokenize(prelude, file).tokens;
+  } catch {
+    return false;
+  }
+  const closers: Array<"rparen" | "rbracket"> = [];
+  for (const token of tokens) {
+    if (token.kind === "lparen") closers.push("rparen");
+    else if (token.kind === "lbracket") closers.push("rbracket");
+    else if (token.kind === "rparen" || token.kind === "rbracket") {
+      // A mismatched closer ends the prelude rather than nesting it.
+      if (closers.pop() !== token.kind) return false;
+    } else if (
+      closers.length === 0 &&
+      (token.kind === "lbrace" || token.kind === "semicolon" || token.kind === "rbrace")
+    ) {
+      return false;
+    }
+  }
+  return closers.length > 0;
+}
+
+function printTokenDeclaration(token: TokenDeclaration, source: string): string {
+  // The parser strips the authored `$` from `name`; keep it so a namespaced
+  // declaration (`$layout.margin: 4px`) still reparses as a token declaration.
+  const sigil = source[token.span.start] === "$" ? "$" : "";
+  return `${sigil}${token.name}: ${token.value};`;
 }
 
 function printAlias(alias: AliasDeclaration): string {
@@ -443,7 +499,15 @@ function printDeclaration(declaration: Declaration): string {
   let text = `${declaration.property}: ${declaration.value}`;
   for (const variant of declaration.variants) {
     const modifier = `@${variant.aliases.join("+")}`;
-    text += variant.value.length === 0 ? ` ${modifier}` : ` ${modifier} ${variant.value}`;
+    if (variant.value.length === 0) {
+      text += ` ${modifier}`;
+      continue;
+    }
+    // The parser treats a marker directly after another marker as part of the
+    // same variant's value; inserting a space would split one variant into two
+    // and change which conditional block the value lands in.
+    const separator = variant.value.startsWith("@") ? "" : " ";
+    text += ` ${modifier}${separator}${variant.value}`;
   }
   return `${text};`;
 }
@@ -466,7 +530,12 @@ export function format(source: string, file: string): FormatResult {
   }
 
   const comments = lexed.tokens.filter((token) => token.kind === "comment");
-  const printer = new Printer(comments, embeddedCommentRanges(parsed.ast, lexed.tokens));
+  const printer = new Printer(
+    comments,
+    embeddedCommentRanges(parsed.ast, lexed.tokens),
+    source,
+    file,
+  );
   const lines = printer.printStylesheet(parsed.ast);
   return Object.freeze({
     formatted: lines.length === 0 ? "" : `${lines.join("\n")}\n`,

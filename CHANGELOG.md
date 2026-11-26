@@ -12,6 +12,61 @@ All notable changes to Chikx are documented here. The format follows
   the Chikx name ([ADR-0013](docs/decisions/ADR-0013-cssx-file-extension.md)). `.chikx` files are not
   recognised.
 
+### VS Code extension
+
+- Semantic token colorization: compile-time `$token` references, runtime tokens and `--var`
+  references, the `$ns` prefix of a namespaced reference (with the member colored by its resolved
+  kind) and resolved `$keyframes.<name>` members are colored by the active theme with no
+  configuration. `contributes.semanticTokenScopes` maps each kind to a common theme scope
+  (`variable.language`, `entity.name.type`, `keyword.control`, `entity.name.function`); the extension
+  README documents the literal `editor.semanticTokenColorCustomizations` palette as the override,
+  which outranks the scope fallback (CSSX-COLOR-TOKENS).
+
+### Fixed
+
+- Formatter: an at-rule prelude that leaves a `[`/`(` open no longer reabsorbs the printed `;`, so
+  `format` is a fixed point and the reparsed IR matches (CSSX-T01).
+- Formatter: adjacent `@`-markers keep the authored variant split, so `format` no longer turns one
+  variant into two (CSSX-T02).
+- Compiler: an invalid `$` setup prefix no longer produces a `CHIKX2001` span past the end of the
+  source; generated `$` text is not re-reported as an authored reference (CSSX-T03).
+- Compiler: `&` flattening is bounded per rule at 8 388 608 characters / 100 000 selectors, failing
+  one over-budget rule with a single `CHIKX1001` that names the nesting depth instead of hanging
+  (CSSX-T04).
+- Formatter: the authored `$` sigil is re-emitted for namespaced token declarations
+  (`$layout.margin`), so formatting no longer loses the declaration (CSSX-T05).
+- Compiler and editor: a single-file document with duplicate `@variables`/`@runtime` keys or a
+  compile-time/runtime name collision now reports exactly one `CHIKX2001`, and a token rename onto an
+  existing name is refused before any edit (CSSX-U04).
+- CLI: `watch` latches wakeups that arrive mid-build and always records the artifacts that landed, so
+  edits are not dropped and the manifest matches the tree (CSSX-T06).
+- CLI: `build` and `clean` sweep the writer's own `.<artifact>.<pid>.<n>.cssx-tmp` pattern, so an
+  interrupted build leaves no residue (CSSX-T07).
+- CLI: a newly created nested source directory triggers rediscovery and is watched without a restart
+  (CSSX-T08).
+- CLI: a project whose include globs match no `.cssx` file is a configuration error — exit 2 with the
+  text and JSON diagnostics — instead of a silent green build (CSSX-T09).
+- CLI: `clean` only deletes records that are artifact-shaped and point at an in-workspace `.cssx`
+  source, closing the manifest-provenance delete primitive (CSSX-T10).
+- CLI: a value flag no longer consumes a following option, so `--config --json` reports a missing
+  path (as JSON when `--json` came first) (CSSX-T11).
+- CLI: `check --dry-run` is rejected with exit 2 instead of being silently ignored (CSSX-T12).
+- Editor: `@group`/`@keyframes` closures in cyclic import graphs are resolved in sorted canonical-path
+  order through the shared memo, matching the compiler's visibility (CSSX-T13).
+- Editor: the `$`-namespace completion item is `$theme.` (label and insert), preserving the sigil when
+  accepted (CSSX-U01).
+- Editor: nested-selector starters replace a typed lone `&`, so accepting `&:hover` yields `&:hover`,
+  never `&&:hover` (CSSX-U02).
+- Editor: a `&.` class context lists class names only, so accepting one keeps the typed dot
+  (CSSX-U03).
+- Editor: `$tokens` inside `@group` definition and use-site bodies now have hover, definition,
+  references and rename (CSSX-U05).
+- Editor: `Preview Compiled CSS` on a document with no producible CSS shows the existing warning and
+  opens no empty preview tab (CSSX-U06).
+- Editor: typing `!` after a declaration value suggests `!important`, and accepting it repairs the
+  typed bang instead of stacking a second one; `!im` filters to the item, while selectors,
+  property-name positions and empty values offer nothing (CSSX-U07).
+
 ## [0.1.0] - 2026-11-25
 
 First public MVP. CSS-first, property-centric stylesheets compiling to ordinary CSS plus static

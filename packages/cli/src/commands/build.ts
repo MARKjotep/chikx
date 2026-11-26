@@ -21,8 +21,8 @@ import type {
 import type { CliInvocation } from "../args.js";
 import { loadCompiler } from "../compiler.js";
 import type { CliConfig } from "../config.js";
-import { type ManifestRecord, readManifest, writeManifest } from "../manifest.js";
-import { joinPosix } from "../paths.js";
+import { type ManifestRecord, isArtifactRecord, readManifest, writeManifest } from "../manifest.js";
+import { dirnamePosix, joinPosix } from "../paths.js";
 import { type ProjectContext, prepareProject } from "../project.js";
 import {
   type BuildReport,
@@ -40,7 +40,7 @@ import {
   writeLine,
 } from "../report.js";
 import { type FileSetupValues, decodeFileSetup, resolveEffectiveSetup } from "../setup.js";
-import { atomicWrite, hashFile, removeFile } from "../writer.js";
+import { atomicWrite, hashFile, removeFile, sweepTemporaries } from "../writer.js";
 
 /** Options for one build/check run. */
 export interface ExecuteBuildOptions {
@@ -182,6 +182,17 @@ export async function executeBuild(options: ExecuteBuildOptions): Promise<Execut
     for (const output of plan.plan.outputs) occupied.push(output.absolutePath);
   }
 
+  // Sweep `.cssx-tmp` files left by a process that died between the temporary
+  // write and its rename, before this run writes anything. Only the writer's own
+  // dot-prefixed pattern is matched, never user files.
+  if (options.write && !options.dryRun) {
+    const directories = new Set<string>([context.root]);
+    for (const plan of plans.values()) {
+      for (const output of plan.plan.outputs) directories.add(dirnamePosix(output.absolutePath));
+    }
+    await sweepTemporaries([...directories]);
+  }
+
   // Compile all entries through one shared module graph.
   let results: Record<string, CompileResult> = {};
   try {
@@ -260,6 +271,8 @@ export async function executeBuild(options: ExecuteBuildOptions): Promise<Execut
   }
 
   const writesEnabled = options.write && !options.dryRun;
+  // Checked immediately before the first artifact rename (no await intervenes),
+  // so a generation discarded here writes nothing at all.
   if (writesEnabled && options.isCurrent !== undefined && !options.isCurrent()) stale = true;
 
   const writtenRecords: ManifestRecord[] = [];
@@ -342,11 +355,12 @@ export async function executeBuild(options: ExecuteBuildOptions): Promise<Execut
       warnings.push(...cleanup.warnings);
       errors.push(...cleanup.errors);
       const nextRecords = mergeRecords(kept, writtenRecords);
-      if (options.isCurrent !== undefined && !options.isCurrent()) {
-        stale = true;
-      } else {
-        await writeManifest(context.root, { version: 1, files: nextRecords });
-      }
+      // Always persist the manifest once any artifact was renamed into place. A
+      // filesystem event can arrive after the check above and during the write
+      // loop; skipping the manifest then left the tree newer than the records
+      // (the CSSX-T06 desync). The next generation rebuilds from this consistent
+      // state, so nothing is lost and nothing is reported as owned twice.
+      await writeManifest(context.root, { version: 1, files: nextRecords });
     } catch (error) {
       errors.push(`Could not update .cssx-manifest.json: ${describeError(error)}`);
     }
@@ -377,6 +391,13 @@ export async function executeBuild(options: ExecuteBuildOptions): Promise<Execut
 export async function runBuild(invocation: CliInvocation, cwd: string): Promise<number> {
   const prepared = await prepareProject(invocation, cwd);
   if (!prepared.ok) return invocationFailure(invocation.command, prepared.message, invocation.json);
+  if (!prepared.context.singleEntry && prepared.context.entries.length === 0) {
+    return invocationFailure(
+      invocation.command,
+      "No .cssx sources matched the project include globs.",
+      invocation.json,
+    );
+  }
 
   let outcome: ExecuteBuildResult;
   try {
@@ -611,6 +632,12 @@ async function pruneRecords(
   const errors: string[] = [];
 
   for (const record of obsolete) {
+    if (!isArtifactRecord(record)) {
+      warnings.push(
+        `Not removing ${record.path}: the record does not describe a compiler artifact; ownership released.`,
+      );
+      continue;
+    }
     const absolute = joinPosix(root, record.path);
     const currentHash = await hashFile(absolute);
     if (currentHash === null) continue;

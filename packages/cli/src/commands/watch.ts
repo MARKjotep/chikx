@@ -8,9 +8,10 @@
  * arrives mid-build invalidates it through a generation counter, so a stale
  * result never lands on disk.
  *
- * Only `.cssx` files and the configuration file are considered. Generated CSS,
- * JS, declarations, maps and the manifest never match, so the watcher cannot
- * feed back on its own outputs. Deletions and unhandled paths trigger a full
+ * Sources (`.cssx`), the configuration file and directory events trigger work.
+ * Generated CSS, JS, declarations, maps, writer temporaries and the manifest are
+ * matched against the known artifact set and ignored, so the watcher cannot feed
+ * back on its own outputs. Deletions and unhandled paths trigger a full
  * rediscovery through the include globs.
  */
 
@@ -19,6 +20,7 @@ import { stat } from "node:fs/promises";
 import type { CliInvocation } from "../args.js";
 import type { CliConfig } from "../config.js";
 import { staticDirectoryPrefix } from "../glob.js";
+import { MANIFEST_FILENAME } from "../manifest.js";
 import { dirnamePosix, joinPosix, relativePosix } from "../paths.js";
 import { type ProjectContext, prepareProject } from "../project.js";
 import { invocationFailure, writeErrorLine, writeLine } from "../report.js";
@@ -51,6 +53,8 @@ interface WatchState {
   reverse: Map<string, Set<string>>;
   /** Every known source file: entries plus dependencies. */
   sources: Set<string>;
+  /** Workspace-relative artifact paths, so the watcher ignores its own writes. */
+  artifacts: Set<string>;
   /** Build generation, bumped by every filesystem event. */
   generation: number;
 }
@@ -68,12 +72,20 @@ export async function runWatch(options: WatchOptions): Promise<number> {
 
   const prepared = await prepareProject(invocation, cwd);
   if (!prepared.ok) return invocationFailure(invocation.command, prepared.message, invocation.json);
+  if (!prepared.context.singleEntry && prepared.context.entries.length === 0) {
+    return invocationFailure(
+      invocation.command,
+      "No .cssx sources matched the project include globs.",
+      invocation.json,
+    );
+  }
 
   const state: WatchState = {
     context: prepared.context,
     config: prepared.context.config,
     reverse: new Map(),
     sources: new Set(),
+    artifacts: new Set(),
     generation: 0,
   };
 
@@ -83,14 +95,25 @@ export async function runWatch(options: WatchOptions): Promise<number> {
   let pendingConfig = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let wake: (() => void) | undefined;
+  /**
+   * Latched wakeup. `notify()` runs while no waiter exists (the build cycle is
+   * in flight), so the request is remembered here and the next `waitForWork()`
+   * returns immediately instead of sleeping until an unrelated event arrives.
+   */
+  let pendingWake = false;
 
   const notify = (): void => {
     const resolve = wake;
     wake = undefined;
-    resolve?.();
+    if (resolve === undefined) pendingWake = true;
+    else resolve();
   };
   const waitForWork = (): Promise<void> => {
     if (signal.aborted) return Promise.resolve();
+    if (pendingWake) {
+      pendingWake = false;
+      return Promise.resolve();
+    }
     return new Promise<void>((resolve) => {
       wake = resolve;
     });
@@ -141,8 +164,24 @@ export async function runWatch(options: WatchOptions): Promise<number> {
             schedule(absolute);
             return;
           }
-          if (!filename.endsWith(".cssx")) return;
-          schedule(absolute);
+          const relative = relativePosix(state.context.root, absolute);
+          if (relative === "" || relative.startsWith("../")) {
+            schedule(null);
+            return;
+          }
+          // Generated artifacts, the manifest and the writer's temporaries are
+          // our own output: never rebuild because we wrote them.
+          if (relative === MANIFEST_FILENAME) return;
+          if (relative.endsWith(".cssx-tmp")) return;
+          if (state.artifacts.has(relative)) return;
+          if (relative.endsWith(".cssx")) {
+            schedule(absolute);
+            return;
+          }
+          // A directory creation/removal or an unknown entry: rediscover the
+          // include globs so a brand-new source tree becomes visible without a
+          // restart. This replaces the old "only `.cssx` filenames matter" rule.
+          schedule(null);
           return;
         }
         schedule(null);
@@ -189,6 +228,7 @@ export async function runWatch(options: WatchOptions): Promise<number> {
         affected.add(entry.file);
         reverse.set(dependency, affected);
       }
+      for (const output of entry.outputs) state.artifacts.add(output.path);
     }
     state.reverse = reverse;
     state.sources = sources;

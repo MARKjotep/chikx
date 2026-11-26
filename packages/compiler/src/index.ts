@@ -241,9 +241,10 @@ export async function compile(source: string, options: CompileOptions): Promise<
     entryKey = entryAbsolute;
     const record = graph.modules.get(entryKey);
     if (record !== undefined) ast = record.ast;
-    // The memory graph reparses the same source; the caller-facing parse
-    // diagnostics are authoritative and use the authored relative file path.
-    baseDiagnostics = parsed.diagnostics;
+    baseDiagnostics = singleFileDiagnostics(
+      parsed.diagnostics,
+      diagnosticsForEntry(graph, entryKey),
+    );
   }
 
   const setup = buildCompileSetup(options.file, options, decoded);
@@ -731,6 +732,26 @@ function dependenciesForEntry(
   return relative
     .filter((path) => !isAbsolutePath(path) && path !== ".." && !path.startsWith("../"))
     .sort();
+}
+
+/**
+ * Caller-facing diagnostics for a source compiled without `@use`.
+ *
+ * The memory graph reparses the same source, so its syntax (`CHIKX1xxx`)
+ * diagnostics duplicate `parsed.diagnostics`; the caller's parse keeps the
+ * authored file label and stays authoritative. Resolver diagnostics
+ * (`CHIKX2xxx`+) exist only in the graph and must survive, so a duplicate
+ * `@variables` key reports one `CHIKX2001` with the resolver's message and span
+ * just as the module-graph path does (CSSX-U04).
+ */
+function singleFileDiagnostics(
+  parsed: readonly Diagnostic[],
+  graphDiagnostics: readonly Diagnostic[],
+): readonly Diagnostic[] {
+  const resolverDiagnostics = graphDiagnostics.filter(
+    (diagnostic) => !diagnostic.code.startsWith("CHIKX1"),
+  );
+  return mergeDiagnostics(parsed, resolverDiagnostics);
 }
 
 /** Graph diagnostics whose file belongs to the entry's reachable module set. */

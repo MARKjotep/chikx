@@ -185,6 +185,14 @@ export function collectGroupVisibility(
     return visible;
   };
 
+  // Resolve every loaded module's closure in sorted canonical-path order before
+  // any scope is read. The compiler's `visibleGroups` visits its sources in
+  // sorted order with one shared memo, so inside a cycle the *first* file that
+  // hits the back edge decides which partial closure is memoized. Computing
+  // lazily in document-load order would memoize a different partial result and
+  // show groups the compiler will not emit (CSSX-T13).
+  for (const file of [...modules.keys()].sort(comparePaths)) closure(file, new Set());
+
   const scopeMemo = new Map<string, Map<string, MutableGroupVisibility>>();
   const scopeOf = (file: string): Map<string, MutableGroupVisibility> => {
     const cached = scopeMemo.get(file);
@@ -293,6 +301,13 @@ function symbolOf(
     })),
     references: [],
   };
+}
+
+/** Locale-independent path comparison, matching the compiler's `comparePaths`. */
+function comparePaths(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 /** Visit every `@group.<name>` use site inside rule, conditional and native blocks. */

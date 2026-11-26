@@ -141,20 +141,21 @@ relative to the workspace root and mirror the source path. Full details, safety 
 |---|---|
 | `chikx build [file]` | Project build from config include globs, or one file. Writes artifacts + manifest. |
 | `chikx check [file]` | Same compilation and diagnostics, **never writes**. |
-| `chikx watch [file]` | Initial build, then incremental rebuilds until SIGINT/SIGTERM. |
+| `chikx watch [file]` | Initial build, then incremental rebuilds (including sources in newly created directories) until SIGINT/SIGTERM. |
 | `chikx clean` | Deletes only manifest-owned files whose hash still matches. |
 | `chikx format [file]` | Reformats sources canonically in place; `--check` lists files that would change and writes nothing; parse errors never rewrite a file. |
 | `chikx --help`, `chikx --version` | Usage / version, exit 0. |
 
 Flags: `--config <path>`, `--json`, `--dry-run`, `--minify`, `--no-minify` (last wins), `--check`
-(`format` only), `-h/--help`, `-v/--version`. `--json` emits JSON for build/check/clean/format and
-NDJSON for watch.
+(`format` only), `-h/--help`, `-v/--version`. A value flag never consumes a following option
+(`--config --json` is a missing path), and `--dry-run` is rejected by `check`, which never writes.
+`--json` emits JSON for build/check/clean/format and NDJSON for watch.
 
 | Exit | Meaning |
 |---|---|
 | `0` | Success (warnings allowed; `check` with no errors). |
 | `1` | Compile/validation/formatting error, write or manifest failure, or `format --check` found changes. |
-| `2` | Invocation or configuration error: unknown flag/command, missing config, invalid schema. |
+| `2` | Invocation or configuration error: unknown flag/command, missing config, invalid schema, a value flag without a value, or include globs that match no `.cssx` sources. |
 
 ## VS Code extension
 
@@ -169,6 +170,10 @@ TextMate grammar, language configuration and a chick file icon in light and dark
 - color intelligence: 25 curated CSS functions with usage tooltips after `(`, 148 named colors and
   a 35-entry hex palette after `#` on color properties, 27 units after numbers, clickable swatches
   and the native color picker;
+- semantic token colors for compile-time, runtime and namespaced `$token` references, `--custom`
+  properties and `$keyframes` members — styled by the active theme with no configuration, and
+  pinnable with the literal palette documented in
+  [`packages/vscode/README.md`](packages/vscode/README.md#token-colors);
 - hover for resolved tokens, media conditions, generated class names and CSS function usage;
   definition, references, single-file token rename, colors and outline; accepting a property leaves
   the cursor before `;` (`chikx.editor.completePropertyWithSemicolon`, default on);

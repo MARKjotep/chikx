@@ -8,10 +8,19 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import type { Dirent } from "node:fs";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
 let temporaryCounter = 0;
+
+/**
+ * The writer's temporary-file name shape: `.<artifact>.<pid>.<counter>.cssx-tmp`.
+ *
+ * Only names created by {@link atomicWrite} match, so a sweep can never remove a
+ * user file even when it happens to share a directory with generated artifacts.
+ */
+const TEMPORARY_PATTERN = /^\..+\.[0-9]+\.[0-9]+\.cssx-tmp$/;
 
 /** SHA-256 content hash in a stable, comparable form. */
 export function hashContent(content: string): string {
@@ -59,4 +68,35 @@ export async function atomicWrite(path: string, content: string): Promise<string
 /** Remove a file if it exists. */
 export async function removeFile(path: string): Promise<void> {
   await rm(path, { force: true });
+}
+
+/**
+ * Remove stale writer temporaries from `directories` and return the removed paths.
+ *
+ * A process killed between `writeFile` and `rename` cannot run its own cleanup,
+ * so every build and `clean` sweeps the output directories it owns. Only the
+ * documented writer pattern matches; unreadable or missing directories are
+ * skipped, and the sweep is silent because the files were never artifacts.
+ */
+export async function sweepTemporaries(directories: readonly string[]): Promise<readonly string[]> {
+  const removed: string[] = [];
+  for (const directory of new Set(directories)) {
+    let entries: Dirent[];
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isFile() || !TEMPORARY_PATTERN.test(entry.name)) continue;
+      const path = join(directory, entry.name);
+      try {
+        await rm(path, { force: true });
+        removed.push(path);
+      } catch {
+        // Another process may hold it; a later build retries.
+      }
+    }
+  }
+  return removed;
 }

@@ -150,6 +150,7 @@ export type CompletionContext =
   | { readonly kind: "setup-value"; readonly key: string; readonly word: string }
   | { readonly kind: "property"; readonly word: string }
   | { readonly kind: "value"; readonly property?: string; readonly word: string }
+  | { readonly kind: "important"; readonly word: string; readonly start: number }
   | { readonly kind: "keyframe-selector"; readonly word: string }
   | { readonly kind: "selector"; readonly word: string }
   | { readonly kind: "pseudo"; readonly word: string };
@@ -1422,6 +1423,34 @@ function callOpenerStart(text: string, offset: number, word: string): number | u
 }
 
 /**
+ * Offset of a lone `&` the author typed with no selector text behind it.
+ *
+ * `&` is not a word character, so the word after it is empty and the item range
+ * would collapse to the caret. The nested-selector starters are self-contained
+ * (`&:hover` already begins with `&`), so they must replace the authored
+ * ampersand instead of appending to it (`&` + `&:hover` → `&&:hover`). Only the
+ * starter items take this start; the class items keep the caret range (A46).
+ */
+function authoredAmpersandStart(text: string, offset: number, word: string): number | undefined {
+  return word === "" && text[offset - 1] === "&" ? offset - 1 : undefined;
+}
+
+/**
+ * Start of a `!` run typed directly before the completion word (CSSX-U07).
+ *
+ * `!` is not a word character, so `color: red!` scans an empty word and
+ * `color: red!im` only `im`. The returned offset is the replacement start for
+ * the `!important` item: accepting it swaps the typed run instead of appending,
+ * so the authored text never becomes `!!important`.
+ */
+function importantBangStart(text: string, offset: number, word: string): number | undefined {
+  let bang = offset - word.length - 1;
+  if (bang < 0 || text[bang] !== "!") return undefined;
+  while (bang > 0 && text[bang - 1] === "!") bang -= 1;
+  return bang;
+}
+
+/**
  * Colon run typed directly before the completion word at `offset`.
  *
  * The word scan stops at `:`, so the typed pseudo colons sit in front of it
@@ -2285,6 +2314,13 @@ export function contextAt(
   if (declaration !== undefined && DECLARATION_PROPERTY_PATTERN.test(declaration.property)) {
     const colon = text.indexOf(":", declaration.span.start);
     if (colon >= 0 && offset > colon) {
+      // A `!` typed after the value is the `!important` state (CSSX-U07). It
+      // needs a value word in front of it, so a property-name position, an
+      // empty value and selector/`@` contexts never reach it.
+      const bang = importantBangStart(text, offset, word);
+      if (bang !== undefined && text.slice(colon + 1, bang).trim() !== "") {
+        return { kind: "important", word, start: bang };
+      }
       // ADR-0011 recovery keeps an unterminated declaration whose span swallows
       // the following statement lines. A line break with value content behind it
       // and a bare-word current line is a new declaration line inside the rule
@@ -2478,6 +2514,10 @@ function classDetail(occurrence: ClassOccurrence): string | undefined {
  * (`replaceStart`): the call opener `(` (A50) and the colour literal `#` (A51).
  * Both also carry a `filterText`, because the editor narrows the list against
  * the text its replacement range covers rather than the typed word alone.
+ *
+ * The selector starters follow the same pattern for a lone `&`: their item
+ * range covers the authored ampersand, while a `&.` class context offers the
+ * classes only.
  */
 export function completionsAt(
   text: string,
@@ -2567,11 +2607,14 @@ export function completionsAt(
       }
       for (const imported of analysis.imports) {
         if (imported.alias === undefined) continue;
+        // The label carries the sigil like the `$keyframes.` item beside it:
+        // the shared range covers the typed `$`, so an item inserted without it
+        // wrote `theme.` (an invalid reference) and deleted the author's `$`.
         items.push({
-          label: `${imported.alias}.`,
+          label: `$${imported.alias}.`,
           kind: "token",
           detail: `namespace for ${imported.specifier}`,
-          insertText: `${imported.alias}.`,
+          insertText: `$${imported.alias}.`,
         });
       }
       return result(items, replaceStart);
@@ -2719,6 +2762,25 @@ export function completionsAt(
       items.push(...functionItems(context.word));
       return result(items, replaceStart);
     }
+    case "important": {
+      // The range covers the typed `!` run and any word behind it, so accepting
+      // `!important` replaces `red!`/`red!im` instead of stacking a second bang.
+      // The filter text is the full word VS Code sees over that range.
+      const items: CompletionSuggestion[] = "important".startsWith(context.word)
+        ? [
+            {
+              label: "!important",
+              kind: "value",
+              detail: "CSS declaration modifier",
+              documentation: "Marks the declaration as important, overriding normal cascade order.",
+              insertText: "!important",
+              filterText: "!important",
+              sortText: "0-important",
+            },
+          ]
+        : [];
+      return result(items, context.start);
+    }
     case "keyframe-selector": {
       const replaceStart = offset - context.word.length;
       return result(
@@ -2742,11 +2804,21 @@ export function completionsAt(
       const dot = context.word.lastIndexOf(".");
       const replaceStart =
         dot < 0 ? offset - context.word.length : offset - (context.word.length - dot - 1);
-      const items: CompletionSuggestion[] = SELECTOR_STARTERS.map((starter) => ({
-        label: starter.trim(),
-        kind: "selector",
-        insertText: starter,
-      }));
+      // A `&.` context means "this selector plus a class", so the `&` starters
+      // are not candidates there: they already begin with `&`, and appending one
+      // after the typed dot wrote `&.&:hover`. The empty and lone-`&` states keep
+      // the starters; a class context lists the classes only (CSSX-U03).
+      const starterStart = authoredAmpersandStart(text, offset, context.word);
+      const items: CompletionSuggestion[] = context.word.startsWith(".")
+        ? []
+        : SELECTOR_STARTERS.map((starter) => ({
+            label: starter.trim(),
+            kind: "selector",
+            insertText: starter,
+            // A lone `&` stays the author's punctuation: the starter replaces
+            // it, so accepting `&:hover` yields `&:hover`, never `&&:hover`.
+            ...(starterStart === undefined ? {} : { replaceStart: starterStart }),
+          }));
       // One item per distinct class name: the authored selectors can mention
       // the same class more than once (`.class {}` plus `&.class`), and the
       // analysis records one occurrence per class token. The occurrence that

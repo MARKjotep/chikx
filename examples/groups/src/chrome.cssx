@@ -1,12 +1,12 @@
 /*
- * Shared group definitions for this example. The entry imports this module with
- * `styles` — the only import form that exposes groups (ADR-0017 decision (a));
- * a token-only import would expose none.
- *
- * Defaults are compile-time only (decision (b)): they may reference @variables
- * values, never @runtime tokens. These tokens resolve in THIS module, so the
- * entry's local `chrome-padding: 40px` cannot leak into the defaults below.
- */
+* Shared group definitions for this example. The entry imports this module with
+* `styles` — the only import form that exposes groups (ADR-0017 decision (a));
+* a token-only import would expose none.
+*
+* Defaults are compile-time only (decision (b)): they may reference @variables
+* values, never @runtime tokens. These tokens resolve in THIS module, so the
+* entry's local `chrome-padding: 40px` cannot leak into the defaults below.
+*/
 @variables {
   chrome-padding: 12px;
   chrome-radius: 8px;
@@ -16,10 +16,10 @@
 }
 
 /*
- * Card chrome: one definition, customized per use site. The `!important` on
- * box-sizing is deliberate — ADR-0003 binds it per value segment, so a plain
- * use-site declaration cannot override it (see `.framed` in entry.cssx).
- */
+* Card chrome: one definition, customized per use site. The `!important` on
+* box-sizing is deliberate — ADR-0003 binds it per value segment, so a plain
+* use-site declaration cannot override it (see `.framed` in entry.cssx).
+*/
 @group.chrome {
   padding: $chrome-padding;
   border-radius: $chrome-radius;
@@ -28,9 +28,9 @@
 }
 
 /*
- * Elevation with an inline variant default: 12px below 768px, 20px from 768px
- * up. Expansion keeps the segments in authored order (ADR-0017).
- */
+* Elevation with an inline variant default: 12px below 768px, 20px from 768px
+* up. Expansion keeps the segments in authored order (ADR-0017).
+*/
 @group.elevated {
   box-shadow: $elevated-shadow;
   background: $elevated-surface;

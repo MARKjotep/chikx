@@ -3,9 +3,10 @@
  *
  * The context detection and item construction live in `intelligence.ts`; this
  * adapter only converts pure suggestions to `CompletionItem`s and computes the
- * replacement range. Trigger characters: `@`, `$`, `.`, `:`, `/`, `&`, `(` and
- * `#` (nested-selector starters, the call opener and a colour literal are not
- * word characters, so each needs an explicit trigger; SPECIFICATION.md §8).
+ * replacement range. Trigger characters: `@`, `$`, `.`, `:`, `/`, `&`, `(`,
+ * `#` and `!` (nested-selector starters, the call opener, a colour literal and
+ * `!important` are not word characters, so each needs an explicit trigger;
+ * SPECIFICATION.md §8).
  */
 
 import * as vscode from "vscode";

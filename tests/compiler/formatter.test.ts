@@ -311,6 +311,106 @@ describe("canonical layout", () => {
   });
 });
 
+/** IR shape without positions, for authored-vs-formatted equality. */
+const POSITION_KEYS = new Set([
+  "span",
+  "selectorSpan",
+  "start",
+  "end",
+  "file",
+  "offset",
+  "line",
+  "column",
+]);
+function normalizedIr(ast: Stylesheet): string {
+  return JSON.stringify(ast, (key, value: unknown) => (POSITION_KEYS.has(key) ? undefined : value));
+}
+
+describe("formatter defect regressions (CSSX-T05, CSSX-T01, CSSX-T02)", () => {
+  test("CSSX-T05: a namespaced token declaration keeps its authored `$` sigil", () => {
+    const file = "src/tokens.cssx";
+    const source = "@variables {\n  $layout.margin: 4px;\n}\n";
+    const result = format(source, file);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.formatted).toBe(source);
+    expect(format(result.formatted, file).formatted).toBe(result.formatted);
+
+    const block = parse(result.formatted, { file }).ast.items.find(
+      (item) => item.kind === "variables",
+    );
+    expect(block?.kind === "variables" ? block.tokens : []).toMatchObject([
+      { kind: "token-declaration", name: "layout.margin", value: "4px" },
+    ]);
+    expect(parse(result.formatted, { file }).diagnostics).toEqual([]);
+  });
+
+  test("CSSX-T05: a plain `$name` keeps its sigil and an unsigiled name is unchanged", () => {
+    const file = "src/tokens.cssx";
+    // The sigil is authored, not invented: a source that omitted it keeps that
+    // form (both parse to the same stripped `name`).
+    expect(format("@variables {\n  $margin: 4px;\n}\n", file).formatted).toBe(
+      "@variables {\n  $margin: 4px;\n}\n",
+    );
+    expect(format("@variables {\n  margin: 4px;\n}\n", file).formatted).toBe(
+      "@variables {\n  margin: 4px;\n}\n",
+    );
+
+    const source = "@variables { $margin: 4px; }\n.a { margin: $margin; }\n";
+    const formatted = format(source, file);
+    expect(formatted.diagnostics).toEqual([]);
+    expect(formatted.formatted).toContain("$margin: 4px;");
+    const before = compileCss(source, file);
+    const after = compileCss(formatted.formatted, file);
+    expect({ css: after.css, diagnostics: after.diagnostics }).toEqual({
+      css: before.css,
+      diagnostics: before.diagnostics,
+    });
+  });
+
+  test("CSSX-T01: an at-rule prelude that swallows the terminator stays a fixed point", () => {
+    const file = "src/native.cssx";
+    const cases: ReadonlyArray<readonly [source: string, formatted: string]> = [
+      ["@x[a", "@x [a\n"],
+      ["@media[x { a: b; }", "@media [x { a: b; }\n"],
+      ["@x[a;", "@x [a;\n"],
+      ["@x(a", "@x (a\n"],
+    ];
+    for (const [source, expected] of cases) {
+      const once = format(source, file);
+      expect({ source, diagnostics: once.diagnostics }).toEqual({ source, diagnostics: [] });
+      expect({ source, formatted: once.formatted }).toEqual({ source, formatted: expected });
+      expect({ source, twice: format(once.formatted, file).formatted }).toEqual({
+        source,
+        twice: once.formatted,
+      });
+      expect({
+        source,
+        after: normalizedIr(parse(once.formatted, { file }).ast),
+      }).toEqual({
+        source,
+        after: normalizedIr(parse(source, { file }).ast),
+      });
+    }
+    // A balanced prelude still gets its terminator.
+    expect(format("@x[a]", file).formatted).toBe("@x [a];\n");
+  });
+
+  test("CSSX-T02: adjacent `@`-markers keep their variant split", () => {
+    const file = "src/variants.cssx";
+    const source = ".a { x: 1 @a@b 2; }";
+    const once = format(source, file);
+    expect(once.diagnostics).toEqual([]);
+    expect(once.formatted).toBe(".a {\n  x: 1 @a@b 2;\n}\n");
+    expect(format(once.formatted, file).formatted).toBe(once.formatted);
+
+    const before = parse(source, { file }).ast;
+    const after = parse(once.formatted, { file }).ast;
+    expect(normalizedIr(after)).toBe(normalizedIr(before));
+    // Plus-joined aliases stay one variant with two aliases.
+    expect(format(".a { x: 1 @a+b 2; }", file).formatted).toBe(".a {\n  x: 1 @a+b 2;\n}\n");
+  });
+});
+
 describe("compilation invariance", () => {
   const representative = [
     "lexical/calc",

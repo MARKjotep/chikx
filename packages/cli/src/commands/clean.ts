@@ -9,10 +9,10 @@
 
 import type { CliInvocation } from "../args.js";
 import { findWorkspaceRoot, loadConfig } from "../config.js";
-import { type ManifestRecord, readManifest, writeManifest } from "../manifest.js";
-import { isWithin, joinPosix } from "../paths.js";
+import { type ManifestRecord, isArtifactRecord, readManifest, writeManifest } from "../manifest.js";
+import { dirnamePosix, isWithin, joinPosix } from "../paths.js";
 import { invocationFailure, toJson, writeErrorLine, writeLine } from "../report.js";
-import { hashFile, removeFile } from "../writer.js";
+import { hashFile, removeFile, sweepTemporaries } from "../writer.js";
 
 /** One file handled by `clean`. */
 interface CleanItem {
@@ -55,11 +55,33 @@ export async function runClean(invocation: CliInvocation, cwd: string): Promise<
   const manifestResult = await readManifest(root);
   warnings.push(...manifestResult.warnings);
 
+  // Sweep writer temporaries left behind by an interrupted build. The manifest
+  // carries the artifact directories; the workspace root and configured output
+  // directories cover a manifest write that was itself interrupted.
+  const sweepDirectories = new Set<string>([root]);
+  for (const directory of [config?.output?.cssDir, config?.output?.mapDir]) {
+    if (directory === undefined) continue;
+    const absolute = joinPosix(root, directory);
+    if (isWithin(root, absolute)) sweepDirectories.add(absolute);
+  }
+  for (const record of manifestResult.manifest.files) {
+    const directory = dirnamePosix(joinPosix(root, record.path));
+    if (isWithin(root, directory)) sweepDirectories.add(directory);
+  }
+  await sweepTemporaries([...sweepDirectories]);
+
   const remaining: ManifestRecord[] = [];
   for (const record of manifestResult.manifest.files) {
     const absolute = joinPosix(root, record.path);
     if (!isWithin(root, absolute) || record.path.startsWith("/")) {
       warnings.push(`Ignoring manifest path outside the workspace: ${record.path}`);
+      continue;
+    }
+    if (!isCompilerArtifact(record, root)) {
+      skipped.push({ path: record.path, reason: "untrusted" });
+      warnings.push(
+        `Refusing to delete ${record.path}: the record does not describe a compiler artifact; ownership released.`,
+      );
       continue;
     }
 
@@ -130,4 +152,17 @@ export async function runClean(invocation: CliInvocation, cwd: string): Promise<
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Whether a manifest record describes a file the compiler can have produced.
+ *
+ * A record alone is not proof of ownership: the manifest can be hand-edited or
+ * copied from another project. Deletion therefore also requires an
+ * artifact-shaped path for its `kind` and a `source` that resolves inside the
+ * workspace. Anything else is released, not deleted (CSSX-T10).
+ */
+function isCompilerArtifact(record: ManifestRecord, root: string): boolean {
+  if (!isArtifactRecord(record)) return false;
+  return isWithin(root, joinPosix(root, record.source));
 }

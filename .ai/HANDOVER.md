@@ -36,6 +36,44 @@ Data sets verified in `packages/vscode/src/intelligence.ts`: `CSS_FUNCTIONS` 25 
 `CSS_NAMED_COLORS` 148, `CSS_NAMED_COLOR_HEX` 148, `CSS_HEX_COLORS` 35, `CSS_UNITS` 27,
 `COLOR_PROPERTIES` derived from `CSS_PROPERTIES`, exported `colorsAt()` / `DocumentColor`.
 
+## Token colors (CSSX-COLOR-TOKENS)
+
+- The extension classifies five token kinds in a parse-only `DocumentSemanticTokensProvider`:
+  `variable` (compile-time `$token`), `namespace` (the `$ns` prefix of `$ns.member`, including
+  `$keyframes`), `runtimeVariable` (`@runtime` names), `customProperty` (`--var`, including inside
+  `var()`) and `keyframe` (a resolved `$keyframes.<name>` member). Declaration sites (`@variables` /
+  `@runtime` names, the left side of `--x:`) are excluded and keep property-name styling.
+- Final palette:
+
+  | Kind | Hex | Colours |
+  |---|---|---|
+  | `variable` | `#4C8DF8` | compile-time references and resolved compile-time members |
+  | `namespace` | `#4EC9B0` | the `$ns` / `$keyframes` prefix (matches the `@use … as` styling) |
+  | `runtimeVariable` | `#D6409F` | runtime tokens and runtime members |
+  | `customProperty` | `#D6409F` | `--var` references, including `var()` arguments |
+  | `keyframe` | `#D18616` | resolved `$keyframes.<name>` members |
+
+- Colors work zero-config: `contributes.semanticTokenScopes` maps each kind to a scope the common
+  themes already style distinctly (blue / teal / magenta / violet-or-amber) — `variable` → `variable.language` (default 2026 Dark
+  `#79C0FF` / Dark+ `#569CD6` / Light+ `#0000FF`), `namespace` → `entity.name.type` (Dark+
+  `#4EC9B0` / Light+ `#267F99`), `runtimeVariable` and `customProperty` → `keyword.control` (Dark+
+  `#C586C0` / Light+ `#AF00DB`), `keyframe` → `entity.name.function` (Dark+ `#DCDCAA` / Light+
+  `#795E26`). Colors follow the active theme, so other themes may vary. The literal palette above is
+  the optional override: users add the README “Token colors” snippet (`editor.semanticHighlighting.enabled` +
+  `editor.semanticTokenColorCustomizations.rules` with the five hexes) to `settings.json`, and those
+  rules outrank the scope fallback. The same scope map styles text the classifier has not resolved
+  (pre-analysis and degraded parses).
+- Verify in the editor: **Developer: Inspect Editor Tokens and Scopes** on `$spacing` (`variable`),
+  `$theme` (`namespace`), `$theme.primary` (member `variable`), `var(--x)` (`customProperty`) and
+  `$keyframes.spin` (`keyframe`). A `!` after a value offering only `!important` (and accepting it
+  without a doubled bang) is the freshness signal that the current build is loaded.
+- Records: `.ai/reports/CSSX-COLOR-TOKENS.md` (diagnosis + final palette), `.ai/tasks/CSSX-COLOR-TOKENS.md`.
+- Re-verified for this section: `bun run verify` exit 0 — typecheck + lint + **1223 pass / 2 skip /
+  0 fail** (1225 tests across 89 files, 994856 `expect()` calls); extension host **14 scenarios /
+  856 assertions** (`semantic-tokens=21`). Painted colours with no user settings: the 1.147 default
+  “2026 Dark” theme paints `$spacing` `rgb(121, 192, 255)` (`#79C0FF`) and `$theme`
+  `rgb(78, 201, 176)` (`#4EC9B0`); Dark+ paints `$spacing` `rgb(86, 156, 214)` (`#569CD6`).
+
 ## Deferred / out of scope
 
 - `@fn` author-function namespace: removed by owner decision — raw CSS functions plus A47/A50

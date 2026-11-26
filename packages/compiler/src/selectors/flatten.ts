@@ -43,7 +43,33 @@ import { addSpecificity, compareSpecificity, specificityOfItem } from "./specifi
  *   list items, unbalanced structures, leading combinators (relative nested
  *   selectors need an explicit `&` per §7.1) and the pseudo-element case
  *   above. The emitter turns a rejection into CHIKX1001.
+ * - Expansion is bounded per rule by {@link FLATTEN_LIMITS}. A level that
+ *   carries repeated `&` duplicates the selector product (and its character
+ *   count) at every step, so a pathological but syntactically valid document
+ *   would otherwise grow without bound; the bound rejects that rule with the
+ *   same CHIKX1001 diagnostic while legal nesting is unaffected.
  */
+
+/**
+ * Per-rule bounds on flattened-selector expansion.
+ *
+ * A nesting level carrying two `&`s squares the selector product, and a `&`
+ * pair against a single parent doubles the selector length, so adversarial
+ * input grows exponentially. These limits cap one rule's flattened selector
+ * list; exceeding either aborts flattening with a CHIKX1001 diagnostic instead
+ * of hanging or exhausting memory.
+ *
+ * The defaults are deliberately generous: the committed scale case (a
+ * 1 000-level `&.m<n>` chain ending in a 500-item selector list) flattens to
+ * ~2.45 M characters in 500 alternatives, well inside the budget, while a
+ * 1 000-level `& &` chain aborts after roughly two dozen levels.
+ */
+export const FLATTEN_LIMITS = Object.freeze({
+  /** Maximum characters in one rule's flattened selector list (joined by `", "`). */
+  maxSelectorChars: 8_388_608,
+  /** Maximum number of flat alternatives in one rule's selector list. */
+  maxSelectors: 100_000,
+});
 
 /** One flat alternative plus its estimated specificity. */
 interface Alternative {
@@ -77,6 +103,24 @@ function diagnosticFor(selector: string, reason: string, span: Span): Diagnostic
   return error("CHIKX1001", `Cannot flatten selector "${selector}": ${reason}`, span);
 }
 
+/** Human-readable bound used in the expansion-limit reason. */
+function limitFailure(depth: number): FlattenFailure {
+  return failure(
+    `selector expansion exceeded the flattening limit of ${FLATTEN_LIMITS.maxSelectorChars} characters and ${FLATTEN_LIMITS.maxSelectors} selectors at nesting depth ${depth}; reduce repeated "&" or nested selector lists`,
+  );
+}
+
+/** Exact joined-list size check (`items.join(", ")`). */
+function exceedsLimits(selectors: readonly string[]): boolean {
+  if (selectors.length > FLATTEN_LIMITS.maxSelectors) return true;
+  let chars = selectors.length === 0 ? 0 : (selectors.length - 1) * 2;
+  for (const selector of selectors) {
+    chars += selector.length;
+    if (chars > FLATTEN_LIMITS.maxSelectorChars) return true;
+  }
+  return false;
+}
+
 /** True when `parent` has no top-level combinator and is therefore one compound. */
 function isCompound(parent: string): boolean {
   const scan = scanSelector(parent);
@@ -97,6 +141,7 @@ function substitute(
   item: string,
   ampersands: readonly number[],
   parent: readonly Alternative[],
+  depth: number,
 ): ItemResult {
   if (parent.length === 0) return failure('"&" has no enclosing rule to resolve against');
 
@@ -107,13 +152,17 @@ function substitute(
       !isCompound(first.selector) &&
       ampersands.some((position) => isPrefixAttached(item, position));
     const replacement = needsIs ? `:is(${first.selector})` : first.selector;
+    const projected = item.length - ampersands.length + ampersands.length * replacement.length;
+    if (projected > FLATTEN_LIMITS.maxSelectorChars) return limitFailure(depth);
     let result = "";
     let cursor = 0;
     for (const position of ampersands) {
       result += item.slice(cursor, position) + replacement;
       cursor = position + 1;
+      if (result.length > FLATTEN_LIMITS.maxSelectorChars) return limitFailure(depth);
     }
     result += item.slice(cursor);
+    if (result.length > FLATTEN_LIMITS.maxSelectorChars) return limitFailure(depth);
     return {
       ok: true,
       items: [{ selector: result, specificity: specificityOfItem(result) }],
@@ -129,35 +178,73 @@ function substitute(
       const wrap = !isCompound(alternative.selector) && isPrefixAttached(item, position);
       choices.push(wrap ? `:is(${alternative.selector})` : alternative.selector);
     }
+    if (partial.length * choices.length > FLATTEN_LIMITS.maxSelectors) return limitFailure(depth);
     const next: string[] = [];
+    let nextChars = 0;
     for (const prefix of partial) {
-      for (const choice of choices) next.push(prefix + literal + choice);
+      for (const choice of choices) {
+        const projected = prefix.length + literal.length + choice.length;
+        if (projected > FLATTEN_LIMITS.maxSelectorChars) return limitFailure(depth);
+        next.push(prefix + literal + choice);
+        nextChars += projected;
+        if (nextChars + (next.length - 1) * 2 > FLATTEN_LIMITS.maxSelectorChars) {
+          return limitFailure(depth);
+        }
+      }
     }
     partial = next;
     cursor = position + 1;
   }
 
   const tail = item.slice(cursor);
-  const items = partial.map((prefix) => {
+  const items: Alternative[] = [];
+  let chars = partial.length === 0 ? 0 : (partial.length - 1) * 2;
+  for (const prefix of partial) {
     const selector = prefix + tail;
-    return { selector, specificity: specificityOfItem(selector) };
-  });
+    chars += selector.length;
+    if (chars > FLATTEN_LIMITS.maxSelectorChars) return limitFailure(depth);
+    items.push({ selector, specificity: specificityOfItem(selector) });
+  }
   return { ok: true, items };
 }
 
-function descend(item: string, parent: readonly Alternative[]): readonly Alternative[] {
+function descend(item: string, parent: readonly Alternative[], depth: number): ItemResult {
   const childSpecificity = specificityOfItem(item);
-  return parent.map((alternative) => ({
-    selector: `${alternative.selector} ${item}`,
-    specificity: addSpecificity(alternative.specificity, childSpecificity),
-  }));
+  const items: Alternative[] = [];
+  let chars = parent.length === 0 ? 0 : (parent.length - 1) * 2;
+  for (const alternative of parent) {
+    const selector = `${alternative.selector} ${item}`;
+    chars += selector.length;
+    if (chars > FLATTEN_LIMITS.maxSelectorChars) return limitFailure(depth);
+    items.push({
+      selector,
+      specificity: addSpecificity(alternative.specificity, childSpecificity),
+    });
+  }
+  return { ok: true, items };
 }
 
-function flattenAgainstParent(text: string, parent: readonly Alternative[] | null): ItemResult {
+function flattenAgainstParent(
+  text: string,
+  parent: readonly Alternative[] | null,
+  depth: number,
+): ItemResult {
+  if (text.length > FLATTEN_LIMITS.maxSelectorChars) return limitFailure(depth);
   const list = splitSelectorList(text);
   if (!list.ok) return failure(list.reason);
 
   const results: Alternative[] = [];
+  let chars = 0;
+  const append = (items: readonly Alternative[]): FlattenFailure | null => {
+    for (const item of items) {
+      results.push(item);
+      chars += item.selector.length + (results.length === 1 ? 0 : 2);
+      if (results.length > FLATTEN_LIMITS.maxSelectors || chars > FLATTEN_LIMITS.maxSelectorChars) {
+        return limitFailure(depth);
+      }
+    }
+    return null;
+  };
   for (const item of list.items) {
     const scan = scanSelector(item);
     if (!scan.ok) return failure(scan.reason);
@@ -171,16 +258,21 @@ function flattenAgainstParent(text: string, parent: readonly Alternative[] | nul
       if (scan.ampersands.length > 0) {
         return failure('"&" has no enclosing rule to resolve against');
       }
-      results.push({ selector: item, specificity: specificityOfItem(item) });
+      const overflow = append([{ selector: item, specificity: specificityOfItem(item) }]);
+      if (overflow !== null) return overflow;
       continue;
     }
 
     if (scan.ampersands.length > 0) {
-      const substituted = substitute(item, scan.ampersands, parent);
+      const substituted = substitute(item, scan.ampersands, parent, depth);
       if (!substituted.ok) return substituted;
-      results.push(...substituted.items);
+      const overflow = append(substituted.items);
+      if (overflow !== null) return overflow;
     } else {
-      results.push(...descend(item, parent));
+      const descended = descend(item, parent, depth);
+      if (!descended.ok) return descended;
+      const overflow = append(descended.items);
+      if (overflow !== null) return overflow;
     }
   }
 
@@ -238,17 +330,25 @@ function normalizeParent(
 function resolveAncestors(
   ancestors: readonly string[],
 ): { readonly ok: true; readonly parent: readonly Alternative[] | null } | FlattenFailure {
+  const depth = ancestors.length + 1;
   let resolved: readonly Alternative[] | null = null;
   for (const ancestor of ancestors) {
     const normalized = resolved === null ? null : normalizeParent(resolved);
     if (normalized !== null && !normalized.ok) return normalized;
-    const folded = flattenAgainstParent(ancestor, normalized === null ? null : normalized.parent);
+    const folded = flattenAgainstParent(
+      ancestor,
+      normalized === null ? null : normalized.parent,
+      depth,
+    );
     if (!folded.ok) return folded;
     resolved = folded.items;
   }
   if (resolved === null) return { ok: true, parent: null };
   const normalized = normalizeParent(resolved);
   if (!normalized.ok) return normalized;
+  if (exceedsLimits(normalized.parent.map((alternative) => alternative.selector))) {
+    return limitFailure(depth);
+  }
   return { ok: true, parent: normalized.parent };
 }
 
@@ -257,16 +357,21 @@ function resolveAncestors(
  *
  * Pure and deterministic: the returned selector list preserves authored item
  * order, cross-product order and all non-`&` tokens. A rejection carries a
- * reason suitable for a CHIKX1001-family diagnostic.
+ * reason suitable for a CHIKX1001-family diagnostic. Expansion is bounded by
+ * {@link FLATTEN_LIMITS}; a document that exceeds it fails with one rejection
+ * instead of hanging or exhausting memory.
  */
 export function flattenSelector(selector: string, ancestors: readonly string[]): FlattenResult {
+  const depth = ancestors.length + 1;
   const resolved = resolveAncestors(ancestors);
   if (!resolved.ok) return resolved;
-  const folded = flattenAgainstParent(selector, resolved.parent);
+  const folded = flattenAgainstParent(selector, resolved.parent, depth);
   if (!folded.ok) return folded;
+  const selectors = folded.items.map((item) => item.selector);
+  if (exceedsLimits(selectors)) return limitFailure(depth);
   return {
     ok: true,
-    selector: folded.items.map((item) => item.selector).join(", "),
+    selector: selectors.join(", "),
   };
 }
 

@@ -10,5 +10,5 @@
  * Class naming, prefixing and `:global(...)` removal are not performed here;
  * they belong to P4/A09 and run after flattening.
  */
-export { flattenIr, flattenSelector } from "./flatten.js";
+export { FLATTEN_LIMITS, flattenIr, flattenSelector } from "./flatten.js";
 export type { FlattenFailure, FlattenResult, FlattenedSelector } from "./flatten.js";

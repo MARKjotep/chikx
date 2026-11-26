@@ -85,7 +85,7 @@ Example:
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `$schema` | string | — | Accepted and ignored, so editors can validate the document. |
-| `include` | string[] | required for project builds | Entry globs. Missing or empty in project mode exits 2. Optional for single-file mode. |
+| `include` | string[] | required for project builds | Entry globs. Missing or empty in project mode exits 2, and so do globs that match no `.cssx` file (a configuration error, not an empty build). Optional for single-file mode. |
 | `exclude` | string[] | `[]` | Glob patterns and directory names removed from discovery. `node_modules` and `.git` are never walked. |
 | `output.cssDir` | string | source directory | Project CSS directory, relative to the workspace root. Mirrors the source path (see §4). |
 | `output.cssName` | string | `<stem>.css` | Project default CSS basename. |
@@ -133,6 +133,9 @@ together. Writing `output.prefix` is an unknown key (`strict`: error).
 - Globs support `*` (within a segment), `**` (across segments; `**/` also matches zero segments),
   `?` and `{a,b}`. Character classes are literal. Discovery only considers `.cssx` files, never
   walks `.git`/`node_modules`, skips symlinks, and sorts entries deterministically.
+- An empty discovery result in project mode is a configuration error: `build`, `check` and `watch`
+  exit 2 with `No .cssx sources matched the project include globs.` (JSON:
+  `{"success":false,"exitCode":2}`), so a moved or typo'd source tree cannot pass CI silently.
 - Multi-root VS Code workspaces resolve the nearest config per file, bounded by the workspace folder.
 
 ## 4. Paths, names and collisions
@@ -202,8 +205,10 @@ rename. This is per-file atomicity, not cross-file transactionality. On failure 
 outputs are retained and reported as stale. The CLI records generated files in
 `<workspaceRoot>/.cssx-manifest.json` (fixed location) and `chikx clean` deletes only
 manifest-owned files whose hash still matches; externally modified files are reported and kept.
-Obsolete owned outputs are pruned after a successful full build. Unrelated user files are never
-deleted.
+Obsolete owned outputs are pruned after a successful full build. A manifest record is only trusted
+when it is also artifact-shaped for its `kind` with an in-workspace `.cssx` source, so a hand-edited
+record cannot target an unrelated file. Unrelated user files are never deleted, and stale
+`*.cssx-tmp` writer temporaries are swept by both `build` and `clean`.
 
 ## 8. CLI flags relevant to configuration
 
@@ -212,7 +217,7 @@ deleted.
 | `--config <path>` | Use a specific `chikx.config.json`; the config directory becomes the workspace root. |
 | `--minify` / `--no-minify` | Highest-precedence CSS compaction; the last flag wins. |
 | `--check` | With `format`: list files that would change and write nothing; exits 1 when any would change. |
-| `--dry-run` | Report work that would be written/deleted; nothing is written. |
+| `--dry-run` | Report work that would be written/deleted; nothing is written. Not valid with `check` (exit 2) because `check` never writes. |
 | `--json` | Machine-readable results (NDJSON for `watch`). |
 
 See the [README CLI section](../README.md#cli) for commands and exit codes.

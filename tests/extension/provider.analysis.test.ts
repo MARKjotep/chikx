@@ -89,6 +89,52 @@ describe("analysis diagnostics", () => {
     expect(problem?.message.toLowerCase()).toContain("duplicate");
   });
 
+  test("a duplicate @variables key is CHIKX2001 in a single-file document (CSSX-U04)", async () => {
+    const text = [
+      "@variables {",
+      "  gap: 4px;",
+      "  gap: 8px;",
+      "}",
+      ".card { padding: $gap; }",
+    ].join("\n");
+    const direct = analyzeText(source(text));
+    const duplicates = direct.problems.filter((problem) => problem.code === "CHIKX2001");
+    expect(duplicates).toHaveLength(1);
+    expect(duplicates[0]?.severity).toBe("error");
+    expect(duplicates[0]?.message).toBe(
+      `Duplicate local compile-time variable "$gap" in "${join(ROOT, "example.cssx")}".`,
+    );
+    // The later declaration is the reported span, matching the resolver.
+    expect(duplicates[0]?.range.start).toEqual({ line: 2, character: 2 });
+
+    const state = await analyzeDocument(source(text), { workspaceRoot: ROOT });
+    expect(state.analysis.problems.filter((problem) => problem.code === "CHIKX2001")).toHaveLength(
+      1,
+    );
+    // The first value still wins in the tolerant compile.
+    expect(state.compiled?.css).toContain("padding: 4px;");
+  });
+
+  test("a module-graph duplicate is reported once by the compiler (CSSX-U04)", async () => {
+    const text = [
+      '@use "./theme.cssx" as theme;',
+      "@variables {",
+      "  gap: 4px;",
+      "  gap: 8px;",
+      "}",
+      ".card { padding: $gap; }",
+    ].join("\n");
+    const state = await analyzeDocument(
+      { text, path: join(ROOT, CANONICAL), file: CANONICAL, version: 1 },
+      { workspaceRoot: ROOT, readModule },
+    );
+    const duplicates = state.analysis.problems.filter(
+      (problem) =>
+        problem.code === "CHIKX2001" && /duplicate local compile-time/i.test(problem.message),
+    );
+    expect(duplicates).toHaveLength(1);
+  });
+
   test("a compile-level failure is reported without throwing", async () => {
     const text = ".card { color: red; }";
     const state = await analyzeDocument(

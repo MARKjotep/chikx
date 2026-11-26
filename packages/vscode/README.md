@@ -29,6 +29,45 @@ chick file icon in both light and dark themes ([ADR-0013](../../docs/decisions/A
 - **Preview** compiles in memory to a read-only `chikx-preview:` document and never writes.
 - **Status bar and output channel** — idle/success/error/stale state and a log of paths and problems.
 
+## Token colors
+
+The extension classifies five kinds of Chikx token with VS Code's semantic-token API. Declaration
+sites (`@variables` / `@runtime` names and the left side of `--x:`) keep their property-name styling;
+references get the kind's colour — with no configuration needed:
+
+| Kind | Colours | Fallback scope | Default (2026 Dark) | Dark+ | Light+ |
+|---|---|---|---|---|---|
+| `variable` | compile-time `$token` references and resolved compile-time namespace members | `variable.language` | `#79C0FF` | `#569CD6` | `#0000FF` |
+| `namespace` | the `$ns` prefix of `$ns.member` (including `$keyframes`) | `entity.name.type` | `#4EC9B0` | `#4EC9B0` | `#267F99` |
+| `runtimeVariable` | `$name` declared in `@runtime`, and runtime namespace members | `keyword.control` | `#C586C0` | `#C586C0` | `#AF00DB` |
+| `customProperty` | `--var` references, including inside `var()` | `keyword.control` | `#C586C0` | `#C586C0` | `#AF00DB` |
+| `keyframe` | a resolved `$keyframes.<name>` member | `entity.name.function` | `#D2A8FF` | `#DCDCAA` | `#795E26` |
+
+`contributes.semanticTokenScopes` maps each kind to a common TextMate scope, so the active colour
+theme paints it. Colours therefore follow the active theme; the values above are what the built-in
+themes resolve, and other themes may differ. Text the classifier cannot resolve (before analysis
+finishes, or after a parse error) uses the same scope fallback.
+
+To pin exact colours regardless of theme, add the rules to your user or workspace `settings.json`.
+These rules outrank the scope fallback:
+
+```json
+{
+  "editor.semanticHighlighting.enabled": true,
+  "editor.semanticTokenColorCustomizations": {
+    "rules": {
+      "variable": "#4C8DF8",
+      "namespace": "#4EC9B0",
+      "runtimeVariable": "#D6409F",
+      "customProperty": "#D6409F",
+      "keyframe": "#D18616"
+    }
+  }
+}
+```
+
+Use **Developer: Inspect Editor Tokens and Scopes** on a token to confirm which rule is winning.
+
 ## Settings
 
 | Setting | Default | Meaning |

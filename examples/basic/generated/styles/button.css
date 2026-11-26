@@ -1,5 +1,14 @@
+:root {
+  --ui-colors: orange;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ui-colors: green;
+  }
+}
+
 .ui-button {
-  display: flex;
   padding: 12px;
 }
 
@@ -43,11 +52,30 @@
 
 .ui-button > .ui-icon {
   width: 16px;
-  padding: 2rem;
 }
 
 @media (min-width: 1024px) {
   .ui-button > .ui-icon {
     width: 20px;
+  }
+}
+
+.ui-test {
+  color: orange;
+  background-color: green;
+}
+
+.ui-test:after {
+  cursor: pointer;
+  background-color: #000000;
+}
+
+@keyframes ss {
+  from {
+    background-color: 8px;
+  }
+
+  100% {
+    padding: 1rem 2px;
   }
 }

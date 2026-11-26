@@ -188,9 +188,26 @@ export function resolveReference(
   );
 }
 
-function referenceSpan(origin: ValueOrigin, start: number, end: number): Span {
+/**
+ * Absolute span of one `dollar-ref` token, or `null` when it is not authored.
+ *
+ * `text` is normally the authored slice starting at `origin.start`, but a
+ * rewritten value can contain generated `$` characters: an invalid `@setup
+ * prefix` such as `"$"` renders a runtime reference as `var(--$-p)`, and
+ * re-lexing that text would invent `$-p` at offsets taken from the *authored*
+ * base, ending past the end of the file. Offsets are only trusted while they
+ * still fall inside the fallback span of the text they were derived from; any
+ * other `$` is output from an earlier pass, not a reference the author wrote.
+ */
+function referenceSpan(origin: ValueOrigin, start: number, end: number): Span | null {
   if (origin.start === null) return origin.fallback;
-  return { start: origin.start + start, end: origin.start + end, file: origin.module };
+  const absoluteStart = origin.start + start;
+  const absoluteEnd = origin.start + end;
+  const authored = origin.fallback;
+  if (absoluteStart < authored.start || absoluteEnd > authored.end || absoluteStart > absoluteEnd) {
+    return null;
+  }
+  return { start: absoluteStart, end: absoluteEnd, file: origin.module };
 }
 
 /** `$name` display form used in cycle chains. */
@@ -235,6 +252,7 @@ export function expandValue(
     const reference = splitReference(token.value);
     if (reference === null) continue;
     const span = referenceSpan(origin, token.start, token.end);
+    if (span === null) continue;
     const resolution = resolveReference(reference, origin.module, graph, span);
     if (resolution.kind === "error") {
       hooks.report(resolution.diagnostic);

@@ -10,6 +10,7 @@
 import * as vscode from "vscode";
 import { sourceTextOf, toEditorRange, toLocation } from "../adapter.js";
 import type { DocumentState } from "../analysis.js";
+import { tokenNameConflict } from "../analysis.js";
 import {
   type RenamePlan,
   definitionsAt,
@@ -113,10 +114,22 @@ export class ChikxRenameProvider implements vscode.RenameProvider {
     const source = sourceTextOf(document);
     const state = await stateOf(this.service, document);
     if (token.isCancellationRequested) return new vscode.WorkspaceEdit();
-    const plan: RenamePlan = renameAt(source.text, document.offsetAt(position), newName, {
+    const offset = document.offsetAt(position);
+    const plan: RenamePlan = renameAt(source.text, offset, newName, {
       analysis: state.analysis,
     });
     if (!plan.ok) throw new Error(plan.reason);
+    // Refuse a token name that already exists before any edit is built
+    // (CSSX-U04): an applied duplicate would only surface as CHIKX2001 after
+    // the original name is already lost. Group and keyframe renames enforce the
+    // same rule inside `renameAt`; `tokenAt` finds nothing for their headers.
+    const tokenAtCursor = tokenAt(source.text, offset, state.analysis);
+    if (tokenAtCursor !== undefined && tokenAtCursor.symbol.namespace === undefined) {
+      const conflict = tokenNameConflict(state.analysis, newName, tokenAtCursor.symbol);
+      if (conflict !== undefined) {
+        throw new Error(`A token named "$${newName}" already exists in scope.`);
+      }
+    }
     const edit = new vscode.WorkspaceEdit();
     const currentPath = normalizePath(state.analysis.path);
     for (const change of plan.edits) {

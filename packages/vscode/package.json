@@ -50,6 +50,18 @@
         "path": "./syntaxes/chikx.tmLanguage.json"
       }
     ],
+    "semanticTokenScopes": [
+      {
+        "language": "chikx",
+        "scopes": {
+          "variable": ["variable.language"],
+          "namespace": ["entity.name.type"],
+          "runtimeVariable": ["keyword.control"],
+          "customProperty": ["keyword.control"],
+          "keyframe": ["entity.name.function"]
+        }
+      }
+    ],
     "commands": [
       { "command": "chikx.compileFile", "title": "Compile File", "category": "Chikx" },
       { "command": "chikx.buildProject", "title": "Build Project", "category": "Chikx" },

@@ -328,6 +328,13 @@ export function forEachDeclaration(
         case "runtime":
           for (const declaration of item.declarations) visit(declaration);
           break;
+        // `@group.<name>` bodies hold declarations only, at authored spans, so
+        // `$token` references inside a definition or a use site behave exactly
+        // like the same reference in a rule body (CSSX-U05).
+        case "group-definition":
+        case "group-use-site":
+          for (const declaration of item.declarations) visit(declaration);
+          break;
         case "native-at-rule":
           if (item.block !== undefined) walkItems(item.block);
           break;
@@ -565,6 +572,112 @@ function collectTokens(
   return tokens;
 }
 
+/**
+ * Local token-name conflicts, mirroring the compiler's `collectLocalSymbols`.
+ *
+ * The single-file compile path currently keeps only the caller-facing parse
+ * diagnostics, so a duplicate `@variables` key in a document without `@use` is
+ * silent even though the compiler resolver reports CHIKX2001 (CSSX-U04). This
+ * walk reproduces the resolver's rule over the parsed AST so the editor
+ * diagnoses the duplicate in both the module-graph and the single-file case.
+ *
+ * Messages, spans and the `file` label match `resolver/scopes.ts`. The walk is
+ * only used for documents without `@use`: those never reach the resolver's
+ * entry diagnostics through `compile()`, while a module graph already reports
+ * the duplicate (and must not be reported twice).
+ */
+function collectTokenNameProblems(
+  ast: Stylesheet,
+  lineStarts: readonly number[],
+  file: string,
+): AnalysisProblem[] {
+  const problems: AnalysisProblem[] = [];
+  const compile = new Map<string, TokenDeclaration>();
+  const runtime = new Map<string, Declaration>();
+
+  const duplicate = (
+    name: string,
+    span: { readonly start: number; readonly end: number },
+    label: "compile-time" | "runtime",
+  ): void => {
+    problems.push({
+      code: "CHIKX2001",
+      severity: "error",
+      message: `Duplicate local ${label} variable "$${name}" in "${file}".`,
+      file,
+      range: rangeAt(lineStarts, span.start, span.end),
+      source: "compile",
+    });
+  };
+
+  for (const item of ast.items) {
+    if (item.kind === "variables") {
+      for (const token of item.tokens) {
+        if (compile.has(token.name)) duplicate(token.name, token.span, "compile-time");
+        else compile.set(token.name, token);
+      }
+    } else if (item.kind === "runtime") {
+      for (const declaration of item.declarations) {
+        if (runtime.has(declaration.property)) {
+          duplicate(declaration.property, declaration.span, "runtime");
+        } else {
+          runtime.set(declaration.property, declaration);
+        }
+      }
+    }
+  }
+
+  // Compile-time and runtime declarations share the `$name` namespace; the
+  // later declaration is CHIKX2001 exactly as the compiler reports it.
+  for (const [name, runtimeDeclaration] of runtime) {
+    const compileDeclaration = compile.get(name);
+    if (compileDeclaration === undefined) continue;
+    const later =
+      compileDeclaration.span.start <= runtimeDeclaration.span.start
+        ? runtimeDeclaration.span
+        : compileDeclaration.span;
+    problems.push({
+      code: "CHIKX2001",
+      severity: "error",
+      message: `"$${name}" cannot be both a compile-time and a runtime variable in "${file}".`,
+      file,
+      range: rangeAt(lineStarts, later.start, later.end),
+      source: "compile",
+    });
+  }
+
+  return problems;
+}
+
+/** Whether two editor ranges cover the same text. */
+function sameRange(left: Range, right: Range): boolean {
+  return (
+    left.start.line === right.start.line &&
+    left.start.character === right.start.character &&
+    left.end.line === right.end.line &&
+    left.end.character === right.end.character
+  );
+}
+
+/**
+ * A different local token that already declares `name`.
+ *
+ * Rename uses this to refuse a target name before building the
+ * `WorkspaceEdit`: `analysis.tokens` holds the document's own compile-time and
+ * runtime declarations (imported members stay in `analysis.imports`), and both
+ * symbol spaces share the `$name` namespace. The symbol being renamed is
+ * excluded, so renaming a token to its own name stays a no-op (CSSX-U04).
+ */
+export function tokenNameConflict(
+  analysis: AnalyzeResult,
+  name: string,
+  renaming: TokenSymbol,
+): TokenSymbol | undefined {
+  return analysis.tokens.find(
+    (token) => token.name === name && !sameRange(token.declaration, renaming.declaration),
+  );
+}
+
 function moduleAlias(item: UseImport): string {
   if (item.alias !== undefined) return item.alias;
   const base = item.path.split("/").pop() ?? item.path;
@@ -766,7 +879,14 @@ export function analyzeText(source: SourceText, options: AnalyzeOptions = {}): A
     version: source.version,
     lineStarts,
     ast: parsed.ast,
-    problems: toProblems(parsed.diagnostics, lineStarts, "parse"),
+    problems: [
+      ...toProblems(parsed.diagnostics, lineStarts, "parse"),
+      // The compiler already reports duplicate local names for a module graph
+      // (`@use` present); this walk fills only the single-file gap (CSSX-U04).
+      ...(parsed.ast.items.some((item) => item.kind === "use")
+        ? []
+        : collectTokenNameProblems(parsed.ast, lineStarts, file)),
+    ],
     mediaAliases: resolveMediaAliases(parsed.ast, lineStarts, options.media),
     tokens: collectTokens(parsed.ast, lineStarts, file, undefined),
     imports: collectImports(parsed.ast, source, options),

@@ -42,6 +42,28 @@ export interface ManifestDocument {
 
 const OUTPUT_KINDS: ReadonlySet<string> = new Set(["css", "js", "types", "cssSourceMap"]);
 
+/** Artifact suffix produced by each output kind. */
+const ARTIFACT_SUFFIX: Readonly<Record<OutputKind, string>> = {
+  css: ".css",
+  js: ".js",
+  types: ".d.ts",
+  cssSourceMap: ".map",
+};
+
+/**
+ * Whether a record has the shape of a compiler artifact.
+ *
+ * A manifest record is not proof of ownership on its own: the document can be
+ * hand-edited or copied from another project. Deleting requires an
+ * artifact-shaped path for its `kind` and a `source` that is a workspace-relative
+ * `.cssx` file. Path containment is the caller's responsibility.
+ */
+export function isArtifactRecord(record: ManifestRecord): boolean {
+  if (!record.path.endsWith(ARTIFACT_SUFFIX[record.kind])) return false;
+  if (isEscapingPath(record.source) || !record.source.endsWith(".cssx")) return false;
+  return true;
+}
+
 /** Absolute path of the manifest for a workspace root. */
 export function manifestPath(workspaceRoot: string): string {
   return joinPosix(workspaceRoot, MANIFEST_FILENAME);

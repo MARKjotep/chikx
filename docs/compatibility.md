@@ -27,7 +27,7 @@ such rather than assumed.
 | Runtime variables (`@runtime`) | ✅ Supported | Emit `:root` custom properties, conditional overrides and `var(--prefix-name)` references. Duplicate property names across the entry and style-imported modules resolve in merge order — entry last, later module wins — with no conflict diagnostic (ADR-0016). | `tests/compiler/runtime.test.ts`, `tests/fixtures/runtime/`, `tests/browser/specs/themes.pw.ts`, `examples/variables` |
 | Class prefixing (`prefix` strategy) | ✅ Supported | Prefix applies to local classes, including nested references. Empty prefix leaves names unchanged. | `tests/compiler/**`, browser pages |
 | `:global(.external)` escape | ✅ Supported (simple classes) | Removed from renaming and exports; emitted unchanged. Complex global selectors are not supported. | `tests/compiler/**` |
-| Class maps + `.d.ts` | ✅ Supported | Quoted original keys, camelCase named exports, literal string types, readonly map. | `tests/compiler/**`, `examples/jsx` |
+| Class maps + `.d.ts` | ✅ Supported | Quoted original keys, camelCase named exports, literal string types, readonly map. The map imports its stylesheet by default, so plain Node needs a CSS loader — see [known-limitations.md](known-limitations.md) §2. | `tests/compiler/**`, `examples/jsx` |
 | Export collisions (`foo-bar` / `fooBar`) | ✅ Rejected | `CHIKX4001`; no silent merge/omission. | `tests/compiler/**` |
 | `__proto__` class key | ✅ Safe | Null-prototype map and computed-key handling. | `tests/compiler/**` |
 | Minified output | ✅ Supported (opt-in) | Compacts generated whitespace; computed styles equal pretty output in all browser scenarios. | `tests/browser/specs/parity.pw.ts` |

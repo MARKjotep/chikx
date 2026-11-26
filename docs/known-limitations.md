@@ -19,6 +19,7 @@ lists language features in more detail.
 |---|---|
 | CLI `bin` | `@chikx/cli` declares `"bin": { "chikx": "src/index.ts" }`. That entry relies on Bun's TypeScript loader. Node users must invoke `node dist/index.js`. A published package should point `bin` at a Node-compatible `dist` entry. |
 | Extension packaging payload | The VSIX currently includes `src/`, `test/` and `tsconfig.json` beside `dist/` and `out/`. It works, but a `.vscodeignore` would trim the payload before a store submission. |
+| Generated maps and plain Node ESM | With the default `import-css: true` a generated class map starts with `import "…/<name>.css";`, which plain Node refuses to load (`ERR_UNKNOWN_FILE_EXTENSION: Unknown file extension ".css"`). Node consumers need a bundler or a CSS-loader hook (e.g. `module.registerHooks` stubbing `.css`); `import-css: false` emits a dependency-free map that Node imports directly. Bun imports both. See `.ai/reports/CSSX-TT5.md` (F1) and `tests/stress/consumer/esm-consumer.test.ts:187`. |
 
 Package versions (`0.1.0`), package-level `README.md`/`LICENSE` copies and the unscoped extension name
 (`chikx`) were resolved for v0.1; `bun run release:check` asserts all three.
@@ -38,10 +39,14 @@ is no legacy extension alias, dual registration or migration path in v0.1.
 | `compileProject` does not read config | It accepts `output`/`naming`/`media`/`projectRoot`; `chikx.config.json` loading belongs to the CLI. Programmatic users must load and map the file themselves. |
 | CLI duplicates setup resolution | `CompileResult` exposes no output plan or effective setup, so the CLI re-derives both with `parse` + `planOutputs`. A divergence would show up as wrong destinations; the fixture tests pin the current behaviour. |
 | Manifest location | Fixed at `<workspaceRoot>/.cssx-manifest.json`. The strict config schema has no key to move it. |
-| Build overwrites configured destinations | `build` treats configured output paths as explicit authorisation and overwrites them even when the manifest does not own them. `clean` is conservative and only deletes matching, unmodified, manifest-owned files. |
+| Build overwrites configured destinations | `build` treats configured output paths as explicit authorisation and overwrites them even when the manifest does not own them. `clean` is conservative: it deletes only matching, unmodified, manifest-owned files whose path is artifact-shaped for its kind and whose `source` is an in-workspace `.cssx`; anything else is skipped as `untrusted` and released. |
 | No external output | The specification allows a future trusted policy for writing outside the workspace; the v0.1 planner always rejects it. |
 | Source-map/diagnostic gap | The CLI decodes simple `\x` escapes for planning while the compiler performs full CSS unescaping. A path authored with hex escapes could plan differently. |
-| Watch is not recursive | `fs.watch` is attached per directory (portable); coverage comes from source directories and include prefixes and is refreshed after each build. A brand-new deep directory is picked up through its parent's event. |
+| Watch is not recursive | `fs.watch` is attached per directory (portable); coverage comes from source directories and include prefixes and is refreshed after each build. A **brand-new** directory is picked up through its parent's event: a non-artifact event triggers a full rediscovery, watchers attach to the new tree, and its sources build without a restart. Generated artifacts, the manifest and writer temporaries are ignored. |
+| Empty discovery is an error | A project run whose include globs match no `.cssx` file exits 2 instead of succeeding with an empty build, so a moved source tree cannot pass CI silently. Single-file runs are unaffected. |
+| Interrupted writes | A crash between writing an artifact's temporary and renaming it can leave `.<artifact>.<pid>.<counter>.cssx-tmp` behind. The next `build` or `clean` sweeps that writer-owned pattern from the output directories; user files never match. |
+| `compileProject` roots must be canonical | `projectRoot` is compared literally against the canonical path of each discovered entry. A lexical root that differs from the kernel's spelling (macOS `/tmp` → `/private/tmp`, `/var/folders/…` → `/private/var/folders/…`) makes an in-workspace import report `CHIKX2001 … resolves outside the workspace root`. API consumers behind a symlinked workspace must pass a `realpath`ed root; the CLI is immune because `process.cwd()` is already canonical. Evidence: `.ai/reports/CSSX-TT3.md` “Sharp edge”, `.ai/reports/CSSX-TT6.md` O2. |
+| Cycle diagnostics embed the whole import path | A module cycle reports one typed `CHIKX2001 "Import cycle detected"` whose message lists every module in the path: a 500-module graph yields a single **13 936-character** message. Bounded and deterministic (the span already identifies the entry) but noisy in editors and logs. Evidence: `.ai/reports/CSSX-TT2.md` “Observation O1”, `tests/stress/scale/modules.test.ts:126`. |
 | Single writer | The extension never starts a watcher; compile-on-save is off by default. If you enable it while a CLI watcher is running, you own the coordination. |
 
 ## 4. Language limitations
@@ -62,6 +67,7 @@ is no legacy extension alias, dual registration or migration path in v0.1.
 | Keyframe references need a rule-merge import | `$keyframes.<name>` sees the file's own top-level keyframes plus those of `@use "…" styles` modules. A token-only import's keyframes are not referenceable (`CHIKX2001`) because that module's CSS is not emitted; the `@variables { spin: spin; }` fallback still works. Two merged modules may define the same name — both blocks are emitted and native cascade order decides (ADR-0015, [ADR-0018](decisions/ADR-0018-keyframes-visibility-and-exclusions.md)). |
 | String-named and conditional keyframes | `@keyframes "fade"` is rejected (names are identifiers) and a `@keyframes` block nested in a rule or another at-rule block is not collected; both stay native-only and cannot be referenced as `$keyframes.<name>`. There is no plan to change this in v0.1 (ADR-0018). |
 | Native CSS coverage is tested, not complete | Supported at-rules and selectors are listed in [compatibility.md](compatibility.md); exotic combinations may be rejected or pass through untested. |
+| Selector expansion is bounded | Repeated `&` multiplies the flattened selector product: 4/6/8/10/12 nested `& &` levels measure 66/210/786/3 090/12 306 B. Flattening is capped at **8 388 608 characters / 100 000 selectors per rule**, so a 1 000-level `& &` chain fails in seconds instead of hanging. An over-budget rule is dropped with one **CHIKX1001** whose message names the limit and nesting depth, and the rest of the file still compiles. The code reuses the syntax family anchor; a finer `CHIKX1004` subcode is a recorded optional follow-up. Evidence: `tests/compiler/nesting-bound.test.ts`. |
 
 ## 5. Editor limitations
 
@@ -75,8 +81,11 @@ is no legacy extension alias, dual registration or migration path in v0.1.
 
 ## 6. Platform and environment
 
-- Compiler and CLI verified on Node `v24.22.3` (>= 20 required) and Bun `1.4.5`.
-- Browser cascade tests recorded on Chromium, Firefox and WebKit (75/75). See
+- Compiler and CLI verified on Node `v24.22.3` (>= 20 required) and Bun `1.4.5`. The stress campaign
+  extended the recorded matrix to Node `23.1.0` / `24.22.3` / `26.13.1` and Bun `1.4.5`; Node 20 and
+  Node 22 were not installed on the campaign machine and remain unverified
+  (`.ai/reports/CSSX-TT5.md` F2).
+- Browser cascade tests recorded on Chromium, Firefox and WebKit (96/96, 32 per engine). See
   [cascade.md](cascade.md#5-browser-evidence).
 - VS Code extension tested on VS Code `1.147.0`; the manifest declares `^1.85.0` and older versions
   are untested.

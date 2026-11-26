@@ -21,6 +21,7 @@ import {
   colorsOf,
   completionsAt,
   contextAt,
+  definitionsAt,
   documentSymbols,
   hexColorToRgba,
   hoverAt,
@@ -63,7 +64,7 @@ function aliasLabels(analysis: AnalyzeResult, text: string, offset: number): str
 function suggestion(
   result: { readonly items: readonly { label: string; insertText: string }[] },
   label: string,
-): { readonly label: string; readonly insertText: string } {
+): { readonly label: string; readonly insertText: string; readonly replaceStart?: number } {
   const found = result.items.find((item) => item.label === label);
   if (found === undefined) {
     throw new Error(`missing suggestion "${label}" in [${labels(result.items).join(", ")}]`);
@@ -75,9 +76,12 @@ function suggestion(
 function accept(
   text: string,
   result: { readonly replaceStart: number; readonly replaceEnd: number },
-  item: { readonly insertText: string },
+  item: { readonly insertText: string; readonly replaceStart?: number },
 ): string {
-  return text.slice(0, result.replaceStart) + item.insertText + text.slice(result.replaceEnd);
+  // Items may narrow the shared range themselves (a unit suffix, the typed `&`
+  // of a selector starter); the editor applies the item's own start.
+  const start = item.replaceStart ?? result.replaceStart;
+  return text.slice(0, start) + item.insertText + text.slice(result.replaceEnd);
 }
 
 describe("completion contexts", () => {
@@ -744,7 +748,8 @@ describe("completion ranges and merged selector lines (A46)", () => {
     const plainResult = completionsAt(plain, plainOffset, { analysis: plainState.analysis });
     expect(accept(plain, plainResult, suggestion(plainResult, ".test"))).toContain("  .test\n}");
 
-    // SELECTOR_STARTERS keep their range when no dot is typed.
+    // SELECTOR_STARTERS keep the caret range at the result level; each starter
+    // item narrows it over the authored `&` (CSSX-U02).
     const starter = ".a {\n  &\n}";
     const starterOffset = starter.indexOf("&") + 1;
     const starterState = await analyze(starter);
@@ -752,6 +757,7 @@ describe("completion ranges and merged selector lines (A46)", () => {
       analysis: starterState.analysis,
     });
     expect(starterResult.replaceStart).toBe(starterOffset);
+    expect(suggestion(starterResult, "&:hover").replaceStart).toBe(starterOffset - 1);
     expect(labels(starterResult.items)).toContain("&:hover");
 
     // No class list outside a rule body; the top-level result stays `none`.
@@ -832,6 +838,73 @@ describe("completion ranges and merged selector lines (A46)", () => {
       word: "h",
     });
     expect(aliasLabels(secondState.analysis, secondLine, secondOffset)).toEqual([":hover"]);
+  });
+});
+
+describe("completion punctuation repairs (CSSX-U01, CSSX-U02, CSSX-U03)", () => {
+  test("the imported namespace item keeps the `$` its range replaces", async () => {
+    // CSSX-U01: the alias item used to be labelled `theme.` while its shared
+    // range covered the typed `$`, so accepting it wrote the invalid `theme.`.
+    const text = `${fixture(CANONICAL)}\n.extra { color: $ }`;
+    const offset = text.lastIndexOf("$") + 1;
+    const state = await analyze(text, {}, CANONICAL);
+    expect(contextAt(text, offset, state.analysis)).toEqual({ kind: "token", word: "" });
+    const result = completionsAt(text, offset, { analysis: state.analysis });
+    // One item per imported alias, plus the built-in namespace.
+    expect(labels(result.items).filter((label) => label.endsWith("."))).toEqual([
+      "$keyframes.",
+      "$theme.",
+    ]);
+    const namespace = suggestion(result, "$theme.");
+    expect(namespace.insertText).toBe("$theme.");
+    expect(accept(text, result, namespace)).toMatch(/\.extra \{ color: \$theme\. \}/);
+  });
+
+  test("a lone `&` starter replaces the typed ampersand", async () => {
+    // CSSX-U02: the starters insert their own leading `&`, so an empty range at
+    // the caret doubled the authored punctuation (`&&:hover`).
+    const text = ".a {\n  &\n}\n.b { color: red; }";
+    const offset = text.indexOf("&") + 1;
+    const state = await analyze(text);
+    expect(contextAt(text, offset, state.analysis)).toEqual({ kind: "selector", word: "" });
+    const result = completionsAt(text, offset, { analysis: state.analysis });
+    for (const label of ["&", "&:hover", "&:focus-visible", "&:disabled", "& >", "& +"]) {
+      const item = suggestion(result, label);
+      expect(item.replaceStart).toBe(offset - 1);
+      expect(item.insertText.startsWith("&")).toBe(true);
+      expect(accept(text, result, item)).not.toContain("&&");
+    }
+    expect(accept(text, result, suggestion(result, "&:hover"))).toBe(
+      ".a {\n  &:hover\n}\n.b { color: red; }",
+    );
+    // The class items keep the caret range; only the starters move.
+    expect(result.replaceStart).toBe(offset);
+    expect(suggestion(result, ".b").replaceStart).toBeUndefined();
+  });
+
+  test("a `&.` class context lists classes only", async () => {
+    // CSSX-U03: the `&` starters were appended after the typed dot and wrote
+    // `&.&:hover`; a class context must offer class names only.
+    const text = ".a {\n  &.\n}\n.test { color: blue; }";
+    const offset = text.indexOf("&.") + 2;
+    const state = await analyze(text);
+    expect(contextAt(text, offset, state.analysis)).toEqual({ kind: "selector", word: "." });
+    const result = completionsAt(text, offset, { analysis: state.analysis });
+    expect(labels(result.items).filter((label) => label.startsWith("&"))).toEqual([]);
+    const classItem = suggestion(result, ".test");
+    expect(classItem.replaceStart).toBeUndefined();
+    expect(result.replaceStart).toBe(offset);
+    expect(accept(text, result, classItem)).toBe(".a {\n  &.test\n}\n.test { color: blue; }");
+
+    // A typed class prefix keeps the same class-only list.
+    const typed = ".a {\n  &.te\n}\n.test { color: blue; }";
+    const typedOffset = typed.indexOf("&.te") + "&.te".length;
+    const typedState = await analyze(typed);
+    const typedResult = completionsAt(typed, typedOffset, { analysis: typedState.analysis });
+    expect(labels(typedResult.items).filter((label) => label.startsWith("&"))).toEqual([]);
+    expect(accept(typed, typedResult, suggestion(typedResult, ".test"))).toBe(
+      ".a {\n  &.test\n}\n.test { color: blue; }",
+    );
   });
 });
 
@@ -1410,6 +1483,103 @@ describe("semicolon and unit completions (A48)", () => {
   });
 });
 
+describe("!important completion (CSSX-U07)", () => {
+  interface Item {
+    readonly label: string;
+    readonly insertText: string;
+    readonly filterText?: string;
+    readonly replaceStart?: number;
+    readonly detail?: string;
+  }
+
+  /** Apply one suggestion over the reported range. */
+  function accept(
+    text: string,
+    result: { readonly replaceStart: number; readonly replaceEnd: number },
+    item: Item,
+  ): string {
+    const start = item.replaceStart ?? result.replaceStart;
+    return text.slice(0, start) + item.insertText + text.slice(result.replaceEnd);
+  }
+
+  function resultAt(text: string, offset: number) {
+    return { text, offset };
+  }
+
+  test("a typed `!` offers only `!important` and accepting repairs the bang", async () => {
+    for (const [text, marker] of [
+      [".a {\n  color: red!\n}", "color: red!"],
+      [".a {\n  margin: 4px !\n}", "margin: 4px !"],
+    ] as const) {
+      const shape = resultAt(text, text.indexOf(marker) + marker.length);
+      const state = await analyze(shape.text);
+      expect(contextAt(shape.text, shape.offset, state.analysis)).toMatchObject({
+        kind: "important",
+        word: "",
+      });
+      const result = completionsAt(shape.text, shape.offset, { analysis: state.analysis });
+      expect(result.items.map((item) => item.label)).toEqual(["!important"]);
+      const item = result.items[0] as Item;
+      expect(item.insertText).toBe("!important");
+      expect(item.filterText).toBe("!important");
+      // The range covers exactly the typed bang, so the space (if any) stays.
+      expect(result.replaceStart).toBe(shape.text.lastIndexOf("!", shape.offset));
+      expect(result.replaceEnd).toBe(shape.offset);
+      const expected = `${text.slice(0, shape.text.lastIndexOf("!", shape.offset))}!important${text.slice(shape.offset)}`;
+      expect(accept(shape.text, result, item)).toBe(expected);
+      expect(expected).toContain("!important");
+      expect(accept(shape.text, result, item)).not.toContain("!!");
+    }
+  });
+
+  test("`!im` filters to `!important` and replaces the typed suffix", async () => {
+    const text = ".a {\n  color: red!im\n}";
+    const offset = text.indexOf("red!im") + "red!im".length;
+    const state = await analyze(text);
+    expect(contextAt(text, offset, state.analysis)).toEqual({
+      kind: "important",
+      word: "im",
+      start: text.indexOf("!im"),
+    });
+    const result = completionsAt(text, offset, { analysis: state.analysis });
+    expect(result.items.map((item) => item.label)).toEqual(["!important"]);
+    expect(accept(text, result, result.items[0] as Item)).toBe(".a {\n  color: red!important\n}");
+  });
+
+  test("an already complete `!important` is offered without doubling the bang", async () => {
+    const text = ".a {\n  color: red!!\n}";
+    const offset = text.indexOf("red!!") + "red!!".length;
+    const state = await analyze(text);
+    const result = completionsAt(text, offset, { analysis: state.analysis });
+    expect(result.items.map((item) => item.label)).toEqual(["!important"]);
+    expect(result.replaceStart).toBe(text.indexOf("!!"));
+    expect(accept(text, result, result.items[0] as Item)).toBe(".a {\n  color: red!important\n}");
+
+    const complete = ".a {\n  color: red!important\n}";
+    const completeOffset = complete.indexOf("red!important") + "red!important".length;
+    const completeState = await analyze(complete);
+    const completeResult = completionsAt(complete, completeOffset, {
+      analysis: completeState.analysis,
+    });
+    expect(completeResult.items.map((item) => item.label)).toEqual(["!important"]);
+    expect(accept(complete, completeResult, completeResult.items[0] as Item)).toBe(complete);
+  });
+
+  test("selectors, property-name positions and empty values offer no `!` items", async () => {
+    const shapes: readonly { readonly text: string; readonly marker: string }[] = [
+      { text: ".card! { color: red; }", marker: ".card!" },
+      { text: ".a {\n  color: !\n}", marker: "color: !" },
+      { text: ".a {\n  col!\n}", marker: "col!" },
+    ];
+    for (const shape of shapes) {
+      const offset = shape.text.indexOf(shape.marker) + shape.marker.length;
+      const state = await analyze(shape.text);
+      const result = completionsAt(shape.text, offset, { analysis: state.analysis });
+      expect(result.items.some((item) => item.label === "!important")).toBe(false);
+    }
+  });
+});
+
 describe("colors and outline", () => {
   test("hex colors convert to RGBA and back", () => {
     expect(hexColorToRgba("#fff")).toEqual({ red: 1, green: 1, blue: 1, alpha: 1 });
@@ -1654,6 +1824,46 @@ describe("group hover and outline", () => {
     expect(useSite?.kind).toBe("group");
     expect(useSite?.detail).toBe("group use");
     expect(useSite?.children.map((child) => child.name)).toEqual(["padding"]);
+  });
+
+  test("token references inside group definition and use-site bodies resolve (CSSX-U05)", async () => {
+    const text = [
+      "@variables {",
+      "  gap: 8px;",
+      "  radius: 3px;",
+      "}",
+      "@group.card {",
+      "  padding: $gap;",
+      "}",
+      ".a {",
+      "  padding: $gap;",
+      "  @group.card {",
+      "    border-radius: $radius;",
+      "  }",
+      "}",
+    ].join("\n");
+    const state = await analyze(text);
+    // The analysis was already clean before the fix; it must stay clean.
+    expect(state.analysis.problems).toEqual([]);
+
+    const definitionOffset = text.indexOf("padding: $gap;") + "padding: $".length;
+    const definitionHover = hoverAt(text, definitionOffset, { analysis: state.analysis });
+    expect(definitionHover?.markdown).toContain("**$gap** — compile-time token");
+    expect(definitionHover?.markdown).toContain("Value: `8px`");
+    const definitionTargets = definitionsAt(text, definitionOffset, { analysis: state.analysis });
+    expect(definitionTargets).toHaveLength(1);
+    expect(definitionTargets[0]?.name).toBe("gap");
+    // The target is the `@variables` declaration name, not the reference.
+    expect(definitionTargets[0]?.range.start).toEqual({ line: 1, character: 2 });
+    expect(definitionTargets[0]?.range.end).toEqual({ line: 1, character: 5 });
+
+    const useSiteOffset = text.indexOf("border-radius: $radius") + "border-radius: $".length;
+    const useSiteHover = hoverAt(text, useSiteOffset, { analysis: state.analysis });
+    expect(useSiteHover?.markdown).toContain("**$radius** — compile-time token");
+    expect(useSiteHover?.markdown).toContain("Value: `3px`");
+    const useSiteTargets = definitionsAt(text, useSiteOffset, { analysis: state.analysis });
+    expect(useSiteTargets).toHaveLength(1);
+    expect(useSiteTargets[0]?.name).toBe("radius");
   });
 });
 
@@ -2257,10 +2467,9 @@ describe("named colors, one-line rules and duplicate classes (A49)", () => {
       expect(classItems.length).toBe(1);
       // Every other class keeps its own single item.
       expect(items.filter((item) => item.label === ".a").length).toBeLessThanOrEqual(1);
-      // Selector starters are unaffected.
-      for (const starter of ["&", "&:focus-visible", "&:hover", "&:disabled", "& >", "& +"]) {
-        expect(items.filter((item) => item.label === starter).length).toBe(1);
-      }
+      // A class context lists classes only: a `&` starter appended after the
+      // typed dot would yield `&.&:hover` (CSSX-U03).
+      expect(items.filter((item) => item.label.startsWith("&"))).toEqual([]);
     }
 
     // Accepting the single `.class` item keeps the typed dot (A46).

@@ -117,9 +117,40 @@
       }
     },
     "variable": {
-      "match": "(\\$[A-Za-z_][\\w-]*)(?:(\\.)([A-Za-z_][\\w-]*))?",
+      "patterns": [
+        {
+          "include": "#variable-keyframes"
+        },
+        {
+          "include": "#variable-namespaced"
+        },
+        {
+          "include": "#variable-simple"
+        }
+      ]
+    },
+    "variable-keyframes": {
+      "match": "(\\$keyframes)(\\.)([A-Za-z_][\\w-]*)",
       "name": "variable.other.chikx",
       "captures": {
+        "1": {
+          "name": "variable.other.namespace.chikx"
+        },
+        "2": {
+          "name": "punctuation.accessor.chikx"
+        },
+        "3": {
+          "name": "variable.other.member.chikx variable.other.keyframe.chikx"
+        }
+      }
+    },
+    "variable-namespaced": {
+      "match": "(\\$[A-Za-z_][\\w-]*)(\\.)([A-Za-z_][\\w-]*)",
+      "name": "variable.other.chikx",
+      "captures": {
+        "1": {
+          "name": "variable.other.namespace.chikx"
+        },
         "2": {
           "name": "punctuation.accessor.chikx"
         },
@@ -127,6 +158,14 @@
           "name": "variable.other.member.chikx"
         }
       }
+    },
+    "variable-simple": {
+      "match": "\\$[A-Za-z_][\\w-]*",
+      "name": "variable.other.chikx"
+    },
+    "custom-property": {
+      "match": "--[A-Za-z_][\\w-]*",
+      "name": "variable.other.custom-property.chikx"
     },
     "important": {
       "match": "![ \\t]*[iI][mM][pP][oO][rR][tT][aA][nN][tT]\\b",
@@ -202,6 +241,9 @@
         },
         {
           "include": "#variable"
+        },
+        {
+          "include": "#custom-property"
         },
         {
           "include": "#important"
@@ -775,10 +817,36 @@
           "include": "#comment"
         },
         {
+          "include": "#runtime-declaration"
+        },
+        {
           "include": "#declaration"
         },
         {
           "include": "#fallback"
+        }
+      ]
+    },
+    "runtime-declaration": {
+      "name": "meta.declaration.chikx",
+      "begin": "(?:^|(?<=\\{)|(?<=\\})|(?<=;))\\s*(--[A-Za-z_][\\w-]*|-?[A-Za-z_][\\w-]*)(\\s*)(:)",
+      "beginCaptures": {
+        "1": {
+          "name": "support.type.property-name.css variable.other.declared.runtime.chikx"
+        },
+        "3": {
+          "name": "punctuation.separator.key-value.css"
+        }
+      },
+      "end": "(;)|(?=\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.terminator.rule.css"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#value"
         }
       ]
     },
@@ -1030,7 +1098,7 @@
         },
         {
           "match": "--[A-Za-z_][\\w-]*",
-          "name": "variable.other.chikx"
+          "name": "variable.other.custom-property.chikx"
         },
         {
           "include": "#fallback"

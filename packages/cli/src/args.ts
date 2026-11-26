@@ -151,14 +151,25 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
         continue;
       }
       if (VALUE_FLAGS.has(name)) {
-        const value = inlineValue ?? argv[index];
-        if (inlineValue === undefined) index += 1;
-        if (value === undefined || value === "") {
-          return fail(`${name} requires a path.`, json);
+        // A value flag never consumes another option as its value: `--config
+        // --json` is a missing path, not a configuration named `--json`. A bare
+        // `-` is a legal value (standard input / literal dash).
+        if (inlineValue === undefined) {
+          const next = argv[index];
+          if (next === undefined || next === "" || (next.startsWith("-") && next !== "-")) {
+            return fail(`${name} requires a path.`, json);
+          }
+          index += 1;
+          if (name === "--config") {
+            if (configPath !== undefined) return fail("--config may be given only once.", json);
+            configPath = next;
+          }
+          continue;
         }
+        if (inlineValue === "") return fail(`${name} requires a path.`, json);
         if (name === "--config") {
           if (configPath !== undefined) return fail("--config may be given only once.", json);
-          configPath = value;
+          configPath = inlineValue;
         }
         continue;
       }
@@ -195,6 +206,12 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
 
   if (check && command !== "format") {
     return fail("--check is only valid for chikx format.", json);
+  }
+
+  // `check` never writes, so `--dry-run` cannot change its behaviour; accepting
+  // it silently made the JSON report contradict the invocation (CSSX-T12).
+  if (dryRun && command === "check") {
+    return fail("--dry-run is not valid for chikx check.", json);
   }
 
   const maxPositionals = command === "clean" ? 0 : 1;

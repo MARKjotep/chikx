@@ -37,6 +37,7 @@ import {
   ChikxReferenceProvider,
   ChikxRenameProvider,
 } from "./providers/navigation.js";
+import { ChikxSemanticTokensProvider } from "./providers/semantic-tokens.js";
 import { ChikxSymbolProvider } from "./providers/symbols.js";
 import { AnalysisService } from "./service.js";
 
@@ -127,11 +128,13 @@ export class ChikxController {
         "&",
         "(",
         "#",
+        "!",
       ),
       vscode.languages.registerHoverProvider(
         { language: "chikx" },
         new ChikxHoverProvider(this.service),
       ),
+      this.registerSemanticTokens(),
       vscode.languages.registerDefinitionProvider(
         { language: "chikx" },
         new ChikxDefinitionProvider(this.service),
@@ -205,6 +208,25 @@ export class ChikxController {
   dispose(): void {
     for (const disposable of this.disposables) disposable.dispose();
     this.disposables.length = 0;
+  }
+
+  /**
+   * Semantic-token registration (`CSSX-COLOR-TOKENS`).
+   *
+   * The legend comes from the provider itself so the registered legend and the
+   * pure classifier cannot drift apart. Colours come from the user's
+   * `editor.semanticTokenColorCustomizations` (documented in
+   * `packages/vscode/README.md`); the manifest's `contributes.semanticTokenScopes`
+   * is the grammar fallback. The provider is parse-only and never throws; any
+   * document it cannot classify keeps its grammar scopes.
+   */
+  private registerSemanticTokens(): vscode.Disposable {
+    const provider = new ChikxSemanticTokensProvider();
+    return vscode.languages.registerDocumentSemanticTokensProvider(
+      { language: "chikx" },
+      provider,
+      provider.legend,
+    );
   }
 
   private onDocumentOpened(document: vscode.TextDocument): void {
@@ -398,7 +420,10 @@ export class ChikxController {
     const outcome = await this.compilePath(document.uri.fsPath, "preview");
     this.publishOutcome(outcome);
     const css = outcome.state.compiled?.css;
-    if (css === undefined) {
+    // The tolerant compiler returns `""` (not `undefined`) for a dead document,
+    // so an empty/whitespace-only result means "no CSS" too (CSSX-U06). A
+    // broken-but-tolerant document still carries non-empty surviving CSS.
+    if (css === undefined || css.trim() === "") {
       void vscode.window.showWarningMessage(
         "Chikx: no CSS was produced for this document; check the diagnostics.",
       );

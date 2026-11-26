@@ -13,11 +13,14 @@
   radius: 8px;
 }
 
+@runtime {
+  colors: orange @dark #4EC9B0;
+}
+
 .button {
-  display: flex;
   padding: $spacing @md 20px @xl 32px;
   border-radius: $radius;
-  background: $theme.primary @dark #1e40af;
+  background: $theme.primary @dark #1e70af;
   font-size: 14px @md 16px;
 
   &:disabled {
@@ -34,9 +37,6 @@
   color: orange;
   background-color: green;
 
-  &.icon.icon {
-  }
-
   &:after {
     cursor: pointer;
     background-color: #000000;
@@ -50,11 +50,11 @@
 }
 
 @keyframes ss {
-  from: {
+  from {
     background-color: $radius;
   }
 
-  100%: {
+  100% {
     padding: 1rem 2px;
   }
 }
