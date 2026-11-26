@@ -51,6 +51,9 @@ deprecated or unpublished.
   - Browser **96/96** — 32 per engine (Chromium, Firefox, WebKit).
   - `bun run release:check` exit 0 in about **4 minutes** — **nine** examples built, compiler
     tarball **398 files**, CLI tarball **89**, VSIX **18 files / 140.6 KB**.
+- **Media variant colour:** variants (`@md`, `@dark`, `@xl+dark`, block headers, `@media-types`
+  captions) are magenta via the `keyword.control.media.chikx` TextMate scope plus a contributed
+  `configurationDefaults` entry (`#D6409F`); user `editor.tokenColorCustomizations` rules override it.
 - **Runtime:** Node.js **≥ 20** (`engines`) or Bun. Gates ran on Bun 1.4.5; only Node 24.22.3 was
   installed here, so **Node 20/22 are unverified**. The CLI entry is ESM with a node shebang.
 - `opencode.jsonc` is present and carries the agent registrations; it is not deleted. `.ai/agents/`

@@ -137,14 +137,16 @@ describe("directive and media alias matchers", () => {
     ]) {
       expect(matcher.test(reserved)).toBe(false);
     }
-    expect(grammar.repository.alias?.name).toBe("meta.variant.chikx markup.deleted.chikx");
+    expect(grammar.repository.alias?.name).toBe("meta.variant.chikx keyword.control.media.chikx");
   });
 
   test("conditional blocks reuse the reserved-name exclusion and group aliases in meta.variant", () => {
     const block = grammar.repository["conditional-block"];
     expect(block?.begin ?? "").toContain("setup");
     expect(block?.begin ?? "").toContain("media-types");
-    expect(block?.beginCaptures?.["1"]?.name).toBe("meta.variant.chikx markup.deleted.chikx");
+    expect(block?.beginCaptures?.["1"]?.name).toBe(
+      "meta.variant.chikx keyword.control.media.chikx",
+    );
     expect(block?.contentName).toBe("meta.variant.chikx");
   });
 });
@@ -188,7 +190,7 @@ describe("group directive scoping structure", () => {
     }
     expect(definition?.name).not.toBe(use?.name);
     expect(definition?.beginCaptures?.["3"]?.name).not.toBe("variable.other.member.chikx");
-    expect(definition?.beginCaptures?.["3"]?.name).not.toBe("markup.deleted.chikx");
+    expect(definition?.beginCaptures?.["3"]?.name).not.toBe("keyword.control.media.chikx");
   });
 
   test("definitions match at the root before aliases and use sites live in block bodies", () => {
@@ -221,7 +223,7 @@ describe("UI acceptance scopes", () => {
     const scopes = new Set(referencedScopes(grammar));
     for (const scope of [
       "meta.variant.chikx",
-      "markup.deleted.chikx",
+      "keyword.control.media.chikx",
       "keyword.control.directive.chikx",
       "keyword.other.chikx",
       "entity.other.attribute-name.class.css",
@@ -313,6 +315,15 @@ describe("VS Code manifest", () => {
     expect(grammarContribution?.scopeName).toBe(grammar.scopeName);
     expect(grammarContribution?.path).toBe("./syntaxes/chikx.tmLanguage.json");
     expect(existsSync(join(EXTENSION_ROOT, grammarContribution?.path ?? ""))).toBe(true);
+  });
+
+  test("contributes a magenta default for the media variant scope", () => {
+    const defaults = manifest.contributes?.configurationDefaults;
+    const rules = defaults?.["editor.tokenColorCustomizations"]?.textMateRules ?? [];
+    expect(rules).toContainEqual({
+      scope: ["keyword.control.media.chikx"],
+      settings: { foreground: "#D6409F" },
+    });
   });
 });
 

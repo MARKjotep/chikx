@@ -43,17 +43,16 @@ references get the kind's colour — with no configuration needed:
 | `runtimeVariable` | `$name` declared in `@runtime`, and runtime namespace members | `keyword.control` | `#C586C0` | `#C586C0` | `#AF00DB` |
 | `customProperty` | `--var` references, including inside `var()` | `keyword.control` | `#C586C0` | `#C586C0` | `#AF00DB` |
 | `keyframe` | a resolved `$keyframes.<name>` member | `entity.name.function` | `#D2A8FF` | `#DCDCAA` | `#795E26` |
-| media variant | `@md`, `@xl+dark`, `@dark {` and `@media-types` captions | `markup.deleted` | `#FFA198` | `#CE9178` | `#A31515` |
+| media variant | `@md`, `@xl+dark`, `@dark {` and `@media-types` captions | `keyword.control.media.chikx` | `#D6409F` | `#D6409F` | `#D6409F` |
 
 The first five rows are semantic token kinds mapped by `contributes.semanticTokenScopes`; the media
-variant row is the TextMate scope used by the grammar's three variant rules (inline value variants,
-block variant headers and `@media-types` captions), so it is painted even before analysis completes.
-The `markup.deleted` family was chosen empirically: it is distinct from `constant.numeric` (pale
-green), `variable.language` (blue), `entity.name.type` (teal), `keyword.control` (magenta) and the
-`entity.name.function` keyframe colour in all three shipped themes (minimum ΔE 35), with contrast
-9.6:1 / 6.3:1 / 7.9:1 on the 2026 Dark, Dark+ and Light+ backgrounds. Tradeoff: Dark+ and Light+ use
-the same hex for strings, so quoted values and variant markers share a hue there; they remain
-different constructs and all five mapped kinds stay distinct.
+variant row is the TextMate scope used by the grammar's variant rules (inline value variants, block
+variant headers and `@media-types` captions), so it is painted even before analysis completes. That
+scope lives in the `keyword.control` family, and the extension contributes a magenta default
+(`#D6409F`) for it through `contributes.configurationDefaults`, so variant markers stay distinct from
+strings and from all five mapped kinds without any configuration. A user
+`editor.tokenColorCustomizations` entry for `keyword.control.media.chikx` overrides the contributed
+default.
 
 Colours follow the active theme; the values above are what the built-in themes resolve, and other
 themes may differ. Text the classifier cannot resolve (before analysis finishes, or after a parse
@@ -122,7 +121,7 @@ does not handle that rename, so the orchestrator resolves the executable itself 
 
 | Construct | Scope |
 |---|---|
-| Media alias (`@md`, `@2xl`, `@xl+dark`) | `markup.deleted.chikx` (inside `meta.variant.chikx`) |
+| Media alias (`@md`, `@2xl`, `@xl+dark`) | `keyword.control.media.chikx` (inside `meta.variant.chikx`) |
 | Directive (`@setup`, `@use`, `@variables`, `@runtime`, `@media-types`) | `keyword.control.directive.chikx` |
 | `as` in `@use` | `keyword.other.chikx` |
 | Class / id / tag / pseudo-class / pseudo-element | `entity.other.attribute-name.class.css`, `.id.css`, `entity.name.tag.css`, `.pseudo-class.css`, `.pseudo-element.css` |

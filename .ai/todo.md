@@ -73,6 +73,10 @@ Report new bugs and feature requests under the matching section; the lead routes
 
 27. Find All References from a `$token`/`@runtime` definition in its exporting module only returned that definition (owner report 2026-11-26: "references from the exporting file only saw itself"), while a use site in an importer returned the definition plus uses. References are now bidirectional and resolution-based across workspace `.cssx` files: from a definition the provider returns the definition (honouring `includeDeclaration`) plus every occurrence that resolves to it, and from a use site it returns the same set. Namespaced aliases (`@use … as t` → `$t.name`), unqualified and style imports count; local shadowing, ambiguous unqualified imports (`CHIKX2001`) and transitive re-exports are excluded; locations are deduped and sorted. The on-demand scan is bounded to 200 candidates and skips `node_modules`/`dist`/`generated`, with no watchers; rename stays single-file. — 🟢 fixed in CSSX-REVERSE-REFS (`tokenDefinitionAt()`/`resolveTokenReference()`/`referencesToToken()` in `intelligence.ts`; workspace scan and provider wiring in `providers/navigation.ts`; 3 unit tests in `tests/extension/provider.navigation.test.ts`, real-host definition/importer/shadow/ambiguous cases in `packages/vscode/test/ui/navigation.js`; docs/usage §5.2, known-limitations §5, CHANGELOG; task `CSSX-REVERSE-REFS`, `.ai/reports/CSSX-REVERSE-REFS.md`)
 
+28. Typing a digit in a declaration value does not auto-suggest units (owner VSIX run 2026-11-27): `margin: 1|` shows no `rem`/`px` items even though the A48 unit list exists and the pure intelligence tests pass; the suggestion does not appear in the real host. — 🔴 open
+
+29. Accepting a property from completion inserts `color: ;` but does not re-trigger value completion, so named colours and hex values only appear when the colon is typed manually (owner VSIX run 2026-11-27; owner: lower priority). — 🔴 open
+
 ## Feature requests
 
 2. The built in @ are not auto suggest outside any class body. sample is @keyframes and the others. — 🟢 done in CSSX-A18

@@ -52,11 +52,14 @@ const COMMAND_IDS = [
  * contribution point in current VS Code (themes own semantic colours; the
  * README palette in `editor.semanticTokenColorCustomizations` is an optional
  * override). `semanticTokenScopes` is real and provides the zero-config
- * theme-scope fallback.
+ * theme-scope fallback. `configurationDefaults` carries the contributed magenta
+ * default for `keyword.control.media.chikx`; it is a default only, so a user
+ * `editor.tokenColorCustomizations` rule still wins.
  */
 const EXPECTED_CONTRIBUTIONS = [
   "commands",
   "configuration",
+  "configurationDefaults",
   "grammars",
   "languages",
   "semanticTokenScopes",

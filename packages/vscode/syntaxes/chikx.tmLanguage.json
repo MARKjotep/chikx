@@ -197,7 +197,7 @@
     },
     "alias": {
       "match": "@(?!setup\\b|use\\b|variables\\b|runtime\\b|media-types\\b|media\\b|supports\\b|layer\\b|container\\b|keyframes\\b|font-face\\b|property\\b|page\\b|charset\\b|import\\b|namespace\\b|scope\\b|starting-style\\b|counter-style\\b|group\\b)([A-Za-z0-9][\\w-]*(?:\\+[A-Za-z0-9][\\w-]*)*)",
-      "name": "meta.variant.chikx markup.deleted.chikx"
+      "name": "meta.variant.chikx keyword.control.media.chikx"
     },
     "punctuation-value": {
       "patterns": [
@@ -566,7 +566,7 @@
       "begin": "(@(?!setup\\b|use\\b|variables\\b|runtime\\b|media-types\\b|media\\b|supports\\b|layer\\b|container\\b|keyframes\\b|font-face\\b|property\\b|page\\b|charset\\b|import\\b|namespace\\b|scope\\b|starting-style\\b|counter-style\\b|group\\b)([A-Za-z0-9][\\w-]*(?:\\+[A-Za-z0-9][\\w-]*)*))(\\s*)(\\{)",
       "beginCaptures": {
         "1": {
-          "name": "meta.variant.chikx markup.deleted.chikx"
+          "name": "meta.variant.chikx keyword.control.media.chikx"
         },
         "4": {
           "name": "punctuation.section.block.css"
@@ -589,7 +589,7 @@
       "begin": "(@(?!setup\\b|use\\b|variables\\b|runtime\\b|media-types\\b|media\\b|supports\\b|layer\\b|container\\b|keyframes\\b|font-face\\b|property\\b|page\\b|charset\\b|import\\b|namespace\\b|scope\\b|starting-style\\b|counter-style\\b|group\\b)([A-Za-z0-9][\\w-]*(?:\\+[A-Za-z0-9][\\w-]*)*))(\\s*)(\\{)",
       "beginCaptures": {
         "1": {
-          "name": "meta.variant.chikx markup.deleted.chikx"
+          "name": "meta.variant.chikx keyword.control.media.chikx"
         },
         "4": {
           "name": "punctuation.section.block.css"
@@ -675,7 +675,7 @@
       "begin": "(?:^|(?<=\\{)|(?<=\\})|(?<=;))\\s*([A-Za-z0-9][\\w-]*)(\\s*)(:)",
       "beginCaptures": {
         "1": {
-          "name": "meta.variant.chikx markup.deleted.chikx"
+          "name": "meta.variant.chikx keyword.control.media.chikx"
         },
         "3": {
           "name": "punctuation.separator.key-value.css"

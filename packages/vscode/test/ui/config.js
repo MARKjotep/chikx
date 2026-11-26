@@ -78,6 +78,30 @@ async function run(t) {
   await extension.activate();
   const manifest = extension.packageJSON;
 
+  // ---- Media variant markers carry a contributed magenta default. ----
+  // The grammar scopes variants as `keyword.control.media.chikx`; the manifest
+  // contributes `#D6409F` through configurationDefaults. The host must surface
+  // that default for `editor.tokenColorCustomizations`, otherwise the markers
+  // fall back to the theme's keyword colour. A user override still wins.
+  const tokenColors = vscode.workspace.getConfiguration("editor").get("tokenColorCustomizations");
+  t.ok(
+    tokenColors !== undefined && tokenColors !== null && typeof tokenColors === "object",
+    `editor.tokenColorCustomizations did not surface the contributed default (got ${JSON.stringify(tokenColors)})`,
+  );
+  const textMateRules = Array.isArray(tokenColors?.textMateRules) ? tokenColors.textMateRules : [];
+  const mediaRule = textMateRules.find(
+    (rule) => Array.isArray(rule.scope) && rule.scope.includes("keyword.control.media.chikx"),
+  );
+  t.ok(
+    mediaRule !== undefined,
+    `no textMateRule for keyword.control.media.chikx (rules: ${JSON.stringify(textMateRules)})`,
+  );
+  t.equal(
+    mediaRule?.settings?.foreground?.toUpperCase(),
+    "#D6409F",
+    "the media variant marker default is not magenta",
+  );
+
   // ---- The setting inventory is the manifest's, not this file's. ----
   const section = manifest.contributes.configuration;
   t.ok(section, "the manifest contributes no configuration section");

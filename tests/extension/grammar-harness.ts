@@ -48,6 +48,11 @@ export interface ExtensionManifest {
   main?: string;
   activationEvents?: string[];
   contributes?: {
+    configurationDefaults?: {
+      "editor.tokenColorCustomizations"?: {
+        textMateRules?: Array<{ scope?: string[]; settings?: { foreground?: string } }>;
+      };
+    };
     languages?: Array<{
       id?: string;
       aliases?: string[];

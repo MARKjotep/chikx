@@ -4,6 +4,15 @@ All notable changes to Chikx are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/). Pre-1.0 syntax changes are called out explicitly.
 
+## [Unreleased]
+
+### Editor
+
+- Media variant markers (`@md`, `@dark`, `@xl+dark`, block variant headers and `@media-types`
+  captions) are now magenta: the grammar scopes them as `keyword.control.media.chikx` and the
+  extension contributes a `#D6409F` default for that scope, so they no longer read like strings.
+  A user `editor.tokenColorCustomizations` rule for the scope still wins.
+
 ## [0.1.1] - 2026-11-26
 
 Packaging-only release: language, compiler and editor behaviour is unchanged from 0.1.0, and the
