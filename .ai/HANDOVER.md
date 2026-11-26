@@ -5,36 +5,45 @@ self-contained; the plan, board and reports are linked at the end for detail onl
 
 ## Release status
 
-**0.1.1 🟡 — compiler published by the owner; CLI prepared, awaiting its publish.**
-`@chikx/compiler@0.1.1` is live and latest on the public registry (owner publish, 2026-11-26; tarball
-byte-identical to the local pack, 398 files). `@chikx/cli@0.1.1` (compiler pinned `0.1.1`) is staged
-locally and **not published** — see [0.1.1 — compiler published, CLI
-staged](#011--compiler-published-cli-staged) below. Registry metadata, tarball integrity and
-byte-reproducibility for 0.1.0 are recorded in `.ai/reports/CSSX-PP4A-COMPILER-PUBLISHED.md`; the
-0.1.1 staging evidence is in `.ai/reports/CSSX-0.1.1-STAGING.md`.
+**0.1.1 🟢 — all npm artifacts are published and live.**
+`@chikx/compiler@0.1.1`, `@chikx/cli@0.1.1` (compiler pinned `0.1.1`) and the scoped alias
+`@chikx/chikx@0.1.1` are live at `latest` on the public registry (owner publishes, 2026-11-26).
+Tag `v0.1.0` is on `8c4c64c`; tag `v0.1.1` is on `2abfbdf`. The 0.1.1 staging evidence and publish
+audit are in `.ai/reports/CSSX-0.1.1-STAGING.md`; 0.1.0 registry metadata is in
+`.ai/reports/CSSX-PP4A-COMPILER-PUBLISHED.md`.
 
-**PP5a 🟢 — clean-environment verification passed** against the registry: install, `npx`/`bunx`
-versions, and the `docs/usage.md` quick start end to end, with two documentation mismatches recorded
-as follow-ups (`format --check` on the guide's inline nested rules; the map's ESM-only plain-Node
-import). Both are fixed for 0.1.1. Report: `.ai/reports/CSSX-PP5A.md`.
+| Artifact | Version | Registry data |
+|---|---|---|
+| `@chikx/compiler` | `0.1.1` | `dist-tags.latest = 0.1.1`; tarball 398 files; ships `dist/**` + `src/**` |
+| `@chikx/cli` | `0.1.1` | `dist-tags.latest = 0.1.1`; depends on `@chikx/compiler@0.1.1`; tarball 89 files; `bin.chikx` |
+| `@chikx/chikx` (alias) | `0.1.1` | `dist-tags.latest = 0.1.1`; `bin.chikx = bin/chikx.js`; tarball 4 files; no dependencies |
+
+**PP5a 🟢 — clean-environment verification passed for 0.1.1** against the registry: install,
+`npx`/`bunx` versions, the `docs/usage.md` quick start end to end (`build`/`check`/`format --check`),
+installed source maps resolve, and the alias stub installs exactly 4 files and exits 1. The two 0.1.0
+documentation mismatches are fixed for 0.1.1. Report: `.ai/reports/CSSX-PP5A.md`.
 
 **PP4b — the VS Code Marketplace extension — and PP5b remain 🔴 deferred by the owner.** The
 extension stays at `0.1.0`; the local VSIX from `release:check` is the interim extension
 distribution. 0.1.1 does not repackage the extension. Do not tag, publish a new version or push
 release artifacts without new explicit owner authorization.
 
-**npm alias `@chikx/chikx` 🟡 — prepared, awaiting the owner's publish.** npm rejected the unscoped
+**npm alias `@chikx/chikx` 🟢 — approved and published 2026-11-26.** npm rejected the unscoped
 `chikx` name under its name-similarity policy (`chikuy`, `shiki`), so the root workspace publishes as
 the scoped alias `@chikx/chikx` (`0.1.1`). It only reserves the name: `files` is limited to
 `package.json`, `README.md`, `LICENSE` and `bin/chikx.js`, and the stub prints a pointer to
-`@chikx/cli` and exits 1. Publish from the repository root with `npm publish --access public`; this is
-an alias, not the CLI. The 0.1.1 packages stay untouched.
+`@chikx/cli` and exits 1. It was staged before the docs pass, so `gitHead` is `417918f` and the
+published README still says `0.1.0`; its manifest also exposes the monorepo scripts/devDependencies/
+workspaces. Both are cosmetic for a stub with no functional impact. `0.0.0-stage` in the alias and
+compiler version lists is npm's staged-publishing placeholder — expected, and it must not be
+deprecated or unpublished.
 
 ## State
 
 - **Working tree is clean and pushed to `origin/main`.** `e55bcb0`
   (`fix(build): clean dist before builds and ship self-contained source maps`) carries the 0.1.1
-  packaging fixes; the version/docs commit preparing the 0.1.1 release follows it.
+  packaging fixes; the release preparation and tag `v0.1.1` are on `2abfbdf`, and `36a851d`
+  publishes the alias. The docs commit after it records the published state.
 - **Final gates, re-run on 2026-11-26 for 0.1.1:**
   - `bun run verify` exit 0 — **1351 pass / 2 skip / 0 fail** (1353 tests, **99 files**); extension
     host **15 scenarios / 928 assertions** (`navigation=42`); typecheck and Biome green
@@ -48,32 +57,32 @@ an alias, not the CLI. The 0.1.1 packages stay untouched.
   exists but is an empty directory.
 - Full user guide: **[`docs/usage.md`](../docs/usage.md)**.
 
-## 0.1.1 — compiler published, CLI staged
+## 0.1.1 — published (all npm artifacts)
 
-**`@chikx/compiler@0.1.1` was published by the owner on 2026-11-26; `@chikx/cli@0.1.1` is prepared
-locally and not published; no tag exists.** 0.1.1 is packaging only: language, compiler and editor
-behaviour is unchanged, and the extension stays at `0.1.0`.
+**`@chikx/compiler@0.1.1`, `@chikx/cli@0.1.1` and the alias `@chikx/chikx@0.1.1` were published by
+the owner on 2026-11-26; tag `v0.1.1` is on `2abfbdf`.** 0.1.1 is packaging only: language, compiler
+and editor behaviour is unchanged, and the extension stays at `0.1.0`.
 
 - Clean `dist` before every package build removes renamed stale outputs (`importPath.*`).
 - Both tarballs ship `src/`, so every `.js`/`.d.ts` map `sources` entry resolves — compiler **398
-  files**, CLI **89**.
+  files**, CLI **89**; the alias stub is **4**.
 - The compiler README example `await`s `compile()`; the `docs/usage.md` quick start is
   formatter-clean with an ESM note for generated maps.
-- Manifests: `@chikx/compiler@0.1.1` (published); `@chikx/cli@0.1.1` with
-  `"@chikx/compiler": "0.1.1"` (staged); root workspace `@chikx/chikx@0.1.1`; VS Code extension
-  `0.1.0`.
+- Manifests: `@chikx/compiler@0.1.1`, `@chikx/cli@0.1.1` with `"@chikx/compiler": "0.1.1"`, root
+  workspace `@chikx/chikx@0.1.1` — all published; VS Code extension `0.1.0` (PP4b deferred).
 
-Owner publish (after `bun run release:check` is green and authorization is explicit; the compiler is
-already live, so only the CLI remains):
+Historical publish order (compiler first, then CLI, then alias), recorded for the next version:
 
 ```sh
-npm view @chikx/compiler version    # must return 0.1.1
+npm publish --workspace @chikx/compiler --access public
 npm publish --workspace @chikx/cli --access public
+npm publish --access public          # root alias
+git tag -a v0.1.1                    # on the release commit
 ```
 
-Then `npm view @chikx/cli version` must report `0.1.1`, and the owner tags `v0.1.1` on the release
-commit. The published compiler tarball is byte-identical to the local pack
-(`sha256 db7bf473…eda97f`, 398 files).
+`npm view` now reports `0.1.1` for all three. The published compiler tarball is byte-identical to the
+local pack (`sha256 db7bf473…eda97f`, 398 files). The alias was staged before the docs pass
+(`gitHead 417918f`); see [Release status](#release-status) for the two cosmetic observations.
 
 ## What changed since the previous handover
 
@@ -103,8 +112,8 @@ The feature wave and the editor wave landed on top. The authoritative per-item r
 
 ## Plans and board
 
-- Production plan: **PP0–PP3 🟢**, **PP4a 🟢** (both npm packages live at 0.1.0; compiler `0.1.1`
-  published 2026-11-26, CLI `0.1.1` staged), **PP5a 🟢**
+- Production plan: **PP0–PP3 🟢**, **PP4a 🟢** (compiler, CLI and the alias all published at
+  `0.1.1` on 2026-11-26; tag `v0.1.1` on `2abfbdf`), **PP5a 🟢** for 0.1.1
   (`.ai/reports/CSSX-PP5A.md`); **PP4b (Marketplace) and PP5b 🔴 deferred** by the owner
   (2026-11-26). Testing and UI campaigns are closed.
 - Board (`.ai/todo.md`): feature items **18–28** and bugs **25–27** are 🟢. Item **24** was reused
@@ -126,8 +135,9 @@ The feature wave and the editor wave landed on top. The authoritative per-item r
 
 ## ⏭ PP4a — npm publication (executed 2026-11-26; PP4b still deferred)
 
-**Executed 2026-11-26: both packages are live at `0.1.0`.** The runbook below is retained verbatim
-for the next version. PP4b (the VS Code Marketplace extension) remains deferred.
+**Executed 2026-11-26: both packages are live at `0.1.1` (and were first published at `0.1.0`).**
+The runbook below is retained verbatim for the next version. PP4b (the VS Code Marketplace
+extension) remains deferred.
 
 The owner decided on 2026-11-26 to split the release: **npm first (`@chikx/compiler` + `@chikx/cli`),
 the VS Code Marketplace extension later**. Everything below is release execution only. No source
@@ -251,12 +261,12 @@ from the Marketplace UI. Never re-publish npm to "match". Record the outcome in 
 
 ## ✅ PP5a — npm post-release verification (executed 2026-11-26)
 
-**Executed against the registry — 🟢.** Report with exact commands and outputs:
-`.ai/reports/CSSX-PP5A.md`.
+**Executed against the registry for 0.1.0 and again for 0.1.1 — 🟢.** Report with exact commands and
+outputs: `.ai/reports/CSSX-PP5A.md` (the 0.1.1 section is appended there).
 
 From a clean environment (fresh profile, no workspace symlinks):
 
-1. `npm i @chikx/cli && npx chikx --version`; `bunx @chikx/cli@0.1.0 --version`.
+1. `npm i @chikx/cli@0.1.1 && npx chikx --version`; `bunx @chikx/cli@0.1.1 --version`.
 2. Run the `docs/usage.md` quick start end to end with `chikx build`: optional config, two `.cssx`
    files, generated CSS/map, JSX import, and a rendered page.
 3. Write the checklist with **actual outputs** to `.ai/reports/CSSX-PP5A.md`. Any mismatch opens a
@@ -271,17 +281,16 @@ From a clean environment (fresh profile, no workspace symlinks):
 
 ## 0.1.1 follow-ups
 
-Resolved for 0.1.1 (staged, unpublished):
+Resolved and published in 0.1.1:
 
 1. Compiler README — the shipped README no longer says "Not on npm yet" and `await`s `compile()`.
 2. Stale `dist/output/importPath.*` — both package builds clean `dist` first.
 3. Source-map policy — both packages ship `src/**`, so every map `sources` entry resolves inside the
    tarball (compiler 398 files, CLI 89).
-5. PP5a mismatches — `docs/usage.md` §1.2 is formatter-clean and the ESM map note landed.
+4. PP5a mismatches — `docs/usage.md` §1.2 is formatter-clean and the ESM map note landed.
 
-Still an owner step:
-
-4. Deprecate `@chikx/compiler@0.0.0-stage` (`npm deprecate`), which remains installable.
+Retracted: the earlier suggestion to deprecate `@chikx/compiler@0.0.0-stage` is withdrawn.
+`0.0.0-stage` is npm's staged-publishing placeholder and must not be deprecated or unpublished.
 
 ## Caveats and known non-issues
 

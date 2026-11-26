@@ -7,9 +7,10 @@ runtime**, no framework dependency and no editor requirement: `@chikx/compiler` 
 with zero runtime dependencies, the `chikx` CLI drives it from Node or Bun, and the VS Code extension
 is an interface to the same compiler.
 
-Chikx is at **v0.1** — implementation complete. `@chikx/compiler` and `@chikx/cli` **0.1.0 are
-published on npm** (2026-11-26) and passed clean-environment post-release checks
-([PP5a](.ai/reports/CSSX-PP5A.md)). The VS Code extension is **not on the Marketplace yet**: it ships
+Chikx is at **v0.1** — implementation complete. `@chikx/compiler` and `@chikx/cli` **0.1.1 are
+published on npm** (2026-11-26), alongside the `@chikx/chikx` alias, and passed clean-environment
+post-release checks ([PP5a](.ai/reports/CSSX-PP5A.md)). The VS Code extension is **not on the
+Marketplace yet**: it ships
 as the local VSIX produced by `bun run release:check` (PP4b deferred). It is an MVP with a
 deliberately small, honest feature set — read [compatibility](docs/compatibility.md) and
 [known limitations](docs/known-limitations.md) before adopting it. The normative language definition
@@ -21,7 +22,8 @@ diagnostics keep the Chikx name ([ADR-0013](docs/decisions/ADR-0013-cssx-file-ex
 
 **npm package name:** npm's name-similarity policy rejects the unscoped `chikx` name as too close to
 `chikuy` and `shiki`, so this repository is published under the scoped alias
-[`@chikx/chikx`](https://www.npmjs.com/package/@chikx/chikx). It contains no compiler or CLI: the CLI
+[`@chikx/chikx`](https://www.npmjs.com/package/@chikx/chikx), which is live at `0.1.1` as the name
+reservation. It contains no compiler or CLI: the CLI
 is [`@chikx/cli`](https://www.npmjs.com/package/@chikx/cli), the compiler is
 [`@chikx/compiler`](https://www.npmjs.com/package/@chikx/compiler), and the VS Code extension is
 `chikx` on the Marketplace (publication deferred).
@@ -85,7 +87,7 @@ tour, CLI/editor reference and theming recipes, read the **[full usage guide](do
 
 ## Install
 
-`@chikx/compiler` and `@chikx/cli` are published at **0.1.0** (2026-11-26):
+`@chikx/compiler` and `@chikx/cli` are published at **0.1.1** (2026-11-26):
 
 ```sh
 bun add @chikx/compiler        # programmatic compiler API

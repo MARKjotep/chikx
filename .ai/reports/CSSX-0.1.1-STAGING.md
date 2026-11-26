@@ -1,9 +1,11 @@
-# CSSX-0.1.1 — staging record
+# CSSX-0.1.1 — staging and publish record
 
 - Date: 2026-11-26
+- Status: **PUBLISHED** — `@chikx/compiler@0.1.1`, `@chikx/cli@0.1.1` and the alias
+  `@chikx/chikx@0.1.1` are live at `latest`; tag `v0.1.1` on `2abfbdf`
 - Scope: stage 1 packaging fixes (commit `e55bcb0`) and stage 2 release preparation (version bump,
-  changelog, docs, gate, staged tarballs); no tag and no CLI publish
-- Environment: macOS, Bun 1.4.5, Node 24.22.3, npm 11.19.1; npm unauthenticated
+  changelog, docs, gate, staged tarballs), then the owner publishes
+- Environment: macOS, Bun 1.4.5, Node 24.22.3, npm 11.19.1; npm unauthenticated (read-only queries/installs)
 
 ## Implementation Progress
 
@@ -99,26 +101,46 @@ Fresh temp project with the two local tarballs installed by path:
 - `node_modules/@chikx/{compiler,cli}/dist/index.js.map` each have 1 `sources` entry
   (`../src/index.ts`) and it exists in the installed package (0 missing).
 
-## Publish state and exact commands
+## Publish state and verification (2026-11-26)
 
-`@chikx/compiler@0.1.1` is live and latest (owner publish, 2026-11-26).
-`@chikx/cli@0.1.1` is **not published** (`npm view @chikx/cli versions` → `0.0.0-stage`, `0.1.0`).
-No tag exists. Remaining owner steps, in order:
+**All three artifacts are published and live.** Verification from the public registry and clean
+temp projects (unauthenticated npm, registry installs only):
 
-```sh
-npm view @chikx/compiler version                 # must return 0.1.1
-npm publish --workspace @chikx/cli --access public
-npm view @chikx/cli version                      # must return 0.1.1
-git tag -a v0.1.1                                 # on the release commit
+```text
+$ npm view @chikx/compiler version dist-tags
+0.1.1 { latest: '0.1.1' }
+$ npm view @chikx/cli version dist-tags dependencies
+0.1.1 { latest: '0.1.1' } { '@chikx/compiler': '0.1.1' }
+$ npm view @chikx/chikx version dist-tags bin
+0.1.1 { latest: '0.1.1' } { chikx: 'bin/chikx.js' }
 ```
 
-The extension stays at 0.1.0; PP4b and PP5b remain deferred. `@chikx/compiler@0.0.0-stage`
-deprecation is an owner step.
+- Clean project, `npm i @chikx/cli@0.1.1` -> `@chikx/cli@0.1.1` + `@chikx/compiler@0.1.1`;
+  `npx chikx --version` and `bunx @chikx/cli@0.1.1 --version` both print `0.1.1` (exit 0).
+- Two-file quick start (token module + button entry, `@use`, `$tokens`, `@md`, prefix `ui`):
+  `chikx build` -> `2 entries, 3 files written, 0 warnings` (CSS, map, map file); `chikx check`
+  -> `2 entries checked, 0 errors, 0 warnings`; `chikx format --check` -> `2 file(s) already
+  formatted`; all exit 0.
+- Installed `node_modules/@chikx/compiler/dist/index.js.map` has `sources: ["../src/index.ts"]`;
+  `node_modules/@chikx/compiler/src/index.ts` exists (same for `setup-list`). The 0.1.1 policy holds.
+- Alias project, `npm i @chikx/chikx@0.1.1`: exactly 4 files (`package.json`, `README.md`, `LICENSE`,
+  `bin/chikx.js`), no dependencies; `npx @chikx/chikx` prints the `@chikx/cli` pointer and exits 1.
+
+Alias provenance observations (cosmetic, no fix now): it was staged before the docs commit, so
+`gitHead` is `417918f`, and its published README still says `0.1.0`; its manifest also exposes the
+monorepo scripts/devDependencies/workspaces. Tarball name/version/bin are correct.
+
+`0.0.0-stage` in the `@chikx/compiler` and `@chikx/chikx` version lists is npm's staged-publishing
+placeholder. Expected; it must **not** be deprecated or unpublished (the earlier deprecation
+suggestion is retracted).
+
+The extension stays at 0.1.0; PP4b and PP5b remain deferred.
 
 ## Docs
 
 `docs/usage.md` §1.2 `src/button.cssx` expanded to the formatter's output (multi-line nested rules);
 a note after the map-import snippet states the generated map is ESM and needs `"type": "module"`
 (or a bundler). `CHANGELOG.md` gained `[0.1.1] - 2026-11-26` (`### Packaging`); `docs/release.md`,
-`.ai/HANDOVER.md`, `.ai/plans/CSSX-PLAN-PRODUCTION.md` and `.ai/todo.md` reflect that the compiler is
-published and only the CLI publish remains.
+`.ai/HANDOVER.md`, `.ai/plans/CSSX-PLAN-PRODUCTION.md` and `.ai/todo.md` now reflect that all three
+artifacts (compiler, CLI, alias) are published at 0.1.1 and `v0.1.1` is tagged; the docs pass after
+the alias publish updated them in place.

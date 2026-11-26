@@ -6,18 +6,16 @@ Report new bugs and feature requests under the matching section; the lead routes
 
 1. colors for $variable - deepblue? $runtimeVariables or --var in magenta?, and imported variables vis namespace must match - green for example then the variable color. — 🟢 done in CSSX-COLOR-TOKENS (semantic tokens now work zero-config: `contributes.semanticTokenScopes` maps variable→`variable.language`, namespace→`entity.name.type`, runtimeVariable/customProperty→`keyword.control`, keyframe→`entity.name.function`, so colors follow the active theme; compile-time `$token` `#4C8DF8`, runtime tokens and `--var` `#D6409F`, the `$ns` prefix `#4EC9B0`, resolved `$keyframes.<name>` `#D18616` remain the documented literal override in the README settings snippet. See `.ai/reports/CSSX-COLOR-TOKENS.md`)
 
-2. v0.1 implementation is complete and committed (`1ec431f`). Release: `@chikx/compiler@0.1.1` is
-   **published** (owner, 2026-11-26) alongside the 0.1.0 CLI (integrity and tarball audit in
-   `.ai/reports/CSSX-PP4A-COMPILER-PUBLISHED.md`), and **PP5a 🟢** — clean-environment registry check
-   passed (`.ai/reports/CSSX-PP5A.md`). **`@chikx/cli@0.1.1` packaging fixes are staged locally,
-   awaiting the owner's publish** (clean `dist`, shipped `src/`, maps resolve;
-   `.ai/reports/CSSX-0.1.1-STAGING.md`). **PP4b (VS Code Marketplace) stays deferred** by the owner
-   (2026-11-26), so the extension remains at `0.1.0`; PP5b follows it. The remaining 0.1.1
-   follow-ups are in `.ai/HANDOVER.md`. Owner field-testing continues.
+2. v0.1 implementation is complete and committed (`1ec431f`). Release: **all npm artifacts are
+   published at 0.1.1** (owner, 2026-11-26) — `@chikx/compiler`, `@chikx/cli` and the scoped alias
+   `@chikx/chikx` (registry audit in `.ai/reports/CSSX-0.1.1-STAGING.md`), tag `v0.1.1` on
+   `2abfbdf`, and **PP5a 🟢 for 0.1.1** — clean-environment registry check passed
+   (`.ai/reports/CSSX-PP5A.md`). **PP4b (VS Code Marketplace) stays deferred** by the owner
+   (2026-11-26), so the extension remains at `0.1.0`; PP5b follows it. Owner field-testing continues.
 
-3. npm alias `@chikx/chikx` is prepared for the owner to publish (root stub only, awaiting
-   `npm publish --access public`; npm rejected the unscoped `chikx` name as too similar to `chikuy`
-   and `shiki`; see `docs/release.md` → npm alias). — 🟡 prepared
+3. npm alias `@chikx/chikx` is **live at 0.1.1** as the name reservation (root stub only; npm
+   rejected the unscoped `chikx` name as too similar to `chikuy` and `shiki`; approved and published
+   via staged publishing 2026-11-26; see `docs/release.md` → npm alias). — 🟢 published
 
 ## Bug reports
 

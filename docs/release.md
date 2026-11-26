@@ -3,17 +3,16 @@
 This page records what `bun run release:check` validates, how to release, and the remaining manual
 steps for the package owners.
 
-**Current status (2026-11-26):** **`@chikx/compiler@0.1.1` is published** (owner publish, 2026-11-26)
-together with the previously published `@chikx/compiler@0.1.0` / `@chikx/cli@0.1.0` (compiler first;
-the CLI pins the compiler to the exact version). **PP5a passed** on 2026-11-26 against the registry:
-clean install, `npx`/`bunx` versions, and the `docs/usage.md` quick start end to end with
-`chikx build`/`check`/`clean` ([report](../.ai/reports/CSSX-PP5A.md)). **`@chikx/cli@0.1.1` is
-prepared and awaiting its publish** (compiler dependency pinned to `0.1.1`); publishing the CLI, then
-tagging `v0.1.1` on the release commit, completes the 0.1.1 npm release. **PP4b — the VS Code
-Marketplace extension — remains deferred by the owner**; the extension stays at `0.1.0` and the local
-VSIX is the interim distribution. Publishing anything further needs new explicit owner
-authorization. The npm alias `@chikx/chikx` is prepared and awaiting the owner's publish
-([npm alias](#npm-alias)).
+**Current status (2026-11-26):** **`@chikx/compiler@0.1.1`, `@chikx/cli@0.1.1` and the npm alias
+`@chikx/chikx@0.1.1` are all published** (owner publishes, 2026-11-26) and live at `latest` on the
+public registry. The compiler was published first (the CLI pins it to the exact version), then the
+CLI, then the alias. **PP5a passed** on 2026-11-26 against the registry: clean install, `npx`/`bunx`
+versions, and the `docs/usage.md` quick start end to end with `chikx build`/`check`/`format --check`
+([report](../.ai/reports/CSSX-PP5A.md)). **Tag `v0.1.1` is on the release commit `2abfbdf`**
+(`v0.1.0` -> `8c4c64c`). **PP4b — the VS Code Marketplace extension — remains deferred by the
+owner**; the extension stays at `0.1.0` and the local VSIX is the interim distribution. Publishing
+anything further needs new explicit owner authorization. The alias was approved and published via
+npm's staged publishing ([npm alias](#npm-alias)).
 
 Source files use the `.cssx` extension; the language ID, packages, CLI command and diagnostics stay
 Chikx ([ADR-0013](decisions/ADR-0013-cssx-file-extension.md)).
@@ -61,10 +60,9 @@ Each sub-result is printed. `release:check` does not publish anything and does n
      bumping the CLI dependency in `packages/cli/package.json` to the same version, rebuilding and
      re-packing the CLI before its own publish**. Confirm the packed manifest before publishing:
      `tar -xzOf chikx-cli-0.1.1.tgz package/package.json | grep '@chikx/compiler'`.
-     **0.1.1**: `@chikx/compiler@0.1.1` was published by the owner on 2026-11-26 (tarball
-     byte-identical to the local pack, 398 files). Only the CLI remains:
-     `npm publish --workspace @chikx/cli --access public`, pinned to `0.1.1`, after
-     `npm view @chikx/compiler version` returns `0.1.1`; then tag `v0.1.1` on the release commit.
+     **0.1.1**: `@chikx/compiler@0.1.1` (tarball byte-identical to the local pack, 398 files) and
+     `@chikx/cli@0.1.1` (89 files, pinned to `0.1.1`) were published by the owner on 2026-11-26;
+     `npm view` reports `0.1.1` for both, and tag `v0.1.1` is on `2abfbdf`.
    - **2b · VS Code Marketplace (PP4b, deferred by owner 2026-11-26):**
      `cd packages/vscode && vsce publish` (publisher `chikx`; needs a PAT with Marketplace *Manage*
      scope via `npx @vscode/vsce login chikx` or `VSCE_PAT`). Until then the local VSIX is
@@ -81,19 +79,26 @@ Each sub-result is printed. `release:check` does not publish anything and does n
 | `@chikx/cli` | `0.1.1`, MIT, `dist/**` + `src/**` plus package `README.md`/`LICENSE`; `bin.chikx` → `dist/index.js` |
 | VS Code extension | marketplace `name: chikx`, `version: 0.1.0`, publisher `chikx`, `icon: media/icon.png`, language `chikx` with `.cssx` |
 | Diagnostics | `CHIKX####` (unchanged) |
+| Tags | `v0.1.0` -> `8c4c64c`; `v0.1.1` -> `2abfbdf` |
 
 ## npm alias
 
 The unscoped name `chikx` is unavailable: npm's name-similarity policy rejected it as too close to
 the existing `chikuy` and `shiki` packages, and nothing was uploaded. The repository root therefore
-publishes as the scoped alias `@chikx/chikx` (unclaimed at the time of writing), a minimal public
-package (`0.1.1`) that only reserves the name. It ships no code: `files` is limited to `README.md`,
-`LICENSE` and `bin`, the sole bin is `bin/chikx.js`, and that stub prints a pointer to `@chikx/cli`
-and exits 1. It is **not** the CLI and must not be used as one. The tarball is constrained by
-`files` (the authoritative allowlist) with a root `.npmignore` as a second guard; npm ignores
-`.npmignore` whenever `files` is present.
+publishes as the scoped alias `@chikx/chikx`, a minimal public package (`0.1.1`) that only reserves
+the name. It ships no code: `files` is limited to `README.md`, `LICENSE` and `bin`, the sole bin is
+`bin/chikx.js`, and that stub prints a pointer to `@chikx/cli` and exits 1. It is **not** the CLI and
+must not be used as one. The tarball is constrained by `files` (the authoritative allowlist) with a
+root `.npmignore` as a second guard; npm ignores `.npmignore` whenever `files` is present.
 
-To publish (owner, from the repository root):
+The alias was **approved and published by the owner on 2026-11-26 via npm's staged publishing**
+(`npm stage publish`), so its `gitHead` is `417918f` rather than the later release commit and its
+`0.1.1` tarball still carries the pre-0.1.1 README text. Published versions are immutable; the
+tarball is functionally correct (4 files, no dependencies, `bin.chikx`). `0.0.0-stage` in the
+alias (and compiler) version list is npm's staged-publishing placeholder: it is expected and must
+**not** be deprecated or unpublished.
+
+To publish a future version (owner, from the repository root):
 
 ```sh
 npm pack --dry-run --json   # must list exactly package.json, README.md, LICENSE, bin/chikx.js

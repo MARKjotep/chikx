@@ -9,7 +9,7 @@ configuration file (`chikx.config.json`) and diagnostic codes (`CHIKX####`) keep
 
 ## Install
 
-Published on npm as **0.1.0** (2026-11-26):
+Published on npm as **0.1.1** (2026-11-26):
 
 ```sh
 npm install @chikx/compiler

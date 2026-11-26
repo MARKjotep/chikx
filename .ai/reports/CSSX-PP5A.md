@@ -1,11 +1,12 @@
-# CSSX-PP5A — clean-environment check of the published 0.1.0 packages
+# CSSX-PP5A — clean-environment check of the published packages
 
 - Date: 2026-11-26
 - Scope: registry install + `docs/usage.md` §1.2–§1.4 in fresh temp dirs; no workspace symlinks
 - Environment: macOS, Bun 1.4.5, Node 24.22.3, npm 11.19.1; npm unauthenticated (read-only queries/installs)
-- Temp root: `$TMPDIR/chikx-pp5a.XY4wez` (`proj/`, `pub/`, `local/`)
+- Temp root: `$TMPDIR/chikx-pp5a.XY4wez` (`proj/`, `pub/`, `local/`); the 0.1.1 rerun used fresh
+  `chikx-verify-*` and `chikx-alias-*` temp roots
 
-## Status: PASS (two documentation mismatches recorded as follow-ups)
+## Status: PASS (two 0.1.0 documentation mismatches recorded as follow-ups; both fixed for 0.1.1)
 
 ## Registry audit
 
@@ -77,3 +78,80 @@ exit 0; `chikx check` → 0 errors / 0 warnings.
    §3.2 says "plain-Node importable" without stating that condition.
 
 Node 20/22 were not installed here, so those versions are **unverified** (Node 24.22.3 only).
+
+## 0.1.1 clean-environment rerun (appended 2026-11-26)
+
+Status: **PASS** — all three artifacts (compiler, CLI, alias) published at `0.1.1`; tag `v0.1.1` on
+`2abfbdf`. Fresh temp projects, registry installs only.
+
+### Registry
+
+| Check | Actual output |
+|---|---|
+| `npm view @chikx/compiler version dist-tags` | `0.1.1`; `{ latest: '0.1.1' }` |
+| `npm view @chikx/cli version dist-tags dependencies` | `0.1.1`; `{ latest: '0.1.1' }`; `{ '@chikx/compiler': '0.1.1' }` |
+| `npm view @chikx/chikx version dist-tags bin` | `0.1.1`; `{ latest: '0.1.1' }`; `{ chikx: 'bin/chikx.js' }` |
+| Versions (`@chikx/compiler`) | `0.0.0-stage`, `0.1.0`, `0.1.1` — the `0.0.0-stage` entry is npm's staged-publishing placeholder |
+
+### CLI install and versions
+
+```text
+$ npm i @chikx/cli@0.1.1
+added 2 packages in 303ms
+$ npm ls @chikx/cli @chikx/compiler --depth=1
+└─┬ @chikx/cli@0.1.1
+  └── @chikx/compiler@0.1.1
+$ npx chikx --version
+0.1.1                       # exit 0
+$ bunx @chikx/cli@0.1.1 --version
+0.1.1                       # exit 0
+```
+
+### Two-file quick start
+
+`src/tokens.cssx` (`module: true`, `$spacing`/`$radius`/`$primary`), `src/button.cssx`
+(`@use "./tokens.cssx" as tokens`, `$tokens.spacing`, `padding: … @md 20px`, `@dark`), prefix `ui`
+via `chikx.config.json`, `source-map: true`.
+
+```text
+$ npx chikx build
+wrote dist/styles/button.css
+wrote dist/maps/button.map.js
+wrote dist/styles/button.css.map
+chikx build: 2 entries, 3 files written, 0 warnings        # exit 0
+$ npx chikx check
+chikx check: 2 entries checked, 0 errors, 0 warnings        # exit 0
+$ npx chikx format --check
+chikx format --check: 2 file(s) already formatted.          # exit 0
+```
+
+CSS minified (`ui-button`, `@media (min-width: 768px)`, `prefers-color-scheme: dark`); map
+`export const button = "ui-button";`.
+
+### Installed source maps (0.1.1 policy)
+
+```text
+node_modules/@chikx/compiler/dist/index.js.map      sources: ["../src/index.ts"]      -> src exists
+node_modules/@chikx/compiler/dist/setup-list.js.map sources: ["../src/setup-list.ts"]  -> src exists
+node_modules/@chikx/compiler/dist/index.d.ts.map    sources: ["../src/index.ts"]      -> src exists
+```
+
+### Alias stub
+
+```text
+$ npm i @chikx/chikx@0.1.1
+added 1 package in 196ms
+$ find node_modules/@chikx/chikx -type f
+LICENSE, README.md, bin/chikx.js, package.json              # exactly 4 files, no dependencies
+$ npx @chikx/chikx
+The Chikx CLI is @chikx/cli — run: npx @chikx/cli --version
+This package is only the npm alias @chikx/chikx; it contains no compiler or CLI.
+The VS Code extension is `chikx` on the Marketplace (publication deferred).
+                                                            # exit 1
+```
+
+Alias observations (cosmetic, not defects to fix now): staged before the docs commit, so `gitHead` is
+`417918f`; the published README still says `0.1.0`; the manifest exposes the monorepo
+scripts/devDependencies/workspaces. Tarball name/version/bin are correct.
+
+Node 20/22 remain unverified (Node 24.22.3 used). The extension stays at 0.1.0; PP4b/PP5b deferred.

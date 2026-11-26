@@ -1,11 +1,12 @@
 # Chikx Plan — Production readiness (v0.1 release)
 
-**Status:** PP0–PP3, **PP4a** and **PP5a** executed 🟢 and verified on 2026-11-26 — `@chikx/compiler`
-and `@chikx/cli` **0.1.0 are published on npm** and passed a clean-environment registry check. The
+**Status:** PP0–PP3, **PP4a** and **PP5a** executed 🟢 and verified on 2026-11-26 — `@chikx/compiler`,
+`@chikx/cli` and the alias `@chikx/chikx` **0.1.1 are published on npm** and passed a clean-environment
+registry check. Tag `v0.1.1` is on `2abfbdf`. The
 pre-release feature wave landed under an explicit owner scope change (2026-11-26); **PP4b (VS Code
 Marketplace extension) and PP5b remain 🔴 deferred** by the owner.
-**Owner decision 2026-11-26: publish npm only for now** — PP4a (`@chikx/compiler` + `@chikx/cli`)
-executed 2026-11-26; PP4b (the VS Code Marketplace extension) is deferred.
+**Owner decision 2026-11-26: publish npm only for now** — PP4a (`@chikx/compiler`, `@chikx/cli` and
+the alias) executed 2026-11-26; PP4b (the VS Code Marketplace extension) is deferred.
 Created 2026-11-26 against the editor-intelligence handover `.ai/HANDOVER.md` (A45–A51 landed,
 `bun run verify` 892 pass / 0 fail across 45 files). **Revised 2026-11-26** against the current
 `.ai/HANDOVER.md`: the campaigns that parked this plan are closed 🟢 — the stress-testing campaign
@@ -71,10 +72,10 @@ No commit/push/tag/publish/reset/stash beyond the recorded release without new a
 | REFS · reverse references | Find All References from a `$token`/`@runtime` definition returns the definition (honouring `includeDeclaration`) plus every use that resolves to it across workspace `.cssx` files; from an importer it returns the same set. Resolution uses each file's own analysis: namespaced aliases, unqualified and style imports count; local shadows, ambiguous unqualified imports (`CHIKX2001`) and transitive re-exports are excluded; locations are deduped and sorted. The scan is on demand, bounded to 200 candidates (workspace folders plus the current directory for a standalone file), excludes `node_modules`/`dist`/`generated`, and adds no watchers. Rename stays single-file. **Landed 2026-11-26:** `tokenDefinitionAt()`/`resolveTokenReference()`/`referencesToToken()` in `intelligence.ts`; workspace scan, open-document text preference and provider wiring in `providers/navigation.ts`; 3 unit tests in `tests/extension/provider.navigation.test.ts`; real-host definition/importer (alias + unqualified + runtime)/shadow/ambiguous exact-URI cases in `packages/vscode/test/ui/navigation.js` (37 → 42 assertions); docs/usage §5.2, known-limitations §5, CHANGELOG, board bug 27. **Gates:** `verify` **1351 pass / 2 skip / 0 fail** (99 files, 72.6 s; host 15 scenarios / 928 assertions), `release:check` exit 0 in **173.9 s** (browser 96/96, nine examples, VSIX 18 files / 140.6 KB), `lint` green (459 files) | Definition and both importer directions return the same exact URI/range set; shadowed and ambiguous uses excluded; `includeDeclaration: false` drops only the definition; existing navigation cases unchanged; docs/records persisted; all three gates green | 🟢 |
 | FIX · portfolio stale token | `examples/portfolio/src/layout.cssx:84` `calc(100% - 2 * $space.gutter)` → `$space.gutters`, completing the owner's rename; generated `portfolio.css` and `portfolio.map.js` rebuilt. **Provenance:** the owner's rename test left the importer behind and `CHIKX2001` surfaced it through the config-less example loop. **Landed 2026-11-26:** `chikx check --json` exit 0 with zero diagnostics (was exit 1, one `CHIKX2001` at `layout.cssx:84:38`); two consecutive builds byte-identical (`562ba7cb…` CSS, `2d4283c3…` map) and unchanged after `release:check`'s rebuild; no compiler/CLI/editor change | `check` exits 0 with no diagnostics; two builds and `release:check`'s rebuild byte-identical; `verify` 1345 pass / 2 skip / 0 fail, `release:check` exit 0 (browser 96/96), `lint` exit 0 (458 files) | 🟢 |
 | PP3 · Editor manual smoke (residue) | Verify the three manual rows in §PP3 in an Extension Development Host / browser | Each row verified, or explicitly recorded as not verifiable in this environment with the reason. **Owner-verified 2026-11-26:** picker, Dark+/Light+ tokens and portfolio toggle all pass; one group-body completion defect found and fixed (board bug 25, CSSX-FIX-GROUP-COMPLETE) | 🟢 |
-| PP4a · npm publication | Tag v0.1.0 on the authorized commit, then publish `@chikx/compiler` and `@chikx/cli` | **Explicit owner authorization first**; `npm publish --workspace @chikx/compiler --access public` then `--workspace @chikx/cli --access public` succeed; `npm view` resolves 0.1.0 for both. **Executed 2026-11-26:** both live at `0.1.0` (compiler integrity `sha512-aAKqebvb…`, CLI `sha512-tbRmwcP+…`, CLI 89 files, published tarball byte-identical to the local pack) — `.ai/reports/CSSX-PP4A-COMPILER-PUBLISHED.md` | 🟢 published 2026-11-26 |
-| 0.1.1 · packaging fixes | Clean `dist` before both package builds, ship `src/` so every `.js`/`.d.ts` map resolves (compiler 398 / CLI 89 tarball files), drop the stale CLI `importPath.*`, `await` the compiler README example and make the `docs/usage.md` quick start formatter-clean; bump compiler/CLI/root manifests to `0.1.1` (CLI pins compiler `0.1.1`), extension stays `0.1.0`. **Landed 2026-11-26 (commit `e55bcb0` + release prep):** verify 1351/2/0 (99 files, host 15/928), release:check green (browser 96/96, nine examples, VSIX 0.1.0), dry-runs exit 0 at 0.1.1; evidence `.ai/reports/CSSX-0.1.1-STAGING.md`. **Compiler published by the owner 2026-11-26** (tarball byte-identical to the local pack, `sha256 db7bf473…eda97f`, 398 files); CLI stays staged | Compiler 0.1.1 live and latest; CLI packed manifest `0.1.1` with no `workspace:*`, no `importPath.*`, maps resolve; full gate green; CLI awaits its publish, then `v0.1.1` is tagged on the release commit | 🟡 compiler live; CLI staged |
+| PP4a · npm publication | Tag v0.1.0 on the authorized commit, then publish `@chikx/compiler` and `@chikx/cli` | **Explicit owner authorization first**; `npm publish --workspace @chikx/compiler --access public` then `--workspace @chikx/cli --access public` succeed; `npm view` resolves 0.1.0 for both. **Executed 2026-11-26:** 0.1.0 published first (compiler integrity `sha512-aAKqebvb…`, CLI `sha512-tbRmwcP+…`), then **0.1.1 for compiler, CLI and the alias `@chikx/chikx`** with tag `v0.1.1` on `2abfbdf` — `.ai/reports/CSSX-PP4A-COMPILER-PUBLISHED.md`, `CSSX-0.1.1-STAGING.md` | 🟢 published 0.1.1 2026-11-26 |
+| 0.1.1 · packaging fixes | Clean `dist` before both package builds, ship `src/` so every `.js`/`.d.ts` map resolves (compiler 398 / CLI 89 tarball files), drop the stale CLI `importPath.*`, `await` the compiler README example and make the `docs/usage.md` quick start formatter-clean; bump compiler/CLI/root manifests to `0.1.1` (CLI pins compiler `0.1.1`), extension stays `0.1.0`. **Landed 2026-11-26 (commit `e55bcb0` + release prep):** verify 1351/2/0 (99 files, host 15/928), release:check green (browser 96/96, nine examples, VSIX 0.1.0), dry-runs exit 0 at 0.1.1; evidence `.ai/reports/CSSX-0.1.1-STAGING.md`. **All published by the owner 2026-11-26:** compiler 398 files (byte-identical to the local pack, `sha256 db7bf473…eda97f`), CLI 89, alias 4; tag `v0.1.1` on `2abfbdf` | compiler, CLI and alias live at `0.1.1`/`latest`; packed manifests clean (no `workspace:*`, no `importPath.*`, maps resolve); full gate green; `v0.1.1` tagged | 🟢 published 2026-11-26 |
 | PP4b · Marketplace extension (deferred by owner 2026-11-26) | Publish the VS Code extension | Owner authorization; `cd packages/vscode && npx @vscode/vsce publish` succeeds for publisher `chikx` | 🔴 deferred by owner 2026-11-26; no publish without new authorization |
-| PP5a · npm post-release | Clean-environment install and quick start against the npm packages | `.ai/reports/CSSX-PP5A.md` records `npx`/`bunx` and the `docs/usage.md` quick start end to end via `chikx build`. **Executed 2026-11-26:** all version paths `0.1.0`, build/check/clean/format and the configured rerun pass; two doc mismatches recorded as follow-ups | 🟢 checked 2026-11-26 |
+| PP5a · npm post-release | Clean-environment install and quick start against the npm packages | `.ai/reports/CSSX-PP5A.md` records `npx`/`bunx` and the `docs/usage.md` quick start end to end via `chikx build`. **Executed 2026-11-26 for 0.1.0 and 0.1.1:** all version paths `0.1.1`, build/check/format pass, installed maps resolve, alias stub 4 files/exits 1 | 🟢 checked 0.1.1 2026-11-26 |
 | PP5b · extension post-release | Marketplace listing and local VSIX in a clean profile | `.ai/reports/CSSX-PP5B.md` records activation, diagnostics, completion, token colours, swatches and preview | 🔴 after PP4b |
 
 (The former "PP3 · Deferred harness (optional)" row is closed without work in this plan: the UI
@@ -213,9 +214,10 @@ reason. Do not mark a row passed from unit tests alone — the handover explicit
 
 ## PP4a — npm publication (executed 2026-11-26)
 
-**Executed 2026-11-26: both packages are live at `0.1.0`** (compiler first, CLI pinned to the exact
-compiler version). PP4b still needs a separate owner authorization; no commit, push, tag or publish
-beyond the recorded release happens without it. The steps below are retained for the next version.
+**Executed 2026-11-26: compiler, CLI and the alias `@chikx/chikx` are live at `0.1.1`** (compiler
+first, CLI pinned to the exact compiler version; tag `v0.1.1` on `2abfbdf`). PP4b still needs a
+separate owner authorization; no commit, push, tag or publish beyond the recorded release happens
+without it. The steps below are retained for the next version.
 
 1. Tag `v0.1.0` on the authorized commit.
 2. `npm publish --workspace @chikx/compiler --access public`
@@ -228,11 +230,11 @@ caveat only after the publish succeeds.
 
 Dependencies: PP0–PP3 complete including the PP2a URL decision; `bun run release:check` green
 immediately before publishing.
-Exit criteria: both npm packages resolvable at 0.1.0, with the compiler first (the CLI pins it to the
-exact version `"@chikx/compiler": "0.1.0"`; npm does not rewrite `workspace:*`, so a new compiler
-release means bumping the CLI dependency to the same version before publishing the CLI). Publishing
-is **irreversible** (`docs/release.md` "Rollback"): the only remedy for a bad release is a new
-version.
+Exit criteria: all npm artifacts resolvable at 0.1.1 (compiler, CLI and alias), with the compiler
+first (the CLI pins it to the exact version `"@chikx/compiler": "0.1.1"`; npm does not rewrite
+`workspace:*`, so a new compiler release means bumping the CLI dependency to the same version before
+publishing the CLI). Publishing is **irreversible** (`docs/release.md` "Rollback"): the only remedy
+for a bad release is a new version.
 
 ## PP4b — VS Code Marketplace (deferred by owner 2026-11-26)
 
@@ -249,12 +251,12 @@ re-publish npm to match.
 
 ## PP5a — npm post-release verification (executed 2026-11-26)
 
-**Executed against the registry on 2026-11-26 — 🟢**; report: `.ai/reports/CSSX-PP5A.md`
-(install + `npx`/`bunx` versions + the §1.2 project end to end, including `format --check`, plain-Node
-map import, `clean` and a configured rerun). Recorded mismatches are follow-ups, not published-claim
-edits.
+**Executed against the registry on 2026-11-26 for 0.1.0 and 0.1.1 — 🟢**; report:
+`.ai/reports/CSSX-PP5A.md` (install + `npx`/`bunx` versions + the §1.2 project end to end, including
+`format --check`, plain-Node map import, `clean` and a configured rerun; the 0.1.1 section adds the
+installed source-map and alias-stub checks).
 
-1. `npm i @chikx/cli && npx chikx --version`; `bunx @chikx/cli@0.1.0 --version`.
+1. `npm i @chikx/cli@0.1.1 && npx chikx --version`; `bunx @chikx/cli@0.1.1 --version`.
 2. Run the `docs/usage.md` quick start end to end with `chikx build`: optional config, two `.cssx`
    files, generated CSS/map, JSX import and a rendered page.
 3. Record the checklist with actual outputs in `.ai/reports/CSSX-PP5A.md`.
