@@ -4,7 +4,7 @@
 
 Accepted (2026-11-25)
 
-Related: SPECIFICATION.md §3, §11; masterplan §6
+Related: SPECIFICATION.md §3, §11
 
 ## Context
 
@@ -19,8 +19,7 @@ Value-bearing AST fields hold the **raw source slice** exactly as authored. When
 used for substitution. Both point into the original source and every AST/IR node preserves its
 `Span` through all stages.
 
-This additively refines the masterplan §6 interface shapes; existing raw value fields remain
-strings. Transformations never rewrite source text in place; lowering produces new IR nodes.
+This additively refines the public API interface shapes; existing raw value fields remain strings. Transformations never rewrite source text in place; lowering produces new IR nodes.
 
 ## Consequences
 

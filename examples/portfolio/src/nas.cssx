@@ -1,3 +1,7 @@
+@setup {
+  module: true;
+}
+
 @use "./tokens.cssx" as tk;
 
 .tk {

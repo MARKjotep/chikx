@@ -7,7 +7,7 @@
  * the build step replaces with the compiler's emitted class names.
  */
 
-/** The exact viewport widths required by masterplan §9 and SPECIFICATION.md §4.1. */
+/** The exact viewport widths required by SPECIFICATION.md §4.1. */
 export const VIEWPORTS = [320, 767, 768, 1279, 1280] as const;
 
 export type ViewportWidth = (typeof VIEWPORTS)[number];

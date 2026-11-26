@@ -116,8 +116,7 @@ reason rather than faking a pass.
 
 VS Code 1.147 renamed the macOS launcher from `Electron` to `Code`. `@vscode/test-electron 2.5.2`
 does not handle that rename, so the orchestrator resolves the executable itself and passes
-`vscodeExecutablePath`; see the framework record under
-[`.ai/framework/vscode-test-electron/`](../../.ai/framework/vscode-test-electron/).
+`vscodeExecutablePath`.
 
 ## Grammar scopes
 

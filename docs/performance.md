@@ -1,7 +1,7 @@
 # Performance (v0.1)
 
-Masterplan §9 requires benchmark measurements for 100 and 1,000 source files, recording cold build,
-incremental build, completion latency and memory. **These are measurements, not promises.** Numbers
+Benchmark measurements cover 100 and 1,000 source files, recording cold build, incremental build,
+completion latency and memory. **These are measurements, not promises.** Numbers
 vary by machine, file size and build shape; the synthetic fixtures below are deliberately small and
 regular.
 
@@ -55,7 +55,7 @@ The benchmark reports Bun's bundled Node compatibility version, not the separate
 
 ## Results (median of 5 runs)
 
-| Metric | 100 files | 1,000 files | Target (masterplan §9) | Status |
+| Metric | 100 files | 1,000 files | Target | Status |
 |---|---|---|---|---|
 | Cold project build (no writes) | **63.6 ms** (59.5–88.1) | **557.4 ms** (539.5–681.2) | none stated | measured |
 | Single-file `compile()` (incl. its imports, no write) | **2.24 ms** (2.19–2.49) | **2.12 ms** (2.00–3.27) | < 100 ms excluding filesystem overhead | **met** with large margin |

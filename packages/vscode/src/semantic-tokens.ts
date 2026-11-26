@@ -8,7 +8,7 @@
  * type. It never imports `vscode`, so `bun test` exercises the exact ranges and
  * legend the extension host renders.
  *
- * Rules (the acceptance table in `.ai/tasks/CSSX-COLOR-TOKENS.md`):
+ * Rules:
  * - `<span>` compile-time reference → `variable`
  * - `<span>` runtime reference → `runtimeVariable`
  * - `<span>` `--custom-property` reference → `customProperty`

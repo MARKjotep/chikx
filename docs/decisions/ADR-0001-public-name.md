@@ -5,7 +5,7 @@
 Accepted (2026-11-25). Amended by [ADR-0013](ADR-0013-cssx-file-extension.md) for the source file
 extension only; every other decision below stands.
 
-Related: masterplan change record 2026-11-24; SPECIFICATION.md §1, §12; ADR-0013
+Related: the 2026-11-24 naming decision; SPECIFICATION.md §1, §12; ADR-0013
 
 ## Context
 

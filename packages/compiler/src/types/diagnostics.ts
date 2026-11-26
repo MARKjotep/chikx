@@ -62,7 +62,7 @@ export const DIAGNOSTIC_CODES: Readonly<Record<ReservedDiagnosticCode, Diagnosti
     family: "syntax",
     defaultSeverity: "error",
     summary:
-      "Missing semicolon after a Chikx declaration. v0.1 requires semicolons for Chikx declarations, while an ordinary CSS final declaration without a trailing semicolon before `}` MAY be accepted (masterplan §3.1).",
+      "Missing semicolon after a Chikx declaration. v0.1 requires semicolons for Chikx declarations, while an ordinary CSS final declaration without a trailing semicolon before `}` MAY be accepted (SPECIFICATION §3.1).",
   },
   CHIKX1003: {
     code: "CHIKX1003",

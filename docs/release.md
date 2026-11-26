@@ -3,6 +3,11 @@
 This page records what `bun run release:check` validates, how to release, and the remaining manual
 steps for the package owners.
 
+**Current status (2026-11-26):** nothing is published. **PP4a — npm publication of
+`@chikx/compiler` and `@chikx/cli` — is the next authorized action; PP4b, the VS Code Marketplace
+extension, is deferred by the owner.** Publishing still needs explicit authorization; the local
+VSIX is the interim extension distribution.
+
 Source files use the `.cssx` extension; the language ID, packages, CLI command and diagnostics stay
 Chikx ([ADR-0013](decisions/ADR-0013-cssx-file-extension.md)).
 
@@ -40,9 +45,12 @@ Each sub-result is printed. `release:check` does not publish anything and does n
    `/issues` bugs). `release:check` asserts the extension manifest has a repository URL, homepage and
    bugs URL; no placeholder remains.
 2. **Tag and publish**:
-   - `npm publish --workspace @chikx/compiler`
-   - `npm publish --workspace @chikx/cli`
-   - `cd packages/vscode && vsce publish` (VS Code Marketplace)
+   - **2a · npm (PP4a):** `npm publish --workspace @chikx/compiler --access public`, then
+     `npm publish --workspace @chikx/cli --access public` (compiler first; the CLI pins it).
+   - **2b · VS Code Marketplace (PP4b, deferred by owner 2026-11-26):**
+     `cd packages/vscode && vsce publish` (publisher `chikx`; needs a PAT with Marketplace *Manage*
+     scope via `npx @vscode/vsce login chikx` or `VSCE_PAT`). Until then the local VSIX is
+     self-contained and can be distributed by hand.
 3. Install the VSIX locally (or open the folder in an Extension Development Host) and smoke-test
    activation, diagnostics, completion, preview and Compile File.
 
@@ -68,7 +76,7 @@ Recorded output of the packaging step:
 
 ```text
 $ cd packages/vscode && bunx @vscode/vsce package --no-dependencies
-DONE  Packaged: packages/vscode/chikx-0.1.0.vsix (18 files, 138.35 KB)
+DONE  Packaged: packages/vscode/chikx-0.1.0.vsix (18 files, 140.6 KB)
 ```
 
 The `*.vsix` pattern is gitignored.
@@ -77,7 +85,7 @@ The `*.vsix` pattern is gitignored.
 
 | Package | Files | Root files included |
 |---|---|---|
-| `@chikx/compiler` | 307 | `package.json`, `README.md`, `LICENSE` (+ `dist/**`) |
+| `@chikx/compiler` | 323 | `package.json`, `README.md`, `LICENSE` (+ `dist/**`) |
 | `@chikx/cli` | 89 | `package.json`, `README.md`, `LICENSE` (+ `dist/**`, `src/**`) |
 
 Package-level `README.md` and `LICENSE` copies exist so npm tarballs are self-describing;
@@ -88,8 +96,7 @@ Package-level `README.md` and `LICENSE` copies exist so npm tarballs are self-de
 The extension-host smoke suite depends on `@vscode/test-electron 2.5.2`. On macOS with VS Code
 1.147.0, the package's default launcher resolution looks for `…/MacOS/Electron`, but VS Code 1.147
 ships only `…/MacOS/Code`. The repository test orchestrator resolves the executable itself and
-passes `vscodeExecutablePath`. Framework record:
-[`.ai/framework/vscode-test-electron/bugs/macos-electron-launcher-missing.md`](../.ai/framework/vscode-test-electron/bugs/macos-electron-launcher-missing.md).
+passes `vscodeExecutablePath`.
 
 ## Rollback
 

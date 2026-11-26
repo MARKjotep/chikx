@@ -4,7 +4,7 @@
 
 Accepted (2026-11-25, owner decision)
 
-Related: SPECIFICATION.md §3, §5; masterplan §3.3
+Related: SPECIFICATION.md §3, §5
 
 ## Context
 

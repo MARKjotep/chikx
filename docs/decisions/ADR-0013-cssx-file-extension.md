@@ -5,8 +5,8 @@
 Accepted (2026-11-25) — project owner decision. Amends ADR-0001 for the source file extension only;
 every other public name stays Chikx.
 
-Related: ADR-0001 (public name), masterplan change record 2026-11-24 (superseded for the extension
-only), `docs/release.md`.
+Related: ADR-0001 (public name), the 2026-11-24 naming decision (superseded for the extension only),
+`docs/release.md`.
 
 ## Context
 

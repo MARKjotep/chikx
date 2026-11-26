@@ -4,11 +4,13 @@
 plan remains the historical design record for the sanction below; ADR-0017 is the normative decision
 text. The sanction it records:
 
-- `.ai/CSSX-MASTERPLAN.md` §12 "Future features" lists reusable declaration groups (`@group`/`@apply`);
-  each such feature "requires an ADR and regression fixtures before implementation".
+- The original design's "Future features" list included reusable declaration groups
+  (`@group`/`@apply`); each such feature "requires an ADR and regression fixtures before
+  implementation".
 - `SPECIFICATION.md` §13 "Deferred" defers "mixins and reusable declaration groups (`@group`/`@apply`)"
   to an ADR plus regression fixtures.
-- `.ai/CSSX-MASTERPLAN.md` is **never edited**. Deltas are recorded in ADRs and `SPECIFICATION.md`.
+- The original design is historical and is **never edited**. Deltas are recorded in ADRs and
+  `SPECIFICATION.md`.
 
 Owner proposal and design decisions: 2026-11-25 (owner + lead). Board context lives in
 `.ai/todo.md` item 8 (owned by another worker; this plan does not touch the board or
@@ -242,7 +244,7 @@ Record each as a limitation in `docs/known-limitations.md` and a §13 deferred e
 
 1. Conditional/variant use-site blocks (`@group.x @md+dark { … }`) and conditional definitions.
 2. Nested rules or native at-rules inside a definition or use-site block.
-3. `@apply` alternative syntax (masterplan lists the pair; v1 ships only `@group.<name>`).
+3. `@apply` alternative syntax (the earlier design lists the pair; v1 ships only `@group.<name>`).
 4. Group parameters, interpolation or argument lists (not a mixin).
 5. Groups referencing other groups (chaining/composition).
 6. Cross-module group renaming (`@use … as` for groups) and re-export of groups.
@@ -277,7 +279,7 @@ These do not need owner arbitration but must be written down and pinned by tests
 
 Owned scopes are **exclusive**; a worker never edits another task's files. Shared/frozen contracts
 (`packages/compiler/src/types/**`, the public barrel, `SPECIFICATION.md`) change only with lead
-approval. Every task writes `.ai/tasks/<id>.md`, `.ai/reports/<id>.md` and
+approval. Every task writes `.ai/reports/<id>.md` and
 `.ai/reports/logs/<id>.log`, with `## Summary` first.
 
 | Task | Phase | Deliverable | Owned file scope | Depends on |
@@ -419,9 +421,9 @@ behaviour. Never weaken a test, delete a golden or relax an assertion.
 
 ## 12. Non-goals
 
-- No `.ai/CSSX-MASTERPLAN.md` edit, ever; no change to `.ai/PROGRESS.md` (lead-owned) or
+- No edit to the historical design record, ever; no change to `.ai/PROGRESS.md` (lead-owned) or
   `.ai/todo.md` (other worker) from these tasks.
 - No new runtime, no framework dependency, no compiler dependency.
 - No mixin/parameter system, no `@apply` alias, no conditional use sites, no editor support in the
   compiler phase.
-- No implementation in this planning task: `.ai/tasks/CSSX-A23.md` and this file only.
+- No implementation in this planning task: this file only.

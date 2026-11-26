@@ -7,7 +7,7 @@ runtime**, no framework dependency and no editor requirement: `@chikx/compiler` 
 with zero runtime dependencies, the `chikx` CLI drives it from Node or Bun, and the VS Code extension
 is an interface to the same compiler.
 
-Chikx is at **v0.1** (release candidate). It is an MVP with a deliberately small, honest feature set —
+Chikx is at **v0.1** — implementation complete; publication and post-release verification are parked pending owner field testing. It is an MVP with a deliberately small, honest feature set —
 read [compatibility](docs/compatibility.md) and [known limitations](docs/known-limitations.md) before
 adopting it. The normative language definition is [SPECIFICATION.md](SPECIFICATION.md); architecture
 decisions are recorded in [`docs/decisions/`](docs/decisions/).
@@ -73,6 +73,10 @@ The complete, committed output is in [`examples/basic/`](examples/basic/). For t
 tour, CLI/editor reference and theming recipes, read the **[full usage guide](docs/usage.md)**.
 
 ## Install
+
+The packages are not on the npm registry yet — the 0.1.0 publication is parked — so use the
+source-checkout path below to try Chikx today. The `bun add` commands describe the packages once
+they are published.
 
 ```sh
 bun add @chikx/compiler        # programmatic compiler API
@@ -211,11 +215,11 @@ bun run lint          # Biome
 bun test              # unit + integration + extension/provider suites
 bun run verify        # typecheck && lint && test (the aggregate gate)
 bun run test:browser  # Playwright computed-style cascade gate (Chromium required)
-bun run benchmark     # masterplan §9 measurements -> docs/performance.md
+bun run benchmark     # benchmark measurements -> docs/performance.md
 ```
 
-`bun run verify` currently passes with **1323 pass / 2 skip / 0 fail** across 98 files, including the
-VS Code extension-host smoke suite **14 scenarios / 880 assertions**. Browser coverage: 96/96
+`bun run verify` currently passes with **1351 pass / 2 skip / 0 fail** across 99 files, including the
+VS Code extension-host smoke suite **15 scenarios / 928 assertions**. Browser coverage: 96/96
 Playwright tests recorded on Chromium, Firefox and WebKit, checking viewport boundaries, light/dark,
 reduced motion, hover/focus/disabled, specificity, safe/none/merge grouping parity and
 pretty-vs-minified parity.
@@ -233,7 +237,7 @@ chikx/
     cli/                 build, check, watch, clean, config, output planner writer
     language-service/    shared editor analysis (no vscode import)
     vscode/              extension manifest, grammar, providers, commands
-  scripts/benchmark.ts   masterplan §9 benchmark harness
+  scripts/benchmark.ts   benchmark harness
   tests/                 compiler, integration, extension, browser (Playwright)
 ```
 

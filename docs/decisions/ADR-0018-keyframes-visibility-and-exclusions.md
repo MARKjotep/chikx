@@ -7,8 +7,8 @@ Accepted (owner sign-off 2026-11-25; (i) styles-only confirmed, (ii) string-name
 addendum to ADR-0015: it records the owner's answers to the three questions ADR-0015 left open and
 does not change the shipped behaviour.
 
-Related: ADR-0015, ADR-0017, `SPECIFICATION.md` §6.3, §6.4, §13; `.ai/tasks/CSSX-A19.md`,
-`.ai/reports/CSSX-A19.md`, `.ai/reports/CSSX-A42.md`, `.ai/todo.md` items 6 and 11.
+Related: ADR-0015, ADR-0017, `SPECIFICATION.md` §6.3, §6.4, §13; `.ai/reports/CSSX-A19.md`,
+`.ai/reports/CSSX-A42.md`, `.ai/todo.md` items 6 and 11.
 
 ## Context
 

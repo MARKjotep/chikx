@@ -9,6 +9,9 @@ configuration file (`chikx.config.json`) and diagnostic codes (`CHIKX####`) keep
 
 ## Install
 
+Not on npm yet — the 0.1.0 publication is parked; use the source checkout in the repository README
+until then.
+
 ```sh
 npm install @chikx/compiler
 ```

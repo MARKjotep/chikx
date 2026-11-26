@@ -1,5 +1,5 @@
 /**
- * Pure output planner for Chikx (SPECIFICATION.md §9; masterplan §4).
+ * Pure output planner for Chikx (SPECIFICATION.md §9).
  *
  * `planOutputs` resolves every CSS, JS map, declaration and CSS source-map
  * destination from the frozen `ResolvedSetup`/`ProjectConfig`/CLI inputs,

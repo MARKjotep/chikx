@@ -12,7 +12,7 @@ import type { ClassEntry, ClassTable, RenameOptions, RenameResult } from "./type
 
 /**
  * Class rewrite: flattened selectors in, prefixed selectors and a class table
- * out (SPECIFICATION.md §7.2, masterplan §3.5, ADR-0010).
+ * out (SPECIFICATION.md §7.2, ADR-0010).
  *
  * The pass runs after variable substitution and runtime emission and before
  * `groupRuns`. It is pure, filesystem-free and deterministic, and it never

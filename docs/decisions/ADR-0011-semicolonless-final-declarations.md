@@ -4,7 +4,7 @@
 
 Accepted (2026-11-25, lead decision)
 
-Related: SPECIFICATION.md §3.1, §12; masterplan §3.1; ADR-0003, ADR-0011 fixtures
+Related: SPECIFICATION.md §3.1, §12; ADR-0003, ADR-0011 fixtures
 
 ## Context
 

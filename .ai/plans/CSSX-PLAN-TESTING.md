@@ -21,7 +21,7 @@ test file is edited to make a new stress case pass.
 **Campaign closed 2026-11-26.** All nine phases are executed, reported and lead-verified on this tree:
 final gates `bun run verify` **1 160 pass / 0 fail / 85 files** (1 162 tests including the **2 gated soak
 tests**), `bun run test:browser` **96 tests** green on Chromium/Firefox/WebKit with **0/5 flakes** across
-five runs, `bun run lint` exit 0. Thirteen defect task specs (`.ai/tasks/CSSX-T01`–`CSSX-T13`) and
+five runs, `bun run lint` exit 0. Thirteen defect task specs (`CSSX-T01`–`CSSX-T13`) and
 `.ai/todo.md` items 21–33 carry the findings, `.ai/reports/CSSX-TT0.md`–`CSSX-TT7.md` carry the evidence,
 and `.ai/plans/CSSX-PLAN-PRODUCTION.md` PP0 must re-run its baseline gate on this post-campaign tree.
 
@@ -37,12 +37,12 @@ and `.ai/plans/CSSX-PLAN-PRODUCTION.md` PP0 must re-run its baseline gate on thi
 | TT5 · Runtime/consumer | Node 20/22/24 + Bun consumer matrix and external-CSS-parser / sourcemap spot-check gate under `tests/stress/consumer/` | Generated map + `.d.ts` import cleanly on every runtime/engine listed; literal types inferred; decoded sourcemap mappings land on the right positions | 🟢 |
 | TT6 · Editor stress | Latency/stability harness for language service at 10k lines and 1000 files; keystroke-storm and malformed-mid-edit models | Recorded latencies with thresholds; no throw/unhandled rejection across the storm corpus; host-only checks marked manual and cross-linked to PP3 | 🟢 |
 | TT7 · Soak | 30–60 min watch soak, 20× cold-build byte-identity, 5× full-gate flake run | Memory growth bounded and recorded; identical outputs every run; flake rate 0/5 with any flake documented | 🟢 |
-| TT8 · Reports/follow-up | `.ai/reports/CSSX-TT0…TT7.md` plus the close-out recorded in `.ai/tasks/CSSX-T01`–`T13`, `.ai/todo.md`, `docs/` and `.ai/PROGRESS.md`; task specs for real defects; test-inventory refresh | Every phase has a report with commands + actual numbers; every failure has a task spec `.ai/tasks/CSSX-T*.md` and/or `.ai/todo.md` entry; no phase closed without full gates | 🟢 |
+| TT8 · Reports/follow-up | `.ai/reports/CSSX-TT0…TT7.md` plus the close-out recorded in `.ai/todo.md`, `docs/` and `.ai/PROGRESS.md`; task specs for real defects; test-inventory refresh | Every phase has a report with commands + actual numbers; every failure has a task spec and/or `.ai/todo.md` entry; no phase closed without full gates | 🟢 |
 
 ## Ground rules for the campaign
 
 - **Failing repro test first.** A stress case that finds a defect lands as a test asserting the
-  correct behavior (red), then a separate `.ai/tasks/CSSX-T*.md` owns the fix, then TT8 re-runs it.
+  correct behavior (red), then a separate task prompt owns the fix, then TT8 re-runs it.
 - **No assertion weakening.** Existing tests and goldens are not relaxed to accommodate stress
   findings; a finding either becomes a task or is recorded as a documented limitation.
 - **Two budgets, one gate.** Every stress file runs a small deterministic budget inside `bun test`
@@ -215,7 +215,7 @@ Deliverable: latency and stability numbers for the language service, plus a host
 
 | Case | Assertion |
 |---|---|
-| 10k-line file | completion, hover and rename each under the recorded threshold (masterplan §9: completion < 100 ms cached); record p50/p95 |
+| 10k-line file | completion, hover and rename each under the recorded threshold (completion < 100 ms cached); record p50/p95 |
 | 1000-file project | index-build time recorded; symbol/alias analysis correct on a spot-checked sample |
 | Keystroke storm | replay a typed document one character at a time through `parse()` + provider calls: no throw, no unhandled rejection, bounded time |
 | Malformed mid-edit | corpus of every truncated prefix of the A45–A51 bug documents: providers never throw, completions degrade gracefully |
@@ -254,9 +254,9 @@ Deliverable: durable evidence and routed defects.
 
 - `.ai/reports/CSSX-TT0.md` … `CSSX-TT8.md`: changed files, commands, actual numbers, deviations,
   unverified items with reasons.
-- Defects: `.ai/tasks/CSSX-T<nn>.md` for each real bug (repro, expected/actual, owned files), plus a
+- Defects: a task prompt for each real bug (repro, expected/actual, owned files), plus a
   `.ai/todo.md` entry; only external-tool defects (Playwright, VS Code host, Bun, Biome) get a
-  `.ai/framework/<Tool>/bugs/` record with mandatory resolved version — none exists for Chikx tools
+  framework bug record with mandatory resolved version — none exists for Chikx tools
   yet, so creating that layout needs lead approval.
 - Docs: refresh `docs/performance.md` only if TT2/TT7 numbers change the recorded tables; extend
   `docs/known-limitations.md` for any behavior accepted as a documented limit; note the campaign
@@ -307,7 +307,6 @@ Validation: `bun run verify`, `bun run lint`, `bun run test:browser`, `bun run r
 
 - `.ai/plans/CSSX-PLAN-PRODUCTION.md` — PP0 baseline, PP1 packaging, PP3 manual editor smoke, PP4
   release execution (parked pending this campaign).
-- `.ai/plans/CSSX-PLAN.md` — A01–A16 module/ownership map used by the TT0 matrix.
 - `.ai/HANDOVER.md` — verified counts and the 7-item manual smoke checklist.
 - `docs/performance.md` — benchmark harness, medians and machine context for TT2/TT7 comparisons.
 - `docs/known-limitations.md`, `docs/cascade.md`, `docs/release.md` — claims the stress campaign

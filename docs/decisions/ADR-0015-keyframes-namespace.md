@@ -6,7 +6,7 @@ Accepted (2026-11-25) — project owner decision, normative for v0.1. The owner 
 reviewed the visibility rule in this ADR.
 
 Related: SPECIFICATION.md §3.5, §3.6, §6.1, §6.3, §6.4; ADR-0005, ADR-0014;
-`.ai/tasks/CSSX-A19.md`, `.ai/reports/CSSX-A19.md`
+`.ai/reports/CSSX-A19.md`
 
 ## Context
 

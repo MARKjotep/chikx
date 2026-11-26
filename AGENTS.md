@@ -45,7 +45,7 @@ For an explicitly requested standalone implementation, select `code` as the prim
 Keep `AGENTS.md` and `opencode.jsonc` at repository root. The JSONC registers all named agents; do not duplicate or override them with stale agent files in `.opencode/agents/` or global config. Keep `.ai/` root free of files.
 
 - `.ai/agents/`: reference presets (not auto-loaded agents); `.ai/plans/`: project plans.
-- `.ai/tasks/`: unique task prompts; `.ai/reports/`: reports, progress and archives; `.ai/reports/logs/`: durable logs when explicitly useful. OpenCode retains native worker sessions; avoid copying full logs unless needed.
+- `.ai/reports/`: reports, progress and archives (task prompts are disposable and not retained); `.ai/reports/logs/`: durable logs when explicitly useful. OpenCode retains native worker sessions; avoid copying full logs unless needed.
 - `.ai/frameworks/`: framework-specific bug and feature records, organized as each with `bugs/` and `features/`.
 - Create framework records only for relevant framework defects or feature requests, not ordinary application issues. Use unique descriptive filenames; include summary, framework, affected API and mandatory framework version, reproduction or use case, expected/actual behavior (bugs), acceptance criteria (features), evidence, workaround if any, and status. Verify the exact installed framework version from package metadata or the resolved lockfile (not a version range). If unavailable, record `Framework version: unknown` and explain why; never guess. Include versions for all affected frameworks. Update existing records rather than duplicating. Cross-link related records and task reports. Do not modify framework dependencies or upstream repositories without authorization.
 

@@ -19,7 +19,9 @@ specification disagree, the specification wins. Related references:
 
 ### 1.1 Install
 
-Chikx requires Node.js ≥ 20 or Bun. The compiler is pure ESM with no runtime dependencies.
+Chikx requires Node.js ≥ 20 or Bun. The compiler is pure ESM with no runtime dependencies. The
+packages are not on the npm registry yet — the 0.1.0 publication is parked — so build from the source
+checkout described below for now.
 
 ```sh
 bun add @chikx/compiler        # programmatic compiler API

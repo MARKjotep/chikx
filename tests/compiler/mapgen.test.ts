@@ -10,7 +10,7 @@ import type { Stylesheet } from "../../packages/compiler/src/types/ast.ts";
 
 /**
  * JS class-map and declaration generation tests (SPECIFICATION.md §8,
- * masterplan §3.6, ADR-0010, CSSX-A52), plus the map/d.ts goldens for
+ * ADR-0010, CSSX-A52), plus the map/d.ts goldens for
  * class-bearing fixtures.
  *
  * The pipeline here is `parse → lower → renameClasses → generateClassMap`.

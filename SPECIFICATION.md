@@ -4,9 +4,7 @@
 **Public name:** Chikx (`.cssx`), packages `@chikx/*`, CLI `chikx`, VS Code language ID `chikx`,
 diagnostic family `CHIKX####`. Source files use `.cssx` by owner decision
 ([ADR-0013](docs/decisions/ADR-0013-cssx-file-extension.md)); every other public name stays Chikx.  
-**Derived from:** `.ai/CSSX-MASTERPLAN.md` §1–§6 and the owner decisions of 2026-11-25. This
-document is normative for v0.1. Where it is silent, the masterplan governs; where the masterplan
-defers a feature, it is listed under [Deferred](#13-deferred).
+**Derived from:** the owner-approved design proposal of 2026-11-24 and the owner decisions of 2026-11-25. This document is normative for v0.1 and supersedes earlier design notes; features it defers are listed under [Deferred](#13-deferred).
 
 ## 0. Owner-locked decisions
 
@@ -133,8 +131,7 @@ This is structural grammar. CSS values and selectors require balanced token pars
 simple strings. Aliases may begin with digits (for example `2xl`). Setup, `@use`, `@variables`,
 `@runtime`, `@media-types` and `@group` definitions are top-level only. Multiple `@setup` blocks MAY
 appear at top level; they are merged in document order, and a duplicate setting key within a block
-or across blocks is rejected with a CHIKX1001-family diagnostic (masterplan §4 rejects duplicate
-settings).
+or across blocks is rejected with a CHIKX1001-family diagnostic.
 
 `@setup` values are single scalars with one scoped exception: `css-dir` MAY be a comma-separated
 list of directories (`css-dir: "../client", "../src";`, [ADR-0019](docs/decisions/ADR-0019-setup-output-lists.md)).
@@ -797,7 +794,7 @@ containing `package.json` (ADR-0007).
 ## 11. Public API
 
 The compiler exposes pure APIs; it returns artifacts and never writes files. Project hosts provide
-read/resolve operations and canonical path policy. Shared interface shapes from masterplan §6:
+read/resolve operations and canonical path policy. Shared interface shapes:
 
 ```ts
 interface Span {

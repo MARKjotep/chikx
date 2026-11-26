@@ -7,10 +7,8 @@ Accepted (owner sign-off 2026-11-25; decisions (a) styles-only, (b) compile-time
 
 Related: SPECIFICATION.md §3.2, §3.6, §3.7, §5.1, §5.2, §5.4, §6.1, §6.3, §12, §13; ADR-0003,
 ADR-0005, ADR-0011, ADR-0014, ADR-0015; `.ai/plans/CSSX-PLAN-GROUPS.md` (design and phases G0–G6),
-`.ai/tasks/CSSX-A23.md` and `.ai/reports/CSSX-A23.md` (the plan task), `.ai/tasks/CSSX-A30.md` and
-`.ai/reports/CSSX-A30.md` (this ADR and the spec integration), `.ai/CSSX-MASTERPLAN.md` §12 (the
-sanction), `.ai/framework/chikx/FRAMEWORK.md` §7 (invariants 3, 4, 10, 11), `.ai/todo.md` item 8
-(the board entry).
+`.ai/reports/CSSX-A23.md` (the plan), `.ai/reports/CSSX-A30.md` (this ADR and the spec integration),
+`.ai/todo.md` item 8 (the board entry).
 
 ## Context
 
@@ -46,9 +44,9 @@ where it is used:
 `.tile` keeps everything except the radius. No new runtime concept, no generated code, no CSS
 emitted for the definition itself.
 
-`.ai/CSSX-MASTERPLAN.md` §12 already sanctions reusable declaration groups (`@group`/`@apply`),
-requiring an ADR and regression fixtures before implementation, and `SPECIFICATION.md` §13 deferred
-them to exactly that. The owner and lead proposed the design on 2026-11-25 in
+Reusable declaration groups (`@group`/`@apply`) were already listed as a future feature, requiring an
+ADR and regression fixtures before implementation, and `SPECIFICATION.md` §13 deferred them to
+exactly that. The owner and lead proposed the design on 2026-11-25 in
 `.ai/plans/CSSX-PLAN-GROUPS.md` and left three decisions open. The owner accepted all three on
 2026-11-25; this ADR is the accepted record and does not re-open them. Nothing in v0.1 changes until
 the phases below land, and group-free sources keep byte-identical output.
@@ -207,7 +205,7 @@ the phases below land, and group-free sources keep byte-identical output.
 
    1. Conditional/variant use-site blocks (`@group.x @md+dark { … }`) and conditional definitions.
    2. Nested rules or native at-rules inside a definition or use-site block.
-   3. `@apply` alternative syntax (the masterplan lists the pair; v1 ships only `@group.<name>`).
+   3. `@apply` alternative syntax (the earlier design lists the pair; v1 ships only `@group.<name>`).
    4. Group parameters, interpolation or argument lists (not a mixin).
    5. Groups referencing other groups (chaining/composition).
    6. Cross-module group renaming (`@use … as` for groups) and re-export of groups.

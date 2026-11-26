@@ -4,14 +4,14 @@
 
 Accepted (2026-11-25, lead decision)
 
-Related: SPECIFICATION.md §3.4, §7.1; masterplan §3.5; ADR-0002
+Related: SPECIFICATION.md §3.4, §7.1; ADR-0002
 
 ## Context
 
 SPECIFICATION.md §7.1 supports `&:hover`, `&::before`, `&:nth-child(2n)`, `& > .icon`, `& + .button`
 and descendant nesting, and requires `&` for compound and complex nesting. It did not state whether
-`&` may be trailing, repeated or preceded by other selector parts, although masterplan §3.5 requires
-validating "multiple `&` references". Selector lowering needs one unambiguous substitution rule.
+`&` may be trailing, repeated or preceded by other selector parts, although multiple `&` references
+must be validated. Selector lowering needs one unambiguous substitution rule.
 
 ## Decision
 

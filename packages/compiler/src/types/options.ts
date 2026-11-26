@@ -44,7 +44,7 @@ export interface NamingOptions {
  * property families are provably disjoint (`all` and `var()` values are
  * barriers). It never merges unconditional runs, different selectors,
  * different conditions or different native contexts. Future modes such as
- * ordered-media grouping (masterplan §3.3) remain deliberately absent and must
+ * ordered-media grouping remain deliberately absent and must
  * be rejected as invalid configuration values.
  */
 export type MediaGroupingMode = "safe" | "none" | "merge";

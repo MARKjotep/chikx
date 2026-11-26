@@ -9,7 +9,7 @@ import { scanSelectorClasses } from "../../packages/compiler/src/naming/scan.ts"
 import type { ClassEntry } from "../../packages/compiler/src/naming/types.ts";
 
 /**
- * Class rewrite tests (SPECIFICATION.md §7.2, masterplan §3.5, ADR-0010).
+ * Class rewrite tests (SPECIFICATION.md §7.2, ADR-0010).
  *
  * The suite drives the real parser and lowerer, then inspects the rewritten IR
  * and the class table. No fixture is edited here; malformed/exotic selectors are

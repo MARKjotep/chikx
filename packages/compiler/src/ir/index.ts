@@ -1,6 +1,6 @@
 /**
- * Immutable CSS IR produced by lowering (masterplan §6: "IR records ordered
- * selectors, declarations, at-rule stack, origin spans and condition keys").
+ * Immutable CSS IR produced by lowering. The IR records ordered selectors,
+ * declarations, at-rule stack, origin spans and condition keys.
  *
  * The IR sits between the parser AST and generation. It is a flat, frozen,
  * source-ordered view: declarations are already split per value segment, Chikx

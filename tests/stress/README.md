@@ -17,7 +17,7 @@ Coverage map and the reason each case below outranks the others: `.ai/reports/CS
 | Bounded default budgets | `CHIKX_STRESS_BUDGET` (default `200` cases) keeps `bun test` fast enough for `bun run verify`. Long runs are opt-in through the same variable or the standalone `tests/stress/fuzz/runner.ts --budget`. |
 | Fixtures are read-only | `tests/fixtures/**` is an input, never an output. Mutants are derived in memory from a frozen copy of the fixture bytes; nothing under `tests/fixtures/`, `examples/` or the repository root is written by a stress case. |
 | Temp dirs only | Every filesystem case builds in a `mkdtemp` directory under the OS temp dir and cleans up. |
-| No assertion weakening | A stress finding lands as a **new** test asserting the correct behavior (red) plus a `.ai/tasks/CSSX-T*.md` for the fix. No existing test, golden or fixture is relaxed, skipped or deleted to make a stress case pass. |
+| No assertion weakening | A stress finding lands as a **new** test asserting the correct behavior (red) plus a dedicated task prompt for the fix. No existing test, golden or fixture is relaxed, skipped or deleted to make a stress case pass. |
 | Full gates before "done" | Each phase closes only after `bun run verify` (and `bun run test:browser` when emitted CSS changes). |
 | No new dependencies by default | No `fast-check`, no third-party CSS parser; both need owner approval and a decision record. |
 

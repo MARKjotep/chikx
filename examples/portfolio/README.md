@@ -25,6 +25,9 @@ without writing artifacts for each; only `src/portfolio.cssx` produces the style
 `generated/` is committed output produced by the CLI, not hand-written CSS. Rebuilding rewrites
 identical bytes.
 
+`src/nas.cssx` is a scratch stylesheet that declares `module: true` and emits nothing (kept so ad-hoc
+compiler experiments do not create tracked output).
+
 ## Build and serve
 
 From the repository root:

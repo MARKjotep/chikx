@@ -30,7 +30,7 @@ import type { ConditionAlias, MediaAliasTable } from "./media.js";
 import { declarationSegmentSpans, modifierAliasSpans, sameCondition } from "./spans.js";
 
 /**
- * AST to immutable CSS IR lowering (SPECIFICATION.md §5, masterplan §6).
+ * AST to immutable CSS IR lowering (SPECIFICATION.md §5).
  *
  * The pass is pure and deterministic: it never reads the filesystem, never
  * mutates the AST and never reorders, merges or deduplicates declarations. Each

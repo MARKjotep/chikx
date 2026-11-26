@@ -6,7 +6,7 @@
  * exact and resolve against the source directory; project-level directories
  * resolve against the workspace root and preserve the source-relative
  * subdirectory; CLI directories resolve against the workspace root and are
- * exact because path overrides are single-entry only (masterplan §7).
+ * exact because path overrides are single-entry only.
  *
  * `ResolvedSetup` is required and therefore cannot record whether a value was
  * authored or copied from a default. The planner treats a file-layer value that

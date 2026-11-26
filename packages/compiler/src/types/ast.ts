@@ -4,7 +4,7 @@ import type { Token } from "./token.js";
 /**
  * Abstract syntax tree produced by `parse`.
  *
- * Node shapes mirror SPECIFICATION.md §3.2 and masterplan §6, refined by
+ * Node shapes mirror SPECIFICATION.md §3.2, refined by
  * ADR-0003 (per-segment `!important`), ADR-0004 (rule-scoped conditional
  * blocks), ADR-0005 (raw value slices plus optional token sequences) and
  * ADR-0017 (inert `@group.<name>` definitions and use sites).

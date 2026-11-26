@@ -37,7 +37,7 @@ import { compile, compileProject, createNodeHost, parse } from "../packages/comp
 /** Runs per measurement; the median is reported. */
 const RUNS = 5;
 
-/** Sizes required by masterplan §9. */
+/** Benchmark sizes. */
 const DEFAULT_SIZES = [100, 1000];
 
 /** Token modules in the import chain (each source imports the last one). */
@@ -382,7 +382,7 @@ async function main(argv: readonly string[]): Promise<number> {
     return 0;
   }
 
-  console.log("Chikx benchmarks (masterplan §9) — measured, not guaranteed");
+  console.log("Chikx benchmarks — measured, not guaranteed");
   for (const report of reports) printReport(report);
   console.log(
     "\nTargets: completion under 100 ms for cached ordinary files; single-file incremental\n" +

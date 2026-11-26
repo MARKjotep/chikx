@@ -5,8 +5,7 @@
 Accepted (2026-11-26) — project owner decision, normative for v0.1. Flips the built-in output default
 from `false` to `true` without adding an option or changing the precedence chain.
 
-Related: SPECIFICATION.md §9, §10; ADR-0019, ADR-0021; CSSX-F22;
-`.ai/tasks/CSSX-F22.md`; `.ai/reports/CSSX-F22.md`
+Related: SPECIFICATION.md §9, §10; ADR-0019, ADR-0021; CSSX-F22; `.ai/reports/CSSX-F22.md`
 
 ## Context
 

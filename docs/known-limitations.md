@@ -24,7 +24,7 @@ The v0.1 packaging blockers are closed. `@chikx/cli`'s `bin` points at the built
 `#!/usr/bin/env node` shebang, so a symlinked `bin` runs on a Node-only machine and Bun executes the
 same file. `.vscodeignore` keeps `src/`, `test/` and `tsconfig.json` out of the VSIX, which now
 carries the runtime payload — `out/`, `dist/`, `syntaxes/`, `media/`, `language-configuration.json`,
-`LICENSE` and `README.md` — at 18 files / 138.35 KB instead of 84 files / 309.78 KB.
+`LICENSE` and `README.md` — at 18 files / 140.6 KB instead of 84 files / 309.78 KB.
 
 Package versions (`0.1.0`), package-level `README.md`/`LICENSE` copies and the unscoped extension name
 (`chikx`) were resolved for v0.1; `bun run release:check` asserts all three.
@@ -95,7 +95,5 @@ is no legacy extension alias, dual registration or migration path in v0.1.
 - VS Code extension tested on VS Code `1.147.0`; the manifest declares `^1.85.0` and older versions
   are untested.
 - `@vscode/test-electron 2.5.2` cannot launch VS Code 1.147.0 on macOS without a manual launcher
-  override. The framework record is
-  [`.ai/framework/vscode-test-electron/bugs/macos-electron-launcher-missing.md`](../.ai/framework/vscode-test-electron/bugs/macos-electron-launcher-missing.md);
-  the test orchestrator resolves `…/MacOS/Code` itself.
+  override; the test orchestrator resolves `…/MacOS/Code` itself.
 - No telemetry. No network access at build time; imports are local and workspace-contained.

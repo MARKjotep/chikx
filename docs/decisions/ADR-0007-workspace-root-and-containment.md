@@ -4,7 +4,7 @@
 
 Accepted (2026-11-25)
 
-Related: SPECIFICATION.md §6, §9, §10; masterplan §4, §5
+Related: SPECIFICATION.md §6, §9, §10
 
 ## Context
 
@@ -29,4 +29,4 @@ exists, the nearest ancestor containing `package.json`.
 - `chikx.config.json` establishes project boundaries for multi-root editors and CI.
 - All output is validated as a complete plan before the first write; failures retain last successful
   outputs and mark them stale.
-- Tests must cover traversal, symlink escape, collision and nested-source cases from masterplan §4.
+- Tests must cover traversal, symlink escape, collision and nested-source cases.

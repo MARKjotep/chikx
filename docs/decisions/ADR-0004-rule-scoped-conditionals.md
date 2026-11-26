@@ -4,7 +4,7 @@
 
 Accepted (2026-11-25, owner decision); revisit via a future ADR
 
-Related: SPECIFICATION.md §3, §4; masterplan §3.1–§3.2
+Related: SPECIFICATION.md §3, §4
 
 ## Context
 

@@ -4,7 +4,7 @@
 
 Accepted (2026-11-25)
 
-Related: SPECIFICATION.md §13; masterplan §6, §9
+Related: SPECIFICATION.md §13
 
 ## Context
 

@@ -182,10 +182,10 @@ The honest limits are listed in [docs/known-limitations.md](docs/known-limitatio
   `"output": { "mapTypes": true }` writes the matching `export declare const` lines (the previous
   `emit-types`/`emitTypes` spelling is accepted as a deprecated alias). `map-name`/`map-dir` behavior
   is unchanged. Existing consumers of the default-object map must regenerate and update imports.
-- **Class maps no longer import CSS.** The `import "../styles/x.css";` side-effect line is gone and
-  the `import-css` / `output.importCss` setting is removed; load the stylesheet explicitly
-  (`<link rel="stylesheet">` or `import "./x.css"`). Maps are now importable by plain Node with no
-  CSS loader.
+- **Class maps no longer import CSS by default.** The unconditional `import "../styles/x.css";`
+  side-effect line is gone, so maps are importable by plain Node with no CSS loader. Load the
+  stylesheet explicitly (`<link rel="stylesheet">` or `import "./x.css"`), or opt back in per file
+  or project with `import-css` / `output.importCss` ([ADR-0021](docs/decisions/ADR-0021-opt-in-css-import.md)).
 
 ### Fixed
 
@@ -239,18 +239,20 @@ editor analysis/completion repairs:
 ### Verification
 
 - Unit, integration, golden, Node smoke and extension-provider suites; aggregate `bun run verify`
-  recorded **1225 pass / 2 skip / 0 fail** across 89 files, including the VS Code extension-host
-  smoke suite **14 scenarios / 856 assertions**.
+  recorded **1351 pass / 2 skip / 0 fail** across 99 files, including the VS Code extension-host
+  smoke suite **15 scenarios / 928 assertions**.
 - Playwright computed-style gate on Chromium, Firefox and WebKit: **96/96** recorded pass (32 per
   engine) across viewport boundaries, themes, reduced motion, interactions, specificity, safe
   grouping and minified parity.
-- Masterplan §9 benchmarks for 100 and 1,000 files recorded in `docs/performance.md`.
+- Performance benchmarks for 100 and 1,000 files recorded in `docs/performance.md`.
 
 ### Documentation and examples
 
 - Full README, grammar, cascade, configuration, compatibility, performance and known-limitations
-  documentation; ADRs 0001–0021, including the `.cssx` source-extension decision (ADR-0013),
-  module-side map inheritance (ADR-0020) and the opt-in class-map CSS import (ADR-0021).
+  documentation; ADRs 0001–0024, including the `.cssx` source-extension decision (ADR-0013),
+  `css-dir` output lists (ADR-0019), module-side map inheritance (ADR-0020), the opt-in class-map
+  CSS import (ADR-0021), minified output by default (ADR-0022), zero-config defaults (ADR-0023) and
+  opt-in media grouping (ADR-0024).
 - `docs/usage.md`: an end-to-end guide to installing, the language tour, outputs, the CLI reference,
   VS Code settings (including watcher-free build-on-demand flows), and a runtime-token theme recipe.
 - Nine buildable examples with committed generated output: `basic`, `responsive`, `variables`,

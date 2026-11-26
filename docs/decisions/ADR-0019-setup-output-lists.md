@@ -6,7 +6,7 @@ Accepted (2026-11-26) — owner-requested feature, normative for v0.1 as a scope
 single-scalar `@setup` rule. Task CSSX-F18.
 
 Related: SPECIFICATION.md §3.2, §9; ADR-0014 (rejected-alternatives note); ADR-0010 (strict
-resolution); `.ai/tasks/CSSX-F18.md`; `.ai/reports/CSSX-F18.md`
+resolution); `.ai/reports/CSSX-F18.md`
 
 ## Context
 

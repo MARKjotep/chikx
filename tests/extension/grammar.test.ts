@@ -1,7 +1,7 @@
 /**
  * Structural tests for the Chikx TextMate grammar, language configuration and VS Code manifest.
  *
- * These assertions gate the approved UI contract (`.ai/tasks/CSSX-A12.md`) without relying on a
+ * These assertions gate the approved UI contract without relying on a
  * renderer: every included context must exist, matcher order must keep directives ahead of the
  * generic alias rule, every regex must compile, and no `match` rule may match the empty string
  * (empty TextMate matches can hang the tokenizer). Scope rendering is covered separately, with a

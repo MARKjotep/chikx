@@ -6,7 +6,7 @@ Accepted (2026-11-25) — project owner decision, normative for v0.1. This is a 
 is recorded here, restated in `SPECIFICATION.md` §6.1–§6.3 and pinned by fixtures.
 
 Related: SPECIFICATION.md §5.2, §6.1, §6.2, §6.3; ADR-0005, ADR-0014, ADR-0015;
-`.ai/tasks/CSSX-A20.md`, `.ai/reports/CSSX-A20.md`
+`.ai/reports/CSSX-A20.md`
 
 ## Context
 

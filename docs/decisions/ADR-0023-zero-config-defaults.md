@@ -6,8 +6,7 @@ Accepted (2026-11-26) — project owner decision, normative for v0.1. Makes
 `chikx.config.json` optional for project runs, turns strict configuration validation on by default
 and states the media-grouping default explicitly.
 
-Related: SPECIFICATION.md §9, §10; ADR-0007, ADR-0014; CSSX-DEFAULTS;
-`.ai/tasks/CSSX-DEFAULTS.md`; `.ai/reports/CSSX-DEFAULTS.md`
+Related: SPECIFICATION.md §9, §10; ADR-0007, ADR-0014; CSSX-DEFAULTS; `.ai/reports/CSSX-DEFAULTS.md`
 
 ## Context
 

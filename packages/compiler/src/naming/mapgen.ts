@@ -4,7 +4,7 @@ import type { ClassEntry, ClassMapResult, ClassTable } from "./types.js";
 
 /**
  * JavaScript class-map and TypeScript declaration generation
- * (SPECIFICATION.md §8, masterplan §3.6, ADR-0010, CSSX-A52).
+ * (SPECIFICATION.md §8, ADR-0010, CSSX-A52).
  *
  * Output contract, fixed here and covered by goldens:
  *
