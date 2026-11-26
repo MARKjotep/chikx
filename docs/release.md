@@ -87,7 +87,9 @@ Each sub-result is printed. `release:check` does not publish anything and does n
 The unscoped name `chikx` was unclaimed (registry 404 on 2026-11-26), so the repository root is a
 minimal public package that only reserves it. It ships no code: `files` is limited to `README.md`,
 `LICENSE` and `bin`, the sole bin is `bin/chikx.js`, and that stub prints a pointer to `@chikx/cli`
-and exits 1. It is **not** the CLI and must not be used as one.
+and exits 1. It is **not** the CLI and must not be used as one. The tarball is constrained by
+`files` (the authoritative allowlist) with a root `.npmignore` as a second guard; npm ignores
+`.npmignore` whenever `files` is present.
 
 To publish (owner, from the repository root):
 
