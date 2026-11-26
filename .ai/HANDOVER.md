@@ -252,7 +252,8 @@ different sources.
 ### 4. Interim distribution
 
 The local `chikx-0.1.0.vsix` produced by `release:check` is self-contained (no CLI, npm or Bun
-needed) and can be distributed by hand in the meantime.
+needed) and can be distributed by hand in the meantime. The owner is running the local VSIX
+testing checklist at `.ai/reports/CSSX-PP4B-VSIX-CHECKLIST.md`.
 
 ### 5. Failure rule
 
