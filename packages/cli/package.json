@@ -1,6 +1,6 @@
 {
   "name": "@chikx/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Chikx command line interface: build, check, watch, format and clean.",
   "type": "module",
   "license": "MIT",
@@ -20,7 +20,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@chikx/compiler": "0.1.0"
+    "@chikx/compiler": "0.1.1"
   },
   "bin": {
     "chikx": "./dist/index.js"

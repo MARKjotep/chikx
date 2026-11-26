@@ -4,6 +4,22 @@ All notable changes to Chikx are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/). Pre-1.0 syntax changes are called out explicitly.
 
+## [0.1.1] - 2026-11-26
+
+Packaging-only release: language, compiler and editor behaviour is unchanged from 0.1.0, and the
+VS Code extension remains at `0.1.0`.
+
+### Packaging
+
+- Both package builds remove `dist` before compiling, so stale renamed outputs no longer ship
+  (`@chikx/cli@0.1.0` carried obsolete `dist/output/importPath.*`).
+- `@chikx/compiler` and `@chikx/cli` now ship `src/` alongside `dist/`, so every `.js`/`.d.ts`
+  source-map `sources` entry resolves inside the installed package (compiler tarball 398 files, CLI
+  89).
+- The compiler README example now `await`s the async `compile()`.
+- The `docs/usage.md` quick start is formatter-clean and notes that generated maps are ESM
+  (`"type": "module"` or a bundler).
+
 ## [0.1.0] - 2026-11-26
 
 First public MVP: a CSS-first, property-centric stylesheet language that compiles to ordinary CSS

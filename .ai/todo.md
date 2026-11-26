@@ -6,12 +6,14 @@ Report new bugs and feature requests under the matching section; the lead routes
 
 1. colors for $variable - deepblue? $runtimeVariables or --var in magenta?, and imported variables vis namespace must match - green for example then the variable color. — 🟢 done in CSSX-COLOR-TOKENS (semantic tokens now work zero-config: `contributes.semanticTokenScopes` maps variable→`variable.language`, namespace→`entity.name.type`, runtimeVariable/customProperty→`keyword.control`, keyframe→`entity.name.function`, so colors follow the active theme; compile-time `$token` `#4C8DF8`, runtime tokens and `--var` `#D6409F`, the `$ns` prefix `#4EC9B0`, resolved `$keyframes.<name>` `#D18616` remain the documented literal override in the README settings snippet. See `.ai/reports/CSSX-COLOR-TOKENS.md`)
 
-2. v0.1 implementation is complete and committed (`1ec431f`). Release: **PP4a 🟢 — npm 0.1.0 is
-   published** for `@chikx/compiler` and `@chikx/cli` (2026-11-26; integrity and tarball audit in
+2. v0.1 implementation is complete and committed (`1ec431f`). Release: `@chikx/compiler@0.1.1` is
+   **published** (owner, 2026-11-26) alongside the 0.1.0 CLI (integrity and tarball audit in
    `.ai/reports/CSSX-PP4A-COMPILER-PUBLISHED.md`), and **PP5a 🟢** — clean-environment registry check
-   passed (`.ai/reports/CSSX-PP5A.md`). **PP4b (VS Code Marketplace) is deferred** by the owner
-   (2026-11-26); PP5b follows it. The 0.1.1 follow-up list is in `.ai/HANDOVER.md`. Owner
-   field-testing continues.
+   passed (`.ai/reports/CSSX-PP5A.md`). **`@chikx/cli@0.1.1` packaging fixes are staged locally,
+   awaiting the owner's publish** (clean `dist`, shipped `src/`, maps resolve;
+   `.ai/reports/CSSX-0.1.1-STAGING.md`). **PP4b (VS Code Marketplace) stays deferred** by the owner
+   (2026-11-26), so the extension remains at `0.1.0`; PP5b follows it. The remaining 0.1.1
+   follow-ups are in `.ai/HANDOVER.md`. Owner field-testing continues.
 
 ## Bug reports
 

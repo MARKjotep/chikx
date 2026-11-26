@@ -5,38 +5,67 @@ self-contained; the plan, board and reports are linked at the end for detail onl
 
 ## Release status
 
-**PP4a 🟢 — both npm artifacts are published.** `@chikx/compiler@0.1.0` and `@chikx/cli@0.1.0` are
-live on the public registry (2026-11-26; compiler first, CLI pinned to the exact compiler version).
-Registry metadata, tarball integrity and byte-reproducibility are recorded in
-`.ai/reports/CSSX-PP4A-COMPILER-PUBLISHED.md`.
+**0.1.1 🟡 — compiler published by the owner; CLI prepared, awaiting its publish.**
+`@chikx/compiler@0.1.1` is live and latest on the public registry (owner publish, 2026-11-26; tarball
+byte-identical to the local pack, 398 files). `@chikx/cli@0.1.1` (compiler pinned `0.1.1`) is staged
+locally and **not published** — see [0.1.1 — compiler published, CLI
+staged](#011--compiler-published-cli-staged) below. Registry metadata, tarball integrity and
+byte-reproducibility for 0.1.0 are recorded in `.ai/reports/CSSX-PP4A-COMPILER-PUBLISHED.md`; the
+0.1.1 staging evidence is in `.ai/reports/CSSX-0.1.1-STAGING.md`.
 
 **PP5a 🟢 — clean-environment verification passed** against the registry: install, `npx`/`bunx`
 versions, and the `docs/usage.md` quick start end to end, with two documentation mismatches recorded
 as follow-ups (`format --check` on the guide's inline nested rules; the map's ESM-only plain-Node
-import). Report: `.ai/reports/CSSX-PP5A.md`.
+import). Both are fixed for 0.1.1. Report: `.ai/reports/CSSX-PP5A.md`.
 
-**PP4b — the VS Code Marketplace extension — and PP5b remain 🔴 deferred by the owner.** The local
-VSIX from `release:check` is the interim extension distribution. Do not tag, publish a new version or
-push release artifacts without new explicit owner authorization.
+**PP4b — the VS Code Marketplace extension — and PP5b remain 🔴 deferred by the owner.** The
+extension stays at `0.1.0`; the local VSIX from `release:check` is the interim extension
+distribution. 0.1.1 does not repackage the extension. Do not tag, publish a new version or push
+release artifacts without new explicit owner authorization.
 
 ## State
 
-- **Working tree is clean and pushed to `origin/main`.** `8c4c64c`
-  (`fix(release): pin the CLI compiler dependency and add npm metadata`) is the release-metadata
-  commit built on `1ec431f` (`chore(release): v0.1.0`); the docs/report commit recording the 0.1.0
-  publication follows it.
-- **Final gates, re-run on 2026-11-26:**
+- **Working tree is clean and pushed to `origin/main`.** `e55bcb0`
+  (`fix(build): clean dist before builds and ship self-contained source maps`) carries the 0.1.1
+  packaging fixes; the version/docs commit preparing the 0.1.1 release follows it.
+- **Final gates, re-run on 2026-11-26 for 0.1.1:**
   - `bun run verify` exit 0 — **1351 pass / 2 skip / 0 fail** (1353 tests, **99 files**); extension
     host **15 scenarios / 928 assertions** (`navigation=42`); typecheck and Biome green
     (**459 files**).
   - Browser **96/96** — 32 per engine (Chromium, Firefox, WebKit).
   - `bun run release:check` exit 0 in about **4 minutes** — **nine** examples built, compiler
-    tarball **323 files**, CLI tarball **89**, VSIX **18 files / 140.6 KB**.
+    tarball **398 files**, CLI tarball **89**, VSIX **18 files / 140.6 KB**.
 - **Runtime:** Node.js **≥ 20** (`engines`) or Bun. Gates ran on Bun 1.4.5; only Node 24.22.3 was
   installed here, so **Node 20/22 are unverified**. The CLI entry is ESM with a node shebang.
 - `opencode.jsonc` is present and carries the agent registrations; it is not deleted. `.ai/agents/`
   exists but is an empty directory.
 - Full user guide: **[`docs/usage.md`](../docs/usage.md)**.
+
+## 0.1.1 — compiler published, CLI staged
+
+**`@chikx/compiler@0.1.1` was published by the owner on 2026-11-26; `@chikx/cli@0.1.1` is prepared
+locally and not published; no tag exists.** 0.1.1 is packaging only: language, compiler and editor
+behaviour is unchanged, and the extension stays at `0.1.0`.
+
+- Clean `dist` before every package build removes renamed stale outputs (`importPath.*`).
+- Both tarballs ship `src/`, so every `.js`/`.d.ts` map `sources` entry resolves — compiler **398
+  files**, CLI **89**.
+- The compiler README example `await`s `compile()`; the `docs/usage.md` quick start is
+  formatter-clean with an ESM note for generated maps.
+- Manifests: `@chikx/compiler@0.1.1` (published); `@chikx/cli@0.1.1` with
+  `"@chikx/compiler": "0.1.1"` (staged); root workspace `0.1.1`; VS Code extension `0.1.0`.
+
+Owner publish (after `bun run release:check` is green and authorization is explicit; the compiler is
+already live, so only the CLI remains):
+
+```sh
+npm view @chikx/compiler version    # must return 0.1.1
+npm publish --workspace @chikx/cli --access public
+```
+
+Then `npm view @chikx/cli version` must report `0.1.1`, and the owner tags `v0.1.1` on the release
+commit. The published compiler tarball is byte-identical to the local pack
+(`sha256 db7bf473…eda97f`, 398 files).
 
 ## What changed since the previous handover
 
@@ -66,7 +95,8 @@ The feature wave and the editor wave landed on top. The authoritative per-item r
 
 ## Plans and board
 
-- Production plan: **PP0–PP3 🟢**, **PP4a 🟢** (both npm packages live at 0.1.0), **PP5a 🟢**
+- Production plan: **PP0–PP3 🟢**, **PP4a 🟢** (both npm packages live at 0.1.0; compiler `0.1.1`
+  published 2026-11-26, CLI `0.1.1` staged), **PP5a 🟢**
   (`.ai/reports/CSSX-PP5A.md`); **PP4b (Marketplace) and PP5b 🔴 deferred** by the owner
   (2026-11-26). Testing and UI campaigns are closed.
 - Board (`.ai/todo.md`): feature items **18–28** and bugs **25–27** are 🟢. Item **24** was reused
@@ -230,18 +260,19 @@ From a clean environment (fresh profile, no workspace symlinks):
 3. Write the checklist with **actual outputs** to `.ai/reports/CSSX-PP5B.md`. Any mismatch opens a
    follow-up task.
 
-## 0.1.1 follow-ups (not authorized yet)
+## 0.1.1 follow-ups
 
-1. Shipped `packages/compiler/README.md` in the 0.1.0 tarball still says "Not on npm yet — the 0.1.0
-   publication is parked" and omits `await` on the async `compile()` (both already fixed in the repo
-   for the next version).
-2. Stale build artifact shipped in `@chikx/cli@0.1.0`: `dist/output/importPath.{js,d.ts,*.map}` —
-   renamed source is `import-path.ts`; clean `dist` before the next pack.
-3. Source-map policy vs shipping `src/`: compiler maps point at unshipped `src/` with no
-   `sourcesContent`, while the CLI tarball ships `src/**` (89 files). Decide one policy.
+Resolved for 0.1.1 (staged, unpublished):
+
+1. Compiler README — the shipped README no longer says "Not on npm yet" and `await`s `compile()`.
+2. Stale `dist/output/importPath.*` — both package builds clean `dist` first.
+3. Source-map policy — both packages ship `src/**`, so every map `sources` entry resolves inside the
+   tarball (compiler 398 files, CLI 89).
+5. PP5a mismatches — `docs/usage.md` §1.2 is formatter-clean and the ESM map note landed.
+
+Still an owner step:
+
 4. Deprecate `@chikx/compiler@0.0.0-stage` (`npm deprecate`), which remains installable.
-5. PP5a mismatches: the `docs/usage.md` §1.2 example is not `format --check` clean, and the ESM map's
-   plain-Node import needs a `"type": "module"` project (or `.mjs`).
 
 ## Caveats and known non-issues
 

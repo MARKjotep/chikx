@@ -3,13 +3,16 @@
 This page records what `bun run release:check` validates, how to release, and the remaining manual
 steps for the package owners.
 
-**Current status (2026-11-26):** **PP4a is complete — `@chikx/compiler@0.1.0` and `@chikx/cli@0.1.0`
-are published on npm** (compiler first; CLI pins the compiler to the exact `0.1.0`). **PP5a passed**
-on 2026-11-26 against the registry: clean install, `npx`/`bunx` versions, and the `docs/usage.md`
-quick start end to end with `chikx build`/`check`/`clean`
-([report](../.ai/reports/CSSX-PP5A.md)). **PP4b — the VS Code Marketplace extension — remains
-deferred by the owner**; the local VSIX is the interim extension distribution. Publishing anything
-further needs new explicit owner authorization.
+**Current status (2026-11-26):** **`@chikx/compiler@0.1.1` is published** (owner publish, 2026-11-26)
+together with the previously published `@chikx/compiler@0.1.0` / `@chikx/cli@0.1.0` (compiler first;
+the CLI pins the compiler to the exact version). **PP5a passed** on 2026-11-26 against the registry:
+clean install, `npx`/`bunx` versions, and the `docs/usage.md` quick start end to end with
+`chikx build`/`check`/`clean` ([report](../.ai/reports/CSSX-PP5A.md)). **`@chikx/cli@0.1.1` is
+prepared and awaiting its publish** (compiler dependency pinned to `0.1.1`); publishing the CLI, then
+tagging `v0.1.1` on the release commit, completes the 0.1.1 npm release. **PP4b — the VS Code
+Marketplace extension — remains deferred by the owner**; the extension stays at `0.1.0` and the local
+VSIX is the interim distribution. Publishing anything further needs new explicit owner
+authorization.
 
 Source files use the `.cssx` extension; the language ID, packages, CLI command and diagnostics stay
 Chikx ([ADR-0013](decisions/ADR-0013-cssx-file-extension.md)).
@@ -26,8 +29,8 @@ It runs, in order:
 2. `bun run test:browser` — Playwright computed-style gate (Chromium required; Firefox/WebKit when
    installed).
 3. `bun run --cwd packages/compiler build` and `bun run --cwd packages/cli build` — emit `dist`.
-4. Package metadata assertion: compiler/CLI/extension names, versions (`0.1.0`), licences, entry
-   points, extension icon and the `chikx` language contribution with `.cssx` files.
+4. Package metadata assertion: compiler/CLI/extension names, versions (`0.1.1`, `0.1.1`, `0.1.0`),
+   licences, entry points, extension icon and the `chikx` language contribution with `.cssx` files.
 5. `npm pack --dry-run --json --workspace @chikx/compiler` and `@chikx/cli` — assert the tarball
    contains `package.json`, `README.md`, `LICENSE` and `dist/**`.
 6. Build all nine examples through the CLI (`basic`, `responsive`, `variables`, `jsx`,
@@ -52,11 +55,15 @@ Each sub-result is printed. `release:check` does not publish anything and does n
      `npm publish --workspace @chikx/compiler --access public`, then
      `npm publish --workspace @chikx/cli --access public` (compiler first). Both resolved at `0.1.0`
      with integrity `sha512-aAKqebvb…kzFRqw==` (compiler) and `sha512-tbRmwcP+qdZQ…rXd0/Q==` (CLI).
-     The CLI pins the compiler to an exact version (`"@chikx/compiler": "0.1.0"`): npm does not
-     rewrite the `workspace:` protocol at pack/publish, so **every new compiler release requires
+     The CLI pins the compiler to an exact version (currently `"@chikx/compiler": "0.1.1"`): npm does
+     not rewrite the `workspace:` protocol at pack/publish, so **every new compiler release requires
      bumping the CLI dependency in `packages/cli/package.json` to the same version, rebuilding and
      re-packing the CLI before its own publish**. Confirm the packed manifest before publishing:
-     `tar -xzOf chikx-cli-0.1.0.tgz package/package.json | grep '@chikx/compiler'`.
+     `tar -xzOf chikx-cli-0.1.1.tgz package/package.json | grep '@chikx/compiler'`.
+     **0.1.1**: `@chikx/compiler@0.1.1` was published by the owner on 2026-11-26 (tarball
+     byte-identical to the local pack, 398 files). Only the CLI remains:
+     `npm publish --workspace @chikx/cli --access public`, pinned to `0.1.1`, after
+     `npm view @chikx/compiler version` returns `0.1.1`; then tag `v0.1.1` on the release commit.
    - **2b · VS Code Marketplace (PP4b, deferred by owner 2026-11-26):**
      `cd packages/vscode && vsce publish` (publisher `chikx`; needs a PAT with Marketplace *Manage*
      scope via `npx @vscode/vsce login chikx` or `VSCE_PAT`). Until then the local VSIX is
@@ -68,9 +75,9 @@ Each sub-result is printed. `release:check` does not publish anything and does n
 
 | Artifact | Value |
 |---|---|
-| Repository root | private `chikx` workspace, `0.1.0` |
-| `@chikx/compiler` | `0.1.0`, MIT, `dist/**` payload plus package `README.md`/`LICENSE` |
-| `@chikx/cli` | `0.1.0`, MIT, `dist/**` + `src/**` plus package `README.md`/`LICENSE`; `bin.chikx` → `dist/index.js` |
+| Repository root | private `chikx` workspace, `0.1.1` |
+| `@chikx/compiler` | `0.1.1`, MIT, `dist/**` + `src/**` payload plus package `README.md`/`LICENSE` |
+| `@chikx/cli` | `0.1.1`, MIT, `dist/**` + `src/**` plus package `README.md`/`LICENSE`; `bin.chikx` → `dist/index.js` |
 | VS Code extension | marketplace `name: chikx`, `version: 0.1.0`, publisher `chikx`, `icon: media/icon.png`, language `chikx` with `.cssx` |
 | Diagnostics | `CHIKX####` (unchanged) |
 
@@ -95,7 +102,7 @@ The `*.vsix` pattern is gitignored.
 
 | Package | Files | Root files included |
 |---|---|---|
-| `@chikx/compiler` | 323 | `package.json`, `README.md`, `LICENSE` (+ `dist/**`) |
+| `@chikx/compiler` | 398 | `package.json`, `README.md`, `LICENSE` (+ `dist/**`, `src/**`) |
 | `@chikx/cli` | 89 | `package.json`, `README.md`, `LICENSE` (+ `dist/**`, `src/**`) |
 
 Package-level `README.md` and `LICENSE` copies exist so npm tarballs are self-describing;

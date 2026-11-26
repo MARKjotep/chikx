@@ -1,6 +1,6 @@
 {
   "name": "@chikx/compiler",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Chikx lexer, parser, resolver, transformer and CSS/JS generators. Zero runtime dependencies.",
   "type": "module",
   "license": "MIT",

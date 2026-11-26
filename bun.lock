@@ -12,17 +12,17 @@
     },
     "packages/cli": {
       "name": "@chikx/cli",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "bin": {
         "chikx": "./dist/index.js",
       },
       "dependencies": {
-        "@chikx/compiler": "0.1.0",
+        "@chikx/compiler": "0.1.1",
       },
     },
     "packages/compiler": {
       "name": "@chikx/compiler",
-      "version": "0.1.0",
+      "version": "0.1.1",
     },
     "packages/language-service": {
       "name": "@chikx/language-service",
