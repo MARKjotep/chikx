@@ -114,8 +114,13 @@ it even though discovery finds it:
   border-radius: $radius;
   background: $theme.primary;
 
-  &:hover { opacity: 0.85; }
-  & > .icon { width: 16px; }
+  &:hover {
+    opacity: 0.85;
+  }
+
+  & > .icon {
+    width: 16px;
+  }
 }
 ```
 
@@ -558,6 +563,9 @@ export const test = "ui-test";
 import { button, icon } from "../generated/maps/button.map.js";
 document.querySelector(".cta").className = button;
 ```
+
+The map is an ESM module, so a `package.json` that loads it needs `"type": "module"` (or a bundler
+that handles ESM).
 
 Static pages link the emitted stylesheet:
 
