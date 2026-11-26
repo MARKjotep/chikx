@@ -23,6 +23,13 @@ extension stays at `0.1.0`; the local VSIX from `release:check` is the interim e
 distribution. 0.1.1 does not repackage the extension. Do not tag, publish a new version or push
 release artifacts without new explicit owner authorization.
 
+**Unscoped npm name `chikx` 🟡 — prepared, awaiting the owner's publish.** The registry returned 404
+for the unscoped name, so the root workspace is now a minimal public package (`0.1.1`) that only
+reserves it: `files` is limited to `package.json`, `README.md`, `LICENSE` and `bin/chikx.js`, and the
+stub prints a pointer to `@chikx/cli` and exits 1. Publish from the repository root with
+`npm publish` (no `--access` needed for an unscoped name); this is a name reservation, not the CLI.
+The 0.1.1 packages stay untouched.
+
 ## State
 
 - **Working tree is clean and pushed to `origin/main`.** `e55bcb0`
@@ -186,8 +193,9 @@ npx -y @chikx/cli@0.1.0 --version    # unambiguous package specifier
 bunx @chikx/cli@0.1.0 --version
 ```
 
-- `npx chikx` alone resolves a package literally named `chikx`; the CLI package is `@chikx/cli`,
-  so install it first (as above) or use the specifier.
+- `npx chikx` alone fetches the unscoped name-reservation stub (root `bin/chikx.js`), which exits 1
+  with a pointer to `@chikx/cli`; install the scoped CLI first (as above) so the local `bin` wins, or
+  use `npx @chikx/cli` / the specifier.
 
 ### 7. Docs follow-up after success (done 2026-11-26 for 0.1.0)
 

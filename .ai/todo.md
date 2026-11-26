@@ -15,6 +15,9 @@ Report new bugs and feature requests under the matching section; the lead routes
    (2026-11-26), so the extension remains at `0.1.0`; PP5b follows it. The remaining 0.1.1
    follow-ups are in `.ai/HANDOVER.md`. Owner field-testing continues.
 
+3. Unscoped npm name `chikx` is reserved for the owner to publish (root stub only, awaiting
+   `npm publish`; see `docs/release.md` → Unscoped npm name). — 🟡 prepared
+
 ## Bug reports
 
 1. No code suggest when the line is before the & symbol and no semicolon. The code also do not auto end the line with semicolon or no error suggestion that no semicolon and could cause error. — 🟢 fixed: compiler diagnostic via CSSX-A17, editor quick-fix via CSSX-A18

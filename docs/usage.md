@@ -28,9 +28,11 @@ bun add -d @chikx/cli          # chikx build/check/watch/clean/format
 ```
 
 The published `bin` points at the built `dist/index.js`, so with Bun `bunx chikx` runs directly. With
-Node, use the same built entry: `node node_modules/@chikx/cli/dist/index.js` (or `npx chikx` in an
-installed project). The source entry carries the `#!/usr/bin/env node` shebang, so a plain `bin`
-symlink also runs on a Node-only machine, and Bun executes the same file.
+Node, use the same built entry: `node node_modules/@chikx/cli/dist/index.js` (or `npx @chikx/cli` in
+an installed project). A bare `npx chikx` fetches the unscoped name-reservation stub, which exits
+with a pointer to `@chikx/cli` instead of running the CLI. The source entry carries the
+`#!/usr/bin/env node` shebang, so a plain `bin` symlink also runs on a Node-only machine, and Bun
+executes the same file.
 
 To build from a source checkout instead:
 
@@ -905,7 +907,7 @@ the CLI for the active document. In workspace settings:
 ```json
 {
   "code-runner.executorMap": {
-    "chikx": "npx chikx build \"$fullFileName\""
+    "chikx": "npx @chikx/cli build \"$fullFileName\""
   },
   "code-runner.runInTerminal": true,
   "code-runner.saveAllFilesBeforeRun": true
@@ -917,9 +919,10 @@ the CLI for the active document. In workspace settings:
 - Keep the quotes around `"$fullFileName"`: Code Runner substitutes the raw path, and workspace paths
   may contain shell-significant characters such as `$`. Without quotes the path is re-expanded by the
   shell and the file is not found.
-- `npx chikx …` resolves only once `@chikx/cli` is published. Before that, use a global link
-  (`cd packages/cli && bun link` or `npm link`, then `"chikx": "chikx build \"$fullFileName\""`) or
-  the absolute built entry:
+- `npx @chikx/cli …` always resolves the CLI package. A bare `npx chikx` fetches the unscoped
+  name-reservation stub, which exits with a pointer to `@chikx/cli`. Without a published install, use a
+  global link (`cd packages/cli && bun link` or `npm link`, then
+  `"chikx": "chikx build \"$fullFileName\""`) or the absolute built entry:
 
   ```json
   "chikx": "node /absolute/path/to/chikx/packages/cli/dist/index.js build \"$fullFileName\""

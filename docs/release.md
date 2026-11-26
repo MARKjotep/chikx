@@ -12,7 +12,8 @@ prepared and awaiting its publish** (compiler dependency pinned to `0.1.1`); pub
 tagging `v0.1.1` on the release commit, completes the 0.1.1 npm release. **PP4b — the VS Code
 Marketplace extension — remains deferred by the owner**; the extension stays at `0.1.0` and the local
 VSIX is the interim distribution. Publishing anything further needs new explicit owner
-authorization.
+authorization. The unscoped `chikx` name reservation is prepared and awaiting the owner's publish
+([Unscoped npm name](#unscoped-npm-name)).
 
 Source files use the `.cssx` extension; the language ID, packages, CLI command and diagnostics stay
 Chikx ([ADR-0013](decisions/ADR-0013-cssx-file-extension.md)).
@@ -75,11 +76,29 @@ Each sub-result is printed. `release:check` does not publish anything and does n
 
 | Artifact | Value |
 |---|---|
-| Repository root | private `chikx` workspace, `0.1.1` |
+| Repository root | public `chikx` name reservation, `0.1.1` (no code; `bin/chikx.js` stub only) |
 | `@chikx/compiler` | `0.1.1`, MIT, `dist/**` + `src/**` payload plus package `README.md`/`LICENSE` |
 | `@chikx/cli` | `0.1.1`, MIT, `dist/**` + `src/**` plus package `README.md`/`LICENSE`; `bin.chikx` → `dist/index.js` |
 | VS Code extension | marketplace `name: chikx`, `version: 0.1.0`, publisher `chikx`, `icon: media/icon.png`, language `chikx` with `.cssx` |
 | Diagnostics | `CHIKX####` (unchanged) |
+
+## Unscoped npm name
+
+The unscoped name `chikx` was unclaimed (registry 404 on 2026-11-26), so the repository root is a
+minimal public package that only reserves it. It ships no code: `files` is limited to `README.md`,
+`LICENSE` and `bin`, the sole bin is `bin/chikx.js`, and that stub prints a pointer to `@chikx/cli`
+and exits 1. It is **not** the CLI and must not be used as one.
+
+To publish (owner, from the repository root):
+
+```sh
+npm pack --dry-run --json   # must list exactly package.json, README.md, LICENSE, bin/chikx.js
+npm publish
+```
+
+Unscoped names are public by default and `publishConfig.access` is `"public"`, so no `--access` flag
+is needed. The root has no dependencies and no build step; this is a name reservation, not a release
+of the compiler or CLI.
 
 ## Extension packaging (vsce)
 
@@ -104,6 +123,7 @@ The `*.vsix` pattern is gitignored.
 |---|---|---|
 | `@chikx/compiler` | 398 | `package.json`, `README.md`, `LICENSE` (+ `dist/**`, `src/**`) |
 | `@chikx/cli` | 89 | `package.json`, `README.md`, `LICENSE` (+ `dist/**`, `src/**`) |
+| `chikx` (root reservation) | 4 | `package.json`, `README.md`, `LICENSE` (+ `bin/chikx.js`) |
 
 Package-level `README.md` and `LICENSE` copies exist so npm tarballs are self-describing;
 `release:check` fails if either is missing.

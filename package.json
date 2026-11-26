@@ -1,10 +1,16 @@
 {
   "name": "chikx",
   "version": "0.1.1",
-  "private": true,
   "type": "module",
   "description": "Chikx — a CSS-first, property-centric stylesheet language and compiler.",
   "license": "MIT",
+  "files": ["README.md", "LICENSE", "bin"],
+  "bin": {
+    "chikx": "./bin/chikx.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "workspaces": ["packages/*"],
   "engines": {
     "node": ">=20"
