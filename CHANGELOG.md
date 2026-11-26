@@ -4,25 +4,194 @@ All notable changes to Chikx are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/). Pre-1.0 syntax changes are called out explicitly.
 
-## [Unreleased]
+## [0.1.0] - 2026-11-26
 
-### Notes
+First public MVP: a CSS-first, property-centric stylesheet language that compiles to ordinary CSS
+plus static JavaScript class maps and TypeScript declarations. This release ships the compiler
+(`@chikx/compiler`), the CLI (`@chikx/cli`) and the VS Code extension (marketplace name `chikx`).
+The honest limits are listed in [docs/known-limitations.md](docs/known-limitations.md).
+
+### Naming
 
 - Source files use the `.cssx` extension; the language ID, packages, CLI command and diagnostics keep
   the Chikx name ([ADR-0013](docs/decisions/ADR-0013-cssx-file-extension.md)). `.chikx` files are not
   recognised.
+- Extension identity: marketplace name `chikx`, version `0.1.0`, chick logo and `.cssx` light/dark file
+  icons; package-level `README.md`/`LICENSE` copies for the compiler and CLI tarballs.
+
+### Language
+
+- `@setup` with independent CSS/map directories, optional basenames, emit flags, prefix and
+  minification. `css-dir` also accepts a comma-separated list of in-workspace directories, writing
+  the same stylesheet (and one source map per destination) to every item
+  ([ADR-0019](docs/decisions/ADR-0019-setup-output-lists.md)).
+- Inline media variants (`padding: 8px @md 16px`) and rule-scoped conditional blocks, including
+  combined aliases (`@xl+dark`, logical AND).
+- Default aliases `sm`, `md`, `lg`, `xl`, `2xl`, `dark`, `light`, `portrait`, `landscape`, `print`,
+  `reduced`; project `media` and file `@media-types` overrides merged by key.
+- Nested selectors: `&:hover`, `&::before`, `&:nth-child()`, `& > .icon`, `& + .button`, compound
+  classes and bare descendant nesting (D1). Mixed-specificity parent lists use `:is(...)`.
+- Compile-time `@variables` with token-sequence substitution, forward references and cycle
+  detection; `@use` imports with optional namespaces, workspace containment and no implicit
+  re-export.
+- Reusable declaration groups: `@group.<name> { … }` expanded at each `@use … as <ns> styles` site,
+  with an optional per-use-site override block, `!important` per value segment and compile-time-only
+  defaults ([ADR-0017](docs/decisions/ADR-0017-reusable-declaration-groups.md)).
+- The `$keyframes.<name>` namespace: `@keyframes` names are referenceable and importable across
+  modules, with the visibility and exclusion rules in
+  [ADR-0015](docs/decisions/ADR-0015-keyframes-namespace.md) and
+  [ADR-0018](docs/decisions/ADR-0018-keyframes-visibility-and-exclusions.md).
+- `@runtime` custom properties with conditional overrides and `var(--prefix-name)` references; the
+  entry's `@runtime` value wins over style-imported modules for the same custom property, while
+  compile-time local-over-import override still applies
+  ([ADR-0016](docs/decisions/ADR-0016-runtime-token-override.md)).
+- Class prefixing (`none` and `prefix` strategies), simple `:global(.class)` escapes, deterministic
+  class maps with camelCase aliases, literal types and `__proto__` safety.
+- Module-side map-inheritance opt-out: `@setup { map-inherit: false; }` (JSON `output.mapInherit`)
+  keeps a style-merged module's class bindings out of the importer's `map.js`, `.d.ts` and
+  `classes` while its rules still merge in cascade order; excluded bindings cannot raise
+  `CHIKX4001`, the module's own entry map is unchanged, and `module: true` + `map-inherit: false`
+  is a silent escape hatch for rule-only modules
+  ([ADR-0020](docs/decisions/ADR-0020-map-inheritance-opt-out.md)).
+- Opt-in CSS side-effect import in the class map: `@setup { import-css: true; }` (`output.importCss`,
+  default `false`) makes `map.js` start with one relative `import "./x.css";` naming the emitted
+  stylesheet, so bundlers that carry CSS through imports can import the map alone. The specifier is
+  computed from the map file to the planned CSS; with a `css-dir` list the first destination is
+  imported, and no import is emitted when CSS is disabled. `.d.ts` stays pure declarations
+  ([ADR-0021](docs/decisions/ADR-0021-opt-in-css-import.md)).
+- Owner-locked decisions: bare nested selectors are descendants (D1), `!important` binds per inline
+  segment (D2), conditional blocks are rule-scoped (D3).
+- Minified CSS output by default ([ADR-0022](docs/decisions/ADR-0022-minified-output-default.md)):
+  generated structural whitespace is compacted while authored tokens and declaration order are
+  preserved. Opt out with `@setup { minify: false; }`, project `output.minify: false`, or
+  `--no-minify`; `--minify` still forces compact output. `format()` and source formatting are
+  unchanged.
+- Opt-in media-run merging: `mediaGrouping: "merge"` (`@setup { media-grouping: merge; }`) keeps the
+  default `safe` adjacent pass and also merges same-selector/same-condition conditional runs across
+  declarations whose property families are provably disjoint. It never crosses a shared family,
+  `all`, a `var()` value, a different selector or condition, or a native context; the default stays
+  `safe`, so existing output is byte-identical
+  ([ADR-0024](docs/decisions/ADR-0024-media-merge-grouping.md)).
+- Native at-rule pass-through: `@media`, `@supports`, `@layer`, `@container`, `@keyframes`,
+  `@font-face`, `@property`, `@page`, plus statement at-rules. Chikx transformations inside
+  restricted contexts are rejected with diagnostics.
+- Source-preserving cascade: base then variants in authored order, no reordering, safe adjacent
+  grouping only.
+
+### Compiler API (`@chikx/compiler`)
+
+- Public `parse`, `compile`, `compileProject` and `planOutputs`, returning artifacts and diagnostics
+  without writing files; zero runtime dependencies; Node ≥ 20 and Bun.
+- Opt-in CSS v3 source maps (`source-map: true`) with `sourcesContent`, workspace-relative sources and
+  a `sourceMappingURL` comment; `CompileResult.sourceMap` carries the serialized map.
+- Injected `ModuleHost` (default Node host exported) and canonical-path containment.
+- Frozen, immutable AST/IR and deterministic output; spans preserved for diagnostics and tooling.
+- Stable `CHIKX####` diagnostic families: syntax, symbols/modules, media, naming, output planning.
+- Output planning validates overlap, duplicates, workspace and symlink escapes before writes.
+
+### CLI (`@chikx/cli`)
+
+- `chikx build`, `check`, `watch`, `clean`, `format`.
+- `chikx format [file]` reprints sources canonically in place; `--check` reports without writing and
+  exits 1 on changes, `--dry-run` reports the same; parse errors leave the file untouched.
+- Optional project configuration: `chikx build` works without `chikx.config.json`, using the nearest
+  `package.json` workspace root and `include` default `["**/*.cssx"]`; `compiler.strict` defaults to
+  `true` (unknown keys exit 2) and `mediaGrouping` is explicitly `"safe"`. Imported modules
+  self-declare with `@setup { module: true; }`, and the examples no longer restate defaults
+  ([ADR-0023](docs/decisions/ADR-0023-zero-config-defaults.md)).
+- `chikx.config.json` discovery and schema validation (strict unknown-key rejection by default),
+  zero-dependency include/exclude globs, kebab↔camel configuration mapping.
+- Atomic per-file writes, `.cssx-manifest.json` ownership, safe `clean`, stale-build handling and
+  retained last-good outputs on failure.
+- Debounced watch with reverse import graph, config reload, deleted-entry pruning, stale-generation
+  guard and NDJSON output.
+- Exit codes `0` success, `1` compile/validation/write error, `2` invocation/config error.
+- `--config`, `--json`, `--dry-run`, `--minify`, `--no-minify`, `--help`, `--version`; CLI minify
+  flags override file `@setup` with a warning.
+- The published `bin` points at the built `dist/index.js`; source and build use the
+  `#!/usr/bin/env node` shebang, so a symlinked `chikx` runs on a Node-only machine and Bun executes
+  the same file. Node smoke tests run the built CLI under plain Node.
 
 ### VS Code extension
 
-- Semantic token colorization: compile-time `$token` references, runtime tokens and `--var`
-  references, the `$ns` prefix of a namespaced reference (with the member colored by its resolved
-  kind) and resolved `$keyframes.<name>` members are colored by the active theme with no
-  configuration. `contributes.semanticTokenScopes` maps each kind to a common theme scope
-  (`variable.language`, `entity.name.type`, `keyword.control`, `entity.name.function`); the extension
-  README documents the literal `editor.semanticTokenColorCustomizations` palette as the override,
-  which outranks the scope fallback (CSSX-COLOR-TOKENS).
+- `chikx` language ID, `.cssx` files, standalone TextMate grammar and language configuration
+  (comments, brackets, auto-closing, indentation); chick marketplace icon and light/dark `.cssx` file
+  icons.
+- Diagnostics from a tolerant parse plus in-memory compile, debounced, with stale-document discard
+  and imported-file problem routing. `@setup { module: true }` is understood (ADR-0014).
+- Completions for properties, values, media aliases, `$` tokens and namespace members, setup keys,
+  import paths, selectors and pseudos; hover, definition, references, single-file `$token` rename,
+  single-file class-selector rename inside `.cssx` (every non-global occurrence of the same authored
+  name, nested/comma/`:is()`/`:not()`/`:has()` shapes included; the map/`.d.ts` and JSX follow the
+  next build, so TypeScript catches a changed binding but literal `className="…"` strings are not),
+  single-file id-selector rename inside `.cssx` (every occurrence of the id name, leading `#` kept,
+  `:global(#x)` included; JSX/HTML `id="…"` anchors and inbound links are not updated and ids are
+  not mapped), colors and outline.
+- Editor intelligence wave (CSSX-A45–A51): completions recover after `@setup`, inside `@keyframes`
+  and right after `property:`; `&` reopens selector completions; six missing animation longhands are
+  present; the 25 curated CSS functions are offered in value context (and on a typed `(`) and
+  documented by hover; accepting a property writes `property: ;` with the caret before the
+  semicolon; CSS units complete in value position; color properties offer the 148 standard named
+  colors plus a curated 35-entry hex palette, all as `color` items so the suggest widget shows
+  swatches, and named colors are served by the document color provider as well as hex values.
+- `!` completion (CSSX-U07): typing `!` after a declaration value suggests `!important`; accepting
+  repairs the typed bang instead of stacking a second one, `!im` filters to the item, and selectors,
+  property-name positions and empty values offer nothing.
+- Id selector completion (feature 26): typing `#` in selector position lists the document's own ids
+  in first-appearance order as `selector` items (`#panel`, detail `id selector`); accepting replaces
+  the typed `#…` prefix so exactly one `#` remains. Ids are document-global and never renamed or
+  mapped; a value `#` on a colour property keeps the colour/hex list only.
+- Find All References is bidirectional for `$token` and `@runtime` tokens (board bug 27): from a
+  definition it returns the definition plus every resolving use in direct importers, and from a use
+  site it returns the same set across workspace `.cssx` files. Resolution decides inclusion
+  (namespaced aliases, unqualified/style imports); local shadows and ambiguous unqualified imports
+  are excluded, declarations are deduped and sorted, and `includeDeclaration` is honoured. The scan
+  is on demand, bounded to 200 candidates and skips `node_modules`/`dist`/`generated`; rename remains
+  single-file.
+- `@group.<name>` hovers render defaults as a real multi-line bullet list (one declaration per line,
+  authored order and spacing) and, at a use site, list overriding property names in a separate
+  **Overrides at this use site** section (CSSX-F23).
+- `@setup { media-grouping: …; }` completes its three values (`merge`, `safe`, `none`) with per-mode
+  detail and a Markdown hover card explaining the grouping modes, the `safe` default and ADR-0024
+  (owner request; CSSX-MEDIA-MERGE).
+- CSS property and value completion now works inside `@group.<name>` definition and use-site bodies
+  (board bug 25), so a declaration start in a group suggests the same property set as a rule body
+  (CSSX-FIX-GROUP-COMPLETE).
+- Semantic token colorization with no configuration (CSSX-COLOR-TOKENS): compile-time `$token`
+  references, runtime tokens and `--var` references, the `$ns` prefix of a namespaced reference (the
+  member colored by its resolved kind) and resolved `$keyframes.<name>` members are colored by the
+  active theme. `contributes.semanticTokenScopes` maps each kind to a common theme scope
+  (`variable.language`, `entity.name.type`, `keyword.control`, `entity.name.function`); the
+  extension README documents the literal `editor.semanticTokenColorCustomizations` palette as the
+  override, which outranks the scope fallback. Media variant markers (`@md`, `@dark`, `@xl+dark`,
+  block headers and `@media-types` captions) use the `markup.deleted` scope and paint orange/red.
+- Commands: Compile File, Build Project, Preview Compiled CSS (in memory), Open Generated CSS, Open
+  Class Map, Check Project; status bar, `Chikx` output channel, multi-root config resolution,
+  format-on-save (`chikx.editor.formatOnSave`, off by default) and quick fixes.
+- Workspace-trust respect and compile-on-save **off by default**.
+- Extension-host smoke suite via `@vscode/test-electron` with a documented macOS launcher workaround.
+
+### Changed — breaking for class-map consumers
+
+- **Class map format (CSSX-A52).** The generated `.map.js` is now one
+  `export const <camelCase> = "<emitted>";` per class, with no default export and no object literal,
+  so consumers import the binding directly (`import { contactPanel }`). Names split on `-`/`_`;
+  digit-leading/reserved identifiers get a `_` prefix and duplicate identifiers get `_2`, `_3`
+  suffixes, each with a `CHIKX4001` warning instead of a hard error. TypeScript declarations are now
+  opt-in and default off: `@setup { map-types: true; }` /
+  `"output": { "mapTypes": true }` writes the matching `export declare const` lines (the previous
+  `emit-types`/`emitTypes` spelling is accepted as a deprecated alias). `map-name`/`map-dir` behavior
+  is unchanged. Existing consumers of the default-object map must regenerate and update imports.
+- **Class maps no longer import CSS.** The `import "../styles/x.css";` side-effect line is gone and
+  the `import-css` / `output.importCss` setting is removed; load the stylesheet explicitly
+  (`<link rel="stylesheet">` or `import "./x.css"`). Maps are now importable by plain Node with no
+  CSS loader.
 
 ### Fixed
+
+The 19-defect integration campaign ([CSSX-FIX-INTEGRATION](.ai/reports/CSSX-FIX-INTEGRATION.md))
+closed formatter terminator/sigil bugs, nesting and span bounds, CLI watch/clean/exit-code gaps, and
+editor analysis/completion repairs:
 
 - Formatter: an at-rule prelude that leaves a `[`/`(` open no longer reabsorbs the printed `;`, so
   `format` is a fixed point and the reparsed IR matches (CSSX-T01).
@@ -63,108 +232,37 @@ All notable changes to Chikx are documented here. The format follows
   references and rename (CSSX-U05).
 - Editor: `Preview Compiled CSS` on a document with no producible CSS shows the existing warning and
   opens no empty preview tab (CSSX-U06).
-- Editor: typing `!` after a declaration value suggests `!important`, and accepting it repairs the
-  typed bang instead of stacking a second one; `!im` filters to the item, while selectors,
-  property-name positions and empty values offer nothing (CSSX-U07).
-
-## [0.1.0] - 2026-11-25
-
-First public MVP. CSS-first, property-centric stylesheets compiling to ordinary CSS plus static
-JavaScript class maps and TypeScript declarations.
-
-### Naming
-
-- Renamed the source file extension from `.chikx` to `.cssx` (owner decision, ADR-0013). Fixtures,
-  examples, CLI defaults, the `.cssx-manifest.json` bookkeeping file and all documentation follow.
-- Extension identity: marketplace name `chikx`, version `0.1.0`, chick logo and `.cssx` light/dark file
-  icons; package-level `README.md`/`LICENSE` copies for the compiler and CLI tarballs.
-
-### Language
-
-- `@setup` with independent CSS/map directories, optional basenames, emit flags, prefix and
-  minification.
-- Inline media variants (`padding: 8px @md 16px`) and rule-scoped conditional blocks, including
-  combined aliases (`@xl+dark`, logical AND).
-- Default aliases `sm`, `md`, `lg`, `xl`, `2xl`, `dark`, `light`, `portrait`, `landscape`, `print`,
-  `reduced`; project `media` and file `@media-types` overrides merged by key.
-- Nested selectors: `&:hover`, `&::before`, `&:nth-child()`, `& > .icon`, `& + .button`, compound
-  classes and bare descendant nesting (D1). Mixed-specificity parent lists use `:is(...)`.
-- Compile-time `@variables` with token-sequence substitution, forward references and cycle
-  detection; `@use` imports with optional namespaces, workspace containment and no implicit
-  re-export.
-- `@runtime` custom properties with conditional overrides and `var(--prefix-name)` references.
-- Class prefixing (`none` and `prefix` strategies), simple `:global(.class)` escapes, deterministic
-  class maps with camelCase aliases, literal types and `__proto__` safety.
-- Owner-locked decisions: bare nested selectors are descendants (D1), `!important` binds per inline
-  segment (D2), conditional blocks are rule-scoped (D3).
-- Opt-in CSS minification that preserves authored tokens and declaration order.
-- Native at-rule pass-through: `@media`, `@supports`, `@layer`, `@container`, `@keyframes`,
-  `@font-face`, `@property`, `@page`, plus statement at-rules. Chikx transformations inside
-  restricted contexts are rejected with diagnostics.
-- Source-preserving cascade: base then variants in authored order, no reordering, safe adjacent
-  grouping only.
-
-### Compiler API (`@chikx/compiler`)
-
-- Public `parse`, `compile`, `compileProject` and `planOutputs`, returning artifacts and diagnostics
-  without writing files; zero runtime dependencies; Node ≥ 20 and Bun.
-- Opt-in CSS v3 source maps (`source-map: true`) with `sourcesContent`, workspace-relative sources and
-  a `sourceMappingURL` comment; `CompileResult.sourceMap` carries the serialized map.
-- Injected `ModuleHost` (default Node host exported) and canonical-path containment.
-- Frozen, immutable AST/IR and deterministic output; spans preserved for diagnostics and tooling.
-- Stable `CHIKX####` diagnostic families: syntax, symbols/modules, media, naming, output planning.
-- Output planning validates overlap, duplicates, workspace and symlink escapes before writes.
-
-### CLI (`@chikx/cli`)
-
-- `chikx build`, `check`, `watch`, `clean`, `format`.
-- `chikx format [file]` reprints sources canonically in place; `--check` reports without writing and
-  exits 1 on changes, `--dry-run` reports the same; parse errors leave the file untouched.
-- `chikx.config.json` discovery and schema validation (strict unknown-key rejection), zero-dependency
-  include/exclude globs, kebab↔camel configuration mapping.
-- Atomic per-file writes, `.cssx-manifest.json` ownership, safe `clean`, stale-build handling and
-  retained last-good outputs on failure.
-- Debounced watch with reverse import graph, config reload, deleted-entry pruning, stale-generation
-  guard and NDJSON output.
-- Exit codes `0` success, `1` compile/validation/write error, `2` invocation/config error.
-- `--config`, `--json`, `--dry-run`, `--minify`, `--no-minify`, `--help`, `--version`; CLI minify
-  flags override file `@setup` with a warning.
-- Node compatibility smoke tests run the built `dist` CLI under plain Node.
-
-### VS Code extension
-
-- `chikx` language ID, `.cssx` files, standalone TextMate grammar and language configuration
-  (comments, brackets, auto-closing, indentation); chick marketplace icon and light/dark `.cssx` file
-  icons.
-- Diagnostics from a tolerant parse plus in-memory compile, debounced, with stale-document discard
-  and imported-file problem routing. `@setup { module: true }` is understood (ADR-0014).
-- Completions for properties, values, media aliases, `$` tokens and namespace members, setup keys,
-  import paths, selectors and pseudos; hover, definition, references, single-file token rename,
-  colors and outline.
-- Commands: Compile File, Build Project, Preview Compiled CSS (in memory), Open Generated CSS, Open
-  Class Map, Check Project; status bar, `Chikx` output channel, multi-root config resolution.
-- Workspace-trust respect and compile-on-save **off by default**.
-- Extension-host smoke suite via `@vscode/test-electron` with a documented macOS launcher workaround.
+- Editor: an open importer re-analyzes when an imported `.cssx` module changes or is saved, so
+  renaming a `$token`/`@runtime` member surfaces `CHIKX2001` at the importer without retyping it
+  (board bug 26, CSSX-STALE-DIAGS).
 
 ### Verification
 
-- Unit, integration, golden, Node smoke and extension-provider suites; aggregate `bun run verify`.
-- Playwright computed-style gate on Chromium, Firefox and WebKit: 75/75 recorded pass across viewport
-  boundaries, themes, reduced motion, interactions, specificity, safe grouping and minified parity.
+- Unit, integration, golden, Node smoke and extension-provider suites; aggregate `bun run verify`
+  recorded **1225 pass / 2 skip / 0 fail** across 89 files, including the VS Code extension-host
+  smoke suite **14 scenarios / 856 assertions**.
+- Playwright computed-style gate on Chromium, Firefox and WebKit: **96/96** recorded pass (32 per
+  engine) across viewport boundaries, themes, reduced motion, interactions, specificity, safe
+  grouping and minified parity.
 - Masterplan §9 benchmarks for 100 and 1,000 files recorded in `docs/performance.md`.
 
 ### Documentation and examples
 
 - Full README, grammar, cascade, configuration, compatibility, performance and known-limitations
-  documentation; ADRs 0001–0014, including the `.cssx` source-extension decision (ADR-0013).
-- Five buildable examples with committed generated output: `basic`, `responsive`, `variables`, `jsx`,
-  `custom-output`.
-- `release:check` aggregate script for verify, browser tests, tarball checks, example builds and
-  extension packaging.
+  documentation; ADRs 0001–0021, including the `.cssx` source-extension decision (ADR-0013),
+  module-side map inheritance (ADR-0020) and the opt-in class-map CSS import (ADR-0021).
+- `docs/usage.md`: an end-to-end guide to installing, the language tour, outputs, the CLI reference,
+  VS Code settings (including watcher-free build-on-demand flows), and a runtime-token theme recipe.
+- Nine buildable examples with committed generated output: `basic`, `responsive`, `variables`,
+  `jsx`, `custom-output`, `overrides`, `groups`, `portfolio` (full showcase page with runtime
+  theme switch) and `modules` (no `exclude` list: self-declared `module: true` files, one merged
+  stylesheet, `map-inherit: false` and a two-destination `css-dir` list).
+- `release:check` aggregate script for verify, browser tests, tarball checks, the nine example
+  builds and extension packaging.
 
 ### Known issues
 
-- The VS Code extension has no formatting provider yet (use `chikx format` in the CLI).
 - Project-level output directories repeat the workspace-relative source path (for example
   `dist/styles/src/…`).
 - No mixins, container aliases, inline pseudo-state modifiers, hashing or file-scoped naming.
+- See [docs/known-limitations.md](docs/known-limitations.md) for the complete, current list.

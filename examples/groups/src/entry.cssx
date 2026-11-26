@@ -3,6 +3,7 @@
   css-name: "app.css";
   map-dir: "../generated/maps";
   map-name: "app.map.js";
+  map-types: true;
 }
 
 /* `styles` is the only import form that exposes group definitions (ADR-0017 decision (a)). */
@@ -29,7 +30,7 @@
     padding: 20px;
   }
 
-  font-family: arial;
+  font-family: arial, sans-serif;
   background-color: indigo;
   color: orange;
   padding: 1rem;

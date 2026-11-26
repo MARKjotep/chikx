@@ -69,7 +69,7 @@ describe("symlinks", () => {
     expect(report.entries[0]?.dependencies).toHaveLength(1);
 
     const css = await readProjectFile(root, "out/src/a.css");
-    expect(css).toContain("padding: 4px");
+    expect(css).toContain("padding:4px");
   }, 60_000);
 
   test("rejects a symlinked import target that resolves outside the workspace", async () => {

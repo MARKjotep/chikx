@@ -242,7 +242,7 @@ describe.skipIf(!fsEventsSupported)("chikx watch", () => {
       expect(rebuild.entries[0]?.outputs.every((output) => output.written)).toBe(true);
 
       expect(await readText(join(root, "generated/styles/button.css"))).toContain(
-        "outline: 1px solid red",
+        "outline:1px solid red",
       );
       expect(await readText(join(root, "generated/styles/card.css"))).toBe(cardBefore);
     } finally {
@@ -305,6 +305,54 @@ describe.skipIf(!fsEventsSupported)("chikx watch", () => {
       expect(await exists(join(root, "generated/styles/card.css"))).toBe(false);
       expect(await exists(join(root, "generated/maps/card.map.js"))).toBe(false);
       expect(await exists(join(root, "generated/styles/button.css"))).toBe(true);
+    } finally {
+      exitCode = await harness.stop();
+    }
+
+    expect(exitCode).toBe(0);
+  }, 30_000);
+
+  test("rebuilds and reports every css-dir list destination", async () => {
+    const root = await createTempDirectory("chikx-watch-list-");
+    temporaryProjects.push(root);
+    await writeText(
+      join(root, "chikx.config.json"),
+      `${JSON.stringify({ include: ["src/*.cssx"] }, null, 2)}\n`,
+    );
+    const setup = [
+      "@setup {",
+      '  css-dir: "../client", "../src";',
+      '  css-name: "app.css";',
+      '  map-dir: "../maps";',
+      '  map-name: "app.map.js";',
+      "}",
+    ].join("\n");
+    const sourcePath = join(root, "src/app.cssx");
+    await writeText(sourcePath, `${setup}\n.app { color: red; }\n`);
+
+    const harness = startWatch(root);
+    let exitCode = -1;
+
+    try {
+      await harness.awaitReady("list ready");
+      const initial = harness.events.filter((event) => event.type === "build");
+      expect(initial).toHaveLength(1);
+      expect(
+        (initial[0] as BuildLine).entries[0]?.outputs.map((output) => output.path).sort(),
+      ).toEqual(["client/app.css", "maps/app.map.js", "src/app.css"]);
+
+      const before = await readText(join(root, "client/app.css"));
+      expect(before).toContain("color:red");
+
+      await writeFile(sourcePath, `${setup}\n.app { color: blue; }\n`, "utf8");
+      const rebuild = await harness.nextBuild("list rebuild");
+      expect(rebuild.entries).toHaveLength(1);
+      expect(rebuild.success).toBe(true);
+      expect(rebuild.entries[0]?.outputs).toHaveLength(3);
+      expect(rebuild.entries[0]?.outputs.every((output) => output.written)).toBe(true);
+
+      expect(await readText(join(root, "client/app.css"))).toContain("color:blue");
+      expect(await readText(join(root, "src/app.css"))).toContain("color:blue");
     } finally {
       exitCode = await harness.stop();
     }

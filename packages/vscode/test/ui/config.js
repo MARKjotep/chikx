@@ -191,7 +191,7 @@ async function run(t) {
     t.ok(await appears(workspace, "save-entry.css"), "compileOnSave on wrote no CSS");
     t.match(
       await workspace.read("save-entry.css"),
-      /\.cfg-button \{/,
+      /\.cfg-button\{/,
       "compile-on-save output lacks the compiled rule",
     );
     t.ok(await appears(workspace, "save-entry.map.js"), "compileOnSave on wrote no class map");

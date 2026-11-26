@@ -1,1 +1,2 @@
-export default { "foo-bar": "ui-foo-bar", fooBar: "ui-fooBar" };
+export const fooBar = "ui-foo-bar";
+export const fooBar_2 = "ui-fooBar";

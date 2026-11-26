@@ -204,7 +204,9 @@ describe("exit 2 · configuration schema cells", () => {
 
     const result = runCli(["check"], root);
     expect(result.status).toBe(2);
-    expect(result.stderr).toBe('chikx: "compiler.mediaGrouping" must be "safe" or "none".\n');
+    expect(result.stderr).toBe(
+      'chikx: "compiler.mediaGrouping" must be "safe", "none" or "merge".\n',
+    );
   });
 });
 

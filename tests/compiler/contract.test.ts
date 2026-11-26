@@ -31,7 +31,6 @@ const setup: ResolvedSetup = {
   emitMap: true,
   emitTypes: true,
   sourceMap: false,
-  importCss: true,
   minify: false,
 };
 
@@ -65,7 +64,6 @@ describe("frozen compiler contract", () => {
     });
     expect(plan.diagnostics).toEqual([]);
     expect(plan.plan.outputs.map((output) => output.kind)).toEqual(["css", "js", "types"]);
-    expect(plan.plan.outputs[1]?.importSpecifier).toBe("./sample.css");
   });
 
   test("reserved diagnostic codes are registered", () => {

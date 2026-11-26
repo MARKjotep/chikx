@@ -46,7 +46,7 @@ const REPORT_KEYS = [
 ] as const;
 
 /** The benchmark generator's recorded artifact byte count for 100 files. */
-const RECORDED_OUTPUT_BYTES_100 = 126_186;
+const RECORDED_OUTPUT_BYTES_100 = 95_086;
 
 interface Report {
   readonly files: number;

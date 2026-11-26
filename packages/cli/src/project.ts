@@ -4,11 +4,13 @@
  * A project is the workspace root (nearest `chikx.config.json`, else nearest
  * `package.json`, ADR-0007), the configuration found there and the entry list:
  * either one explicit file or the sources matched by the config include globs.
+ * Configuration is optional for project runs: without a file the root still
+ * comes from the workspace walk and discovery uses {@link DEFAULT_INCLUDE}.
  */
 
 import { stat } from "node:fs/promises";
 import type { CliInvocation } from "./args.js";
-import { type CliConfig, findWorkspaceRoot, loadConfig } from "./config.js";
+import { type CliConfig, DEFAULT_INCLUDE, findWorkspaceRoot, loadConfig } from "./config.js";
 import { discoverSources } from "./glob.js";
 import { absolutePath, dirnamePosix, isWithin, relativePosix } from "./paths.js";
 
@@ -16,7 +18,7 @@ import { absolutePath, dirnamePosix, isWithin, relativePosix } from "./paths.js"
 export interface ProjectContext {
   /** Absolute POSIX workspace root. */
   readonly root: string;
-  /** Loaded configuration, or `null` for a config-less single-file build. */
+  /** Loaded configuration, or `null` for a config-less project/single-file run. */
   readonly config: CliConfig | null;
   /** Non-fatal configuration notes (ignored unknown keys outside strict mode). */
   readonly configWarnings: readonly string[];
@@ -34,9 +36,12 @@ export type ProjectContextResult =
 /**
  * Resolve configuration, workspace root and entries for build/check/watch.
  *
- * A missing config is an invocation error for project runs (nothing to include)
- * but is allowed for a single-entry run, where the nearest `package.json`
- * ancestor, else the file's directory, becomes the workspace root.
+ * Configuration is optional. Without a file, the workspace root is the nearest
+ * `package.json` ancestor (ADR-0007) and project discovery uses
+ * {@link DEFAULT_INCLUDE}; a single-entry run falls back to the file's
+ * directory when no package boundary exists. Explicitly configuring an empty
+ * `include` list remains an invocation error, and an empty discovery result is
+ * reported by the command as a configuration error (typo protection).
  */
 export async function prepareProject(
   invocation: CliInvocation,
@@ -83,14 +88,7 @@ export async function prepareProject(
     };
   }
 
-  if (config === null) {
-    return {
-      ok: false,
-      message:
-        'No chikx.config.json found. Create one with an "include" glob list, or pass a source file.',
-    };
-  }
-  if (config.include.length === 0) {
+  if (config !== null && config.include.length === 0) {
     return {
       ok: false,
       message: `"include" in ${config.file} must list at least one glob.`,
@@ -99,8 +97,8 @@ export async function prepareProject(
 
   const entries = await discoverSources({
     root,
-    include: config.include,
-    exclude: config.exclude,
+    include: config?.include ?? DEFAULT_INCLUDE,
+    exclude: config?.exclude ?? [],
   });
 
   return {

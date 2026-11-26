@@ -16,6 +16,8 @@
  */
 export { lower } from "./lower.js";
 export { groupRuns } from "./group.js";
+export { mergeRuns } from "./merge.js";
+export { isWildcardDeclaration, propertyFamily } from "./property-families.js";
 export { expandGroupUseSites } from "./expand-groups.js";
 export type { GroupExpansionOptions, GroupExpansionResult } from "./expand-groups.js";
 

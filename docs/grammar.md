@@ -109,12 +109,13 @@ setting key — within one block or across blocks — is rejected.
 `@use` imports compile-time tokens by default; without the `styles` clause it never imports rules.
 The optional `styles` clause makes the import rule-bearing (ADR-0014): the module's rules are merged
 into the importing build ahead of the importing file's own rules, depth-first in authored `@use`
-order, and keep the imported module's own `@setup prefix`. The build writes one merged class map and
-declaration file; the same original class name resolving to different emitted names, or a camelCase
-export-alias collision, is `CHIKX4001`. A module that should never emit artifacts of its own declares
-`@setup { module: true; }`, which suppresses its CSS, map, types and CSS import unless those keys are
-authored explicitly. Modules are imported once; there is no implicit transitive re-export and no
-network or executable import.
+order, and keep the imported module's own `@setup prefix`. The build writes one merged class map (and
+an opt-in declaration file with `map-types: true`); the same original class name resolving to
+different emitted names is `CHIKX4001`, and a camelCase export-identifier collision is resolved with a
+`_2`/`_3` suffix plus a `CHIKX4001` warning. A module that should never emit artifacts of its own
+declares `@setup { module: true; }`, which suppresses its CSS, map, types and CSS import unless those
+keys are authored explicitly. Modules are imported once; there is no implicit transitive re-export
+and no network or executable import.
 
 ### Reusable declaration groups (`@group.<name>`)
 
@@ -329,4 +330,4 @@ construct; warnings leave output in place. Invalid CSS is never emitted.
 - [cascade.md](cascade.md) — what the emitted order means in the browser.
 - [configuration.md](configuration.md) — `@setup`, `chikx.config.json` and output planning.
 - [compatibility.md](compatibility.md) — supported and unsupported constructs.
-- [`examples/basic`](../examples/basic/) — the canonical stylesheet, compiled.
+- [`examples/basic`](../examples/basic/) — a feature tour source and its committed output.

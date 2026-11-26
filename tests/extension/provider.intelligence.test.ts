@@ -17,6 +17,7 @@ import {
   positionAt,
 } from "../../packages/vscode/src/analysis.ts";
 import {
+  collectIdSelectors,
   colorsAt,
   colorsOf,
   completionsAt,
@@ -140,6 +141,83 @@ describe("completion contexts", () => {
     expect(
       labels(completionsAt(valueText, valueText.length, { analysis: valueState.analysis }).items),
     ).toEqual(["true", "false"]);
+
+    // ADR-0020's module-side switch completes as a key and a boolean value.
+    const inheritKey = "@setup {\n  map-in";
+    const inheritState = await analyze(inheritKey);
+    const inheritItems = completionsAt(inheritKey, inheritKey.length, {
+      analysis: inheritState.analysis,
+    }).items;
+    expect(labels(inheritItems)).toEqual(["map-inherit"]);
+    expect(inheritItems[0]?.kind).toBe("setup-key");
+    expect(inheritItems[0]?.documentation).toContain("importer's map");
+
+    const inheritValue = "@setup {\n  map-inherit: ";
+    const inheritValueState = await analyze(inheritValue);
+    expect(contextAt(inheritValue, inheritValue.length, inheritValueState.analysis)).toEqual({
+      kind: "setup-value",
+      key: "map-inherit",
+      word: "",
+    });
+    expect(
+      labels(
+        completionsAt(inheritValue, inheritValue.length, {
+          analysis: inheritValueState.analysis,
+        }).items,
+      ),
+    ).toEqual(["true", "false"]);
+
+    // ADR-0021's opt-in stylesheet import completes as a key and a boolean value.
+    const cssKey = "@setup {\n  import-c";
+    const cssState = await analyze(cssKey);
+    const cssItems = completionsAt(cssKey, cssKey.length, {
+      analysis: cssState.analysis,
+    }).items;
+    expect(labels(cssItems)).toEqual(["import-css"]);
+    expect(cssItems[0]?.kind).toBe("setup-key");
+    expect(cssItems[0]?.documentation).toContain("side-effect import");
+
+    const cssValue = "@setup {\n  import-css: ";
+    const cssValueState = await analyze(cssValue);
+    expect(contextAt(cssValue, cssValue.length, cssValueState.analysis)).toEqual({
+      kind: "setup-value",
+      key: "import-css",
+      word: "",
+    });
+    expect(
+      labels(
+        completionsAt(cssValue, cssValue.length, {
+          analysis: cssValueState.analysis,
+        }).items,
+      ),
+    ).toEqual(["true", "false"]);
+
+    // ADR-0024's opt-in merge mode completes as a key and three values.
+    const groupingKey = "@setup {\n  media-";
+    const groupingState = await analyze(groupingKey);
+    const groupingItems = completionsAt(groupingKey, groupingKey.length, {
+      analysis: groupingState.analysis,
+    }).items;
+    expect(labels(groupingItems)).toEqual(["media-grouping"]);
+    expect(groupingItems[0]?.kind).toBe("setup-key");
+    expect(groupingItems[0]?.documentation).toContain("disjoint-family");
+
+    const groupingValue = "@setup {\n  media-grouping: ";
+    const groupingValueState = await analyze(groupingValue);
+    expect(contextAt(groupingValue, groupingValue.length, groupingValueState.analysis)).toEqual({
+      kind: "setup-value",
+      key: "media-grouping",
+      word: "",
+    });
+    const groupingValues = completionsAt(groupingValue, groupingValue.length, {
+      analysis: groupingValueState.analysis,
+    }).items;
+    expect(labels(groupingValues)).toEqual(["merge", "safe", "none"]);
+    expect(groupingValues.map((item) => item.detail)).toEqual([
+      "Merge disjoint-family conditional runs (ADR-0024)",
+      "Merge adjacent compatible runs (default)",
+      "No grouping; emit runs in place",
+    ]);
   });
 
   test("import paths complete inside @use strings through the injected lister", async () => {
@@ -365,7 +443,11 @@ describe("completion contexts", () => {
     const offset = text.indexOf(";\n") + ";\n".length + 2;
     const state = await analyze(text);
     expect(contextAt(text, offset, state.analysis)).toEqual({ kind: "setup-key", word: "" });
-    expect(aliasLabels(state.analysis, text, offset)).toEqual([...SETUP_KEYS]);
+    expect(aliasLabels(state.analysis, text, offset)).toEqual([
+      ...SETUP_KEYS,
+      "map-inherit",
+      "import-css",
+    ]);
 
     // The second setting still completes its boolean values.
     const booleanText = ["@setup {", '  prefix: "ui";', "  emit-css: ", "}"].join("\n");
@@ -909,6 +991,34 @@ describe("completion punctuation repairs (CSSX-U01, CSSX-U02, CSSX-U03)", () => 
 });
 
 describe("hover", () => {
+  test("media-grouping setup key shows the exact mode card and ADR pointer", async () => {
+    const text = ["@setup {", "  media-grouping: merge;", "}"].join("\n");
+    const state = await analyze(text);
+    const offset = text.indexOf("media-grouping") + 4;
+    const hover = hoverAt(text, offset, { analysis: state.analysis });
+    expect(hover?.markdown).toBe(
+      [
+        "**`media-grouping`** — Chikx `@setup` key",
+        "",
+        "Controls how emitted CSS groups conditional declaration runs.",
+        "",
+        "- `none` — no grouping; every run is emitted where it was authored.",
+        "- `safe` — default; merges only adjacent runs with the same selector, condition and native at-rule context.",
+        "- `merge` — additionally merges same-selector/same-condition media runs across declarations whose property families are provably disjoint. It never merges across a shared property family, `all`, a `var()` value, or a different selector or condition.",
+        "",
+        "Default: `safe`, unless the project config or this file overrides it. See ADR-0024.",
+      ].join("\n"),
+    );
+    const start = text.indexOf("media-grouping");
+    expect(hover?.range.start.character).toBe(2);
+    expect(hover?.range.end.character).toBe(2 + "media-grouping".length);
+    expect(start).toBeGreaterThan(0);
+
+    // The value word is not a key hover.
+    const valueHover = hoverAt(text, text.indexOf("merge"), { analysis: state.analysis });
+    expect(valueHover).toBeUndefined();
+  });
+
   test("compile-time tokens show the resolved value", async () => {
     const text = fixture(CANONICAL);
     const state = await analyze(text, {}, CANONICAL);
@@ -1705,6 +1815,61 @@ describe("group completion", () => {
     expect(items[0]?.insertText).toBe("card {\n  \n}");
   });
 
+  test("group definition and use-site bodies offer the rule-body property set (bug 25)", async () => {
+    const ruleText = [".a {", "  ", "}"].join("\n");
+    const ruleOffset = ruleText.indexOf("  \n") + 2;
+    const ruleState = await analyze(ruleText);
+    const ruleItems = completionsAt(ruleText, ruleOffset, { analysis: ruleState.analysis }).items;
+
+    const definitionText = ['@setup { prefix: "ui"; }', "@group.card {", "  ", "}"].join("\n");
+    const definitionOffset = definitionText.indexOf("@group.card {") + "@group.card {".length + 3;
+    const definitionState = await analyze(definitionText);
+    expect(contextAt(definitionText, definitionOffset, definitionState.analysis)).toEqual({
+      kind: "property",
+      word: "",
+    });
+    const definitionItems = completionsAt(definitionText, definitionOffset, {
+      analysis: definitionState.analysis,
+    }).items;
+    expect(definitionItems.length).toBeGreaterThan(0);
+    expect(labels(definitionItems)).toEqual(labels(ruleItems));
+    const paddingItem = definitionItems.find((item) => item.label === "padding");
+    expect(paddingItem?.kind).toBe("property");
+    expect(paddingItem?.snippet).toBe("padding: $0;");
+
+    const useSiteText = [".a {", "  @group.card {", "    ", "  }", "}"].join("\n");
+    const useSiteOffset = useSiteText.indexOf("    \n") + 4;
+    const useSiteState = await analyze(useSiteText);
+    expect(contextAt(useSiteText, useSiteOffset, useSiteState.analysis)).toEqual({
+      kind: "property",
+      word: "",
+    });
+    const useSiteItems = completionsAt(useSiteText, useSiteOffset, {
+      analysis: useSiteState.analysis,
+    }).items;
+    expect(useSiteItems.length).toBeGreaterThan(0);
+    expect(labels(useSiteItems)).toEqual(labels(ruleItems));
+    expect(suggestion({ items: useSiteItems }, "color").kind).toBe("property");
+
+    // A colon inside either group body switches to the ordinary value state.
+    for (const [text, offset] of [
+      [definitionText, definitionOffset],
+      [useSiteText, useSiteOffset],
+    ] as const) {
+      const colonText = `${text.slice(0, offset)}padding: ${text.slice(offset)}`;
+      const state = await analyze(colonText);
+      const valueOffset = offset + "padding: ".length;
+      expect(contextAt(colonText, valueOffset, state.analysis)).toEqual({
+        kind: "value",
+        property: "padding",
+        word: "",
+      });
+      expect(
+        labels(completionsAt(colonText, valueOffset, { analysis: state.analysis }).items),
+      ).toContain("inherit");
+    }
+  });
+
   test("the @group directive completes after @ at top level and in rule bodies", async () => {
     const top = "@gro";
     const topState = await analyze(top);
@@ -1744,7 +1909,9 @@ describe("group hover and outline", () => {
     expect(hover?.markdown).toContain("chrome.cssx");
     expect(hover?.markdown).toContain("`padding: $pad`");
     expect(hover?.markdown).toContain("`border: 1px solid #ddd`");
-    expect(hover?.markdown).toContain("Overrides in this use site: `padding`");
+    expect(hover?.markdown).toContain("**Defaults**");
+    expect(hover?.markdown).toContain("**Overrides at this use site**\n- `padding`");
+    expect(hover?.markdown).not.toContain("Overrides in this use site");
     // The hover range covers the whole `@group.card` keyword.
     expect(hover?.range).toEqual({
       start: positionAt(state.analysis.lineStarts, index),
@@ -1766,6 +1933,103 @@ describe("group hover and outline", () => {
     expect(hover?.markdown).toContain("`border: 1px solid #ddd`");
   });
 
+  test("hover renders defaults as real bullet lines and overrides as their own section", async () => {
+    const state = await analyze(GROUP_DOCUMENT);
+    const definition = hoverAt(GROUP_DOCUMENT, GROUP_DOCUMENT.indexOf("@group.card") + 3, {
+      analysis: state.analysis,
+    });
+    expect(definition?.markdown).toBe(
+      [
+        "**@group.card** — group definition",
+        "",
+        "**Defaults**",
+        "- `padding: 12px`",
+        "- `color: black`",
+      ].join("\n"),
+    );
+
+    const useSiteIndex = GROUP_DOCUMENT.indexOf("@group.card", 5);
+    const useSite = hoverAt(GROUP_DOCUMENT, useSiteIndex + 4, { analysis: state.analysis });
+    expect(useSite?.markdown).toBe(
+      [
+        "**@group.card** — group use site",
+        "",
+        "Defined in this file.",
+        "",
+        "**Defaults**",
+        "- `padding: 12px`",
+        "- `color: black`",
+        "",
+        "**Overrides at this use site**",
+        "- `padding`",
+      ].join("\n"),
+    );
+
+    const plainText = [
+      "@group.card {",
+      "  padding: 12px;",
+      "  color: black;",
+      "}",
+      "",
+      ".panel {",
+      "  @group.card {",
+      "    margin: 0;",
+      "  }",
+      "}",
+    ].join("\n");
+    const plainState = await analyze(plainText);
+    const plainUseSiteIndex = plainText.indexOf("@group.card", 5);
+    const plainUseSite = hoverAt(plainText, plainUseSiteIndex + 4, {
+      analysis: plainState.analysis,
+    });
+    expect(plainUseSite?.markdown).toBe(
+      [
+        "**@group.card** — group use site",
+        "",
+        "Defined in this file.",
+        "",
+        "**Defaults**",
+        "- `padding: 12px`",
+        "- `color: black`",
+      ].join("\n"),
+    );
+
+    const emptyText = [
+      "@group.empty {",
+      "}",
+      "",
+      ".panel {",
+      "  @group.empty {",
+      "    color: red;",
+      "  }",
+      "}",
+    ].join("\n");
+    const emptyState = await analyze(emptyText);
+    const emptyDefinition = hoverAt(emptyText, emptyText.indexOf("@group.empty") + 3, {
+      analysis: emptyState.analysis,
+    });
+    expect(emptyDefinition?.markdown).toBe(
+      [
+        "**@group.empty** — group definition",
+        "",
+        "_No default declarations; the group is inert._",
+      ].join("\n"),
+    );
+    const emptyUseSiteIndex = emptyText.indexOf("@group.empty", 5);
+    const emptyUseSite = hoverAt(emptyText, emptyUseSiteIndex + 4, {
+      analysis: emptyState.analysis,
+    });
+    expect(emptyUseSite?.markdown).toBe(
+      [
+        "**@group.empty** — group use site",
+        "",
+        "Defined in this file.",
+        "",
+        "_No default declarations._",
+      ].join("\n"),
+    );
+  });
+
   test("the @group keyword part of a definition and use site resolves to group hover", async () => {
     const state = await analyze(GROUP_DOCUMENT);
     const definition = hoverAt(GROUP_DOCUMENT, GROUP_DOCUMENT.indexOf("@group.card") + 3, {
@@ -1779,7 +2043,8 @@ describe("group hover and outline", () => {
     const useSite = hoverAt(GROUP_DOCUMENT, useSiteIndex + 4, { analysis: state.analysis });
     expect(useSite?.markdown).toContain("group use site");
     expect(useSite?.markdown).toContain("`padding: 12px`");
-    expect(useSite?.markdown).toContain("Overrides in this use site: `padding`");
+    expect(useSite?.markdown).toContain("**Defaults**");
+    expect(useSite?.markdown).toContain("**Overrides at this use site**\n- `padding`");
     expect(useSite?.markdown).not.toContain("Unknown media alias");
   });
 
@@ -3200,5 +3465,158 @@ describe("hex colors, color kind, decorations and filter text (A51)", () => {
     const header = completionProvider.slice(0, completionProvider.indexOf("import * as vscode"));
     expect(header).toContain("`(`");
     expect(header).toContain("`#`");
+  });
+});
+
+describe("id selector completion (feature 26)", () => {
+  /** Authored text under one range, for collection assertions. */
+  function rangeText(
+    text: string,
+    range: { start: { line: number; character: number }; end: { line: number; character: number } },
+  ): string {
+    const line = text.split("\n")[range.start.line] ?? "";
+    return line.slice(range.start.character, range.end.character);
+  }
+
+  test("collects selector ids in first-appearance order and skips non-selector hashes", async () => {
+    const text = [
+      "#panel, .card #inner { color: #fff; }",
+      ".card {",
+      "  &:is(#panel, #hovered) { color: blue; }",
+      "  &:not(#excluded) { color: grey; }",
+      "  &:has(> #nested-id) { color: teal; }",
+      "  .nested#deep { color: green; }",
+      '  content: "#not-id";',
+      '  &[data-id="#attr"] { color: black; }',
+      "}",
+      ":global(#shell) .x { color: red; }",
+      "#a /* #ghost */, #b { color: red; }",
+    ].join("\n");
+    const state = await analyze(text);
+    const ids = collectIdSelectors(state.analysis);
+
+    // Base selectors, comma lists, `&` nesting and `:is()`/`:not()`/`:has()`
+    // arguments are all selector positions; `:global(#shell)` stays an id.
+    // Declaration values (`#fff`), strings (`#not-id`), attribute values
+    // (`#attr`) and selector comments (`#ghost`) never enter the list, and a
+    // repeated name keeps its first appearance only.
+    expect(ids.map((entry) => entry.name)).toEqual([
+      "panel",
+      "inner",
+      "hovered",
+      "excluded",
+      "nested-id",
+      "deep",
+      "shell",
+      "a",
+      "b",
+    ]);
+    for (const entry of ids) {
+      expect(entry.range.start.line).toBeGreaterThanOrEqual(0);
+      expect(rangeText(text, entry.range)).toBe(entry.name);
+    }
+    expect(ids.find((entry) => entry.name === "panel")?.range.start.line).toBe(0);
+    expect(ids.find((entry) => entry.name === "shell")?.range.start.line).toBe(9);
+  });
+
+  test("selector # offers the document ids, narrows by prefix and accepts one #", async () => {
+    const text = [
+      "#panel { color: red; }",
+      "#panel-header { color: blue; }",
+      "#sidebar { color: green; }",
+      ":global(#shell) .x { color: red; }",
+      ".card {",
+      "  #",
+      "}",
+    ].join("\n");
+    const offset = text.indexOf("  #\n") + 3;
+    const state = await analyze(text);
+    expect(contextAt(text, offset, state.analysis)).toEqual({ kind: "selector", word: "" });
+    const result = completionsAt(text, offset, { analysis: state.analysis });
+
+    expect(labels(result.items)).toEqual(["#panel", "#panel-header", "#sidebar", "#shell"]);
+    for (const item of result.items) {
+      expect(item.kind).toBe("selector");
+      expect(item.detail).toBe("id selector");
+      expect(item.insertText).toBe(item.label);
+    }
+    // A selector `#` is an id state only: no colours/hex values, no class items,
+    // no nested-selector starters and no directives leak into it.
+    expect(result.items.some((item) => item.kind === "color")).toBe(false);
+    expect(result.items.some((item) => item.detail?.startsWith("CSS color"))).toBe(false);
+    expect(
+      labels(result.items).some((label) => label.startsWith(".") || label.startsWith("&")),
+    ).toBe(false);
+    expect(labels(result.items).some((label) => label.startsWith("@"))).toBe(false);
+
+    const panel = result.items.find((item) => item.label === "#panel");
+    expect(panel?.replaceStart).toBe(offset - 1);
+    if (panel === undefined) throw new Error("missing #panel suggestion");
+    expect(accept(text, result, panel)).toBe(text.replace("  #\n", "  #panel\n"));
+
+    // A typed prefix narrows the same list and the whole `#…` word is replaced.
+    const typed = [
+      "#panel { color: red; }",
+      "#panel-header { color: blue; }",
+      "#sidebar { color: green; }",
+      ".card {",
+      "  #pan",
+      "}",
+    ].join("\n");
+    const typedOffset = typed.indexOf("  #pan\n") + "  #pan".length;
+    const typedState = await analyze(typed);
+    const typedResult = completionsAt(typed, typedOffset, { analysis: typedState.analysis });
+    expect(labels(typedResult.items)).toEqual(["#panel", "#panel-header"]);
+    const header = typedResult.items.find((item) => item.label === "#panel-header");
+    expect(header?.replaceStart).toBe(typedOffset - "#pan".length);
+    if (header === undefined) throw new Error("missing #panel-header suggestion");
+    expect(accept(typed, typedResult, header)).toBe(typed.replace("  #pan\n", "  #panel-header\n"));
+    expect(accept(typed, typedResult, header).includes("##")).toBe(false);
+  });
+
+  test("a value # on a colour property stays the colour state only", async () => {
+    const text = ["#panel { color: red; }", ".card {", "  color: #", "}"].join("\n");
+    const offset = text.indexOf("  color: #\n") + "  color: #".length;
+    const state = await analyze(text);
+    expect(contextAt(text, offset, state.analysis)).toEqual({
+      kind: "value",
+      property: "color",
+      word: "",
+    });
+    const items = completionsAt(text, offset, { analysis: state.analysis }).items;
+    expect(items.length).toBe(183);
+    expect(items.every((item) => item.kind === "color")).toBe(true);
+    expect(items.some((item) => item.detail === "id selector")).toBe(false);
+    expect(labels(items)).not.toContain("#panel");
+  });
+});
+
+describe("class completion inside attribute values", () => {
+  test("a quoted attribute value is inert: no class suggestions and no class occurrence", async () => {
+    const text = [
+      ".card { color: red; }",
+      ".card-active { color: blue; }",
+      '.card[data-x=".car"] { color: green; }',
+    ].join("\n");
+    const state = await analyze(text);
+    const valueOffset = text.indexOf('".car"') + 3;
+
+    // `contextAt` sees the enclosing string first, so the attribute value is
+    // not a selector state and the completion list stays empty.
+    expect(contextAt(text, valueOffset, state.analysis)).toEqual({ kind: "none" });
+    expect(completionsAt(text, valueOffset, { analysis: state.analysis }).items).toEqual([]);
+    // The value's `.car` never becomes an analysis class occurrence.
+    expect(state.analysis.classes.every((entry) => entry.name !== "car")).toBe(true);
+
+    // Outside the brackets the same line still completes selector classes, so
+    // the empty result above is not a general failure to complete.
+    const classOffset = text.indexOf(".card[") + ".card".length;
+    expect(contextAt(text, classOffset, state.analysis)).toEqual({
+      kind: "selector",
+      word: ".card",
+    });
+    expect(labels(completionsAt(text, classOffset, { analysis: state.analysis }).items)).toContain(
+      ".card",
+    );
   });
 });

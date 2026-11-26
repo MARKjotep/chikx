@@ -19,6 +19,7 @@ const SCENARIOS = [
   "completions",
   "hovers",
   "diagnostics",
+  "module-refresh",
   "colors",
   "semantic-tokens",
   "commands",

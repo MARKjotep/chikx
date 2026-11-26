@@ -86,6 +86,93 @@ async function run(t) {
   t.ok(groupUse, "no hover for the group use site");
   t.match(host.hoverMarkdown(groupUse), /— group use site/);
 
+  // F23: defaults render as a real bullet list (not soft-collapsed inline code).
+  // The committed clean fixture has one default, so a scratch workspace pins the
+  // multi-declaration contract with authored spacing preserved.
+  const groupWorkspace = await host.createWorkspace("chikx-ui-group-hover-");
+  try {
+    const groupText = [
+      "@group.card-base {",
+      "  padding: 12px;",
+      "  border-radius: 8px;",
+      "  border: 1px solid #ddd;",
+      "}",
+      "",
+      ".card {",
+      "  @group.card-base {",
+      "    padding: 4px;",
+      "    border-radius: 0;",
+      "  }",
+      "}",
+    ].join("\n");
+    const { document: groupDocument } = await groupWorkspace.open("group-hover.cssx", groupText);
+    const definitionHovers = await host.hoversAt(
+      groupDocument,
+      host.positionOf(groupDocument, "@group.card-base", 8),
+    );
+    t.ok(definitionHovers.length > 0, "no hover for the multi-default group definition");
+    const definitionMarkdown = host.hoverMarkdown(definitionHovers[0]);
+    t.match(definitionMarkdown, /\*\*Defaults\*\*/, "definition hover has a Defaults heading");
+    t.match(
+      definitionMarkdown,
+      /\n- `padding: 12px`\n- `border-radius: 8px`\n- `border: 1px solid #ddd`/,
+      "definition defaults are separate bullet lines in definition order",
+    );
+    t.ok(
+      definitionMarkdown.split("\n- ").length - 1 >= 2,
+      "definition hover has at least two bullet lines",
+    );
+
+    const useHovers = await host.hoversAt(
+      groupDocument,
+      lastPositionOf(groupDocument, "@group.card-base", 8),
+    );
+    t.ok(useHovers.length > 0, "no hover for the multi-default group use site");
+    const useMarkdown = host.hoverMarkdown(useHovers[0]);
+    t.match(useMarkdown, /\*\*Defaults\*\*/, "use-site hover has a Defaults heading");
+    t.match(
+      useMarkdown,
+      /\*\*Overrides at this use site\*\*\n- `padding`\n- `border-radius`/,
+      "use-site overrides are a separate bulleted section",
+    );
+    t.ok(useMarkdown.split("\n- ").length - 1 >= 2, "use-site hover has at least two bullet lines");
+  } finally {
+    await groupWorkspace.dispose();
+  }
+
+  // ADR-0024: the `media-grouping` key carries the optimization card.
+  const setupWorkspace = await host.createWorkspace("chikx-ui-setup-hover-");
+  try {
+    const setupText = ["@setup {", "  media-grouping: merge;", "}"].join("\n");
+    const { document: setupDocument } = await setupWorkspace.open("setup-hover.cssx", setupText);
+    const groupingHovers = await host.hoversAt(
+      setupDocument,
+      host.positionOf(setupDocument, "media-grouping", 4),
+    );
+    t.ok(groupingHovers.length > 0, "no hover for the `media-grouping` key");
+    const groupingMarkdown = host.hoverMarkdown(groupingHovers[0]);
+    t.match(
+      groupingMarkdown,
+      /\*\*`media-grouping`\*\* — Chikx `@setup` key/,
+      "media-grouping hover names the key",
+    );
+    t.match(
+      groupingMarkdown,
+      /- `merge` — additionally merges same-selector\/same-condition media runs/,
+      "media-grouping hover explains merge",
+    );
+    t.match(groupingMarkdown, /Default: `safe`/, "media-grouping hover states the default");
+    t.match(groupingMarkdown, /See ADR-0024\./, "media-grouping hover points at ADR-0024");
+    t.equal(groupingHovers[0].range.start.character, 2, "media-grouping hover starts on the key");
+    t.equal(
+      groupingHovers[0].range.end.character,
+      2 + "media-grouping".length,
+      "media-grouping hover covers the key only",
+    );
+  } finally {
+    await setupWorkspace.dispose();
+  }
+
   // Negative positions: a plain value and the end of the document.
   const value = await host.hoversAt(document, host.positionOf(document, "red;", 1));
   t.equal(value.length, 0, "a plain colour value has no hover");
@@ -98,7 +185,7 @@ async function run(t) {
     t.equal(/<a\s|!\[|\]\(http/.test(markdown), false, "hover markdown carries no links or images");
   }
 
-  return "9 hover shapes + 2 negative positions (tokens, alias, property, function, class, group, keyframes)";
+  return "10 hover shapes + 2 negative positions (tokens, alias, property, function, class, group, keyframes, setup key)";
 }
 
 module.exports = { run };

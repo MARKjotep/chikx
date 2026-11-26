@@ -35,6 +35,7 @@ declare module "@chikx/compiler" {
     readonly kind: "setting";
     readonly key: string;
     readonly value: string;
+    readonly valueSpan: Span;
     readonly span: Span;
   }
 
@@ -88,7 +89,7 @@ declare module "@chikx/compiler" {
   }
 
   /** Media grouping modes accepted by v0.1. */
-  export type MediaGroupingMode = "safe" | "none";
+  export type MediaGroupingMode = "safe" | "none" | "merge";
 
   /** Output settings shared by `@setup`, project config and CLI overrides. */
   export interface OutputOptions {
@@ -98,10 +99,12 @@ declare module "@chikx/compiler" {
     readonly mapName?: string;
     readonly emitCss?: boolean;
     readonly emitMap?: boolean;
+    readonly mapTypes?: boolean;
     readonly emitTypes?: boolean;
     readonly sourceMap?: boolean;
-    readonly importCss?: boolean;
     readonly minify?: boolean;
+    readonly mapInherit?: boolean;
+    readonly importCss?: boolean;
   }
 
   /** Options accepted by `compile`. */
@@ -110,14 +113,18 @@ declare module "@chikx/compiler" {
     readonly prefix?: string;
     readonly naming?: NamingOptions;
     readonly media?: Readonly<Record<string, string>>;
+    /** Strict validation. Default `true` (ADR-0023). */
     readonly strict?: boolean;
+    /** Media grouping. Default `"safe"`. */
     readonly mediaGrouping?: MediaGroupingMode;
     readonly workspaceRoot?: string;
   }
 
   /** Compiler behaviour settings from `chikx.config.json` (`compiler`). */
   export interface CompilerConfig {
+    /** Reject unknown configuration keys. Default `true` (ADR-0023). */
     readonly strict?: boolean;
+    /** Media grouping. Default `"safe"`. */
     readonly mediaGrouping?: MediaGroupingMode;
   }
 
@@ -143,9 +150,29 @@ declare module "@chikx/compiler" {
   }
 
   /** Effective output settings after merging every layer. */
-  export interface ResolvedSetup extends Required<OutputOptions> {
+  export interface ResolvedSetup
+    extends Required<Omit<OutputOptions, "mapTypes" | "mapInherit" | "importCss">> {
     readonly prefix: string;
+    readonly mapInherit?: boolean;
+    readonly importCss?: boolean;
+    readonly cssDirs?: readonly string[];
   }
+
+  /** One decoded item in a comma-separated `@setup` value list. */
+  export interface SetupListEntry {
+    readonly value: string;
+    readonly span: Span;
+  }
+
+  /** Result of {@link decodeSetupList}. */
+  export interface SetupListResult {
+    readonly entries: readonly SetupListEntry[];
+    readonly isList: boolean;
+    readonly diagnostics: readonly Diagnostic[];
+  }
+
+  /** Decode a comma-separated `@setup` value list and its per-item diagnostics. */
+  export function decodeSetupList(raw: string, span: Span): SetupListResult;
 
   /** Explicit CLI overrides; partial by design. */
   export type CliOutputOverrides = OutputOptions & { readonly prefix?: string };
@@ -167,7 +194,6 @@ declare module "@chikx/compiler" {
     readonly kind: OutputKind;
     readonly absolutePath: string;
     readonly workspacePath: string;
-    readonly importSpecifier?: string;
     readonly sourceFile: string;
   }
 

@@ -87,9 +87,9 @@ function readOutput(value: unknown, errors: string[]): OutputOptions | undefined
   for (const key of [
     "emitCss",
     "emitMap",
+    "mapTypes",
     "emitTypes",
     "sourceMap",
-    "importCss",
     "minify",
   ] as const) {
     const entry = value[key];
@@ -183,12 +183,19 @@ export function parseExtensionConfig(text: string, file: string): ConfigOutcome 
         errors.push('"compiler.strict" must be a boolean.');
       }
       const grouping = raw.compiler.mediaGrouping;
-      if (grouping !== undefined && grouping !== "safe" && grouping !== "none") {
-        errors.push('"compiler.mediaGrouping" must be "safe" or "none".');
+      if (
+        grouping !== undefined &&
+        grouping !== "safe" &&
+        grouping !== "none" &&
+        grouping !== "merge"
+      ) {
+        errors.push('"compiler.mediaGrouping" must be "safe", "none" or "merge".');
       }
       compiler = {
         ...(typeof strict === "boolean" ? { strict } : {}),
-        ...(grouping === "safe" || grouping === "none" ? { mediaGrouping: grouping } : {}),
+        ...(grouping === "safe" || grouping === "none" || grouping === "merge"
+          ? { mediaGrouping: grouping }
+          : {}),
       };
     }
   }

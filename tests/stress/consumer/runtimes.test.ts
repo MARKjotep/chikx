@@ -40,8 +40,9 @@ import {
   runtimeMatrix,
 } from "./helpers.ts";
 
-/** Pretty-printed CSS the built compiler must produce for {@link PROBE_SOURCE}. */
+/** Authored probe plus the default (minified) CSS the built compiler must produce. */
 const PROBE_SOURCE = ".probe {\n  display: flex;\n}\n";
+const PROBE_CSS = ".probe{display:flex;}";
 
 /** Consumer-root import probe: resolve, import, compile, report. */
 const IMPORT_PROBE = `
@@ -173,7 +174,7 @@ for (const row of verifiedRows()) {
       };
       // The export map resolves to the built artifact, not TypeScript source.
       expect(report.resolved).toBe(`file://${COMPILER_DIST_ENTRY}`);
-      expect(report.css).toBe(PROBE_SOURCE);
+      expect(report.css).toBe(PROBE_CSS);
       expect(report.classes).toEqual({ probe: "probe" });
       expect(report.errors).toBe(0);
     });

@@ -64,11 +64,12 @@ The benchmark reports Bun's bundled Node compatibility version, not the separate
 | Heap used after build | 12.8 MB | 22.6 MB | none stated | measured |
 | Peak RSS (whole child process) | 61.3 MB | 115.1 MB | none stated | measured |
 | Peak RSS growth over fixture baseline | +42.7 MB | +97.1 MB | none stated | measured |
-| Generated artifacts (CSS + JS + d.ts) | 126,186 B | 1,262,874 B | none stated | measured |
+| Generated artifacts (CSS + JS + opt-in d.ts) | 95,086 B | 950,874 B | none stated | measured |
 | Error diagnostics | 0 | 0 | 0 | met |
 
 The first run in each process is slower (JIT warm-up; observed 88 ms for 100 files and 681 ms for
-1,000 files). The table reports the median, which is the required figure.
+1,000 files). The table reports the median, which is the required figure. Artifact bytes are lower
+than the CSSX-A52 recording because generated class maps no longer emit a CSS side-effect import.
 
 ### Are the §9 targets met?
 

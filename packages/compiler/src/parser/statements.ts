@@ -228,11 +228,20 @@ function parseSetting(ctx: ParseContext, keyToken: Token): Setting | undefined {
   }
 
   const value = textOf(cursor.tokens, scan.bounds.start, scan.bounds.end);
+  const valueSpan =
+    scan.bounds.start < scan.bounds.end
+      ? {
+          start: cursor.tokens[scan.bounds.start]?.start ?? colon.end,
+          end: cursor.tokens[scan.bounds.end - 1]?.end ?? colon.end,
+          file,
+        }
+      : { start: colon.end, end: colon.end, file };
   const end = finishSimple(ctx, scan, keyToken.start, keyToken.end, "a setup setting");
   return Object.freeze({
     kind: "setting",
     key: keyToken.value,
     value,
+    valueSpan,
     span: { start: keyToken.start, end, file },
   });
 }

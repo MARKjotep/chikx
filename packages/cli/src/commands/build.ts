@@ -549,7 +549,6 @@ async function compileWithMinifyOverride(
     emitCss: true,
     emitMap: false,
     emitTypes: false,
-    importCss: false,
     ...(context.config?.media === undefined ? {} : { media: context.config.media }),
     ...(context.config?.compiler?.mediaGrouping === undefined
       ? {}

@@ -122,10 +122,12 @@ describe("compile() end-to-end", () => {
       const result = await compile(source, {
         file: "fixture/button/input.cssx",
         workspaceRoot: root,
+        // Declarations are opt-in (CSSX-A52); this test pins the golden `.d.ts`.
+        mapTypes: true,
       });
 
       expect(result.diagnostics).toEqual([]);
-      expect(result.css).toBe(fixture("expected/css"));
+      expect(result.css).toBe(fixture("expected/minified"));
       expect(result.css).toContain(".ui-button > .ui-icon");
       expect(result.css).toContain("@media (prefers-color-scheme: dark)");
       expect(result.js).toBe(fixture("expected/map.js"));
@@ -172,9 +174,39 @@ describe("compile() end-to-end", () => {
       });
       expect(result.diagnostics).toEqual([]);
       expect(result.css).toContain(":root");
-      expect(result.css).toContain("--primary: red");
+      expect(result.css).toContain("--primary:red");
       expect(result.css).toContain("var(--primary)");
       expect(existsSync(join(root, "virtual"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("map-types is opt-in and mirrors the named export bindings", async () => {
+    const root = mkdtempSync(join(tmpdir(), "chikx-map-types-"));
+    try {
+      const plain = await compile('@setup { prefix: "ui"; } .card-header { color: red; }', {
+        file: "src/card.cssx",
+        workspaceRoot: root,
+      });
+      expect(plain.diagnostics).toEqual([]);
+      expect(plain.js).toBe('export const cardHeader = "ui-card-header";\n');
+      expect(plain.types).toBeUndefined();
+
+      const optedIn = await compile(
+        '@setup { prefix: "ui"; map-types: true; } .card-header { color: red; }',
+        { file: "src/card.cssx", workspaceRoot: root },
+      );
+      expect(optedIn.diagnostics).toEqual([]);
+      expect(optedIn.types).toBe('export declare const cardHeader: "ui-card-header";\n');
+
+      // The legacy alias still resolves to the same flag.
+      const legacy = await compile(
+        '@setup { prefix: "ui"; emit-types: true; } .card-header { color: red; }',
+        { file: "src/card.cssx", workspaceRoot: root },
+      );
+      expect(legacy.types).toBe(optedIn.types);
+      expect(existsSync(join(root, "src"))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -201,7 +233,7 @@ describe("compile() end-to-end", () => {
 
       expect(result.diagnostics).toEqual([]);
       expect(result.css?.endsWith("/*# sourceMappingURL=button.css.map */\n")).toBe(true);
-      expect(result.css).toContain(".ui-button {");
+      expect(result.css).toContain(".ui-button{");
       expect(result.sourceMap).toBeDefined();
 
       const map = JSON.parse(result.sourceMap ?? "{}") as {
@@ -287,7 +319,7 @@ describe("compileProject() end-to-end", () => {
   });
 
   test("two entries share one graph and return distinct results", async () => {
-    const canonicalExpected = fixture("expected/css");
+    const canonicalExpected = fixture("expected/minified");
     const entries = [canonicalEntry, variablesEntry];
     const results = await compileProject(entries, createNodeHost(repoRoot), {});
 

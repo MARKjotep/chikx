@@ -33,8 +33,6 @@ export interface OutputCandidate {
   readonly workspacePath: string;
   /** Workspace-relative POSIX source path. */
   readonly sourceFile: string;
-  /** Escaped JS import specifier, present only on a JS map artifact. */
-  readonly importSpecifier?: string;
 }
 
 /** One source path in absolute and workspace-relative forms. */
@@ -234,12 +232,12 @@ function canonicalizeOrThrow(
 
 /**
  * Build the documented warning emitted when map emission is disabled but type
- * declarations were not explicitly turned off (ADR-0010).
+ * declarations were requested (ADR-0010).
  */
 export function suppressedTypesWarning(span: Span): Diagnostic {
   return warning(
     "CHIKX5001",
-    "Type declarations were suppressed because emit-map is false; set emit-types to false to acknowledge this warning.",
+    "Type declarations were suppressed because emit-map is false; set map-types to false to acknowledge this warning.",
     span,
   );
 }

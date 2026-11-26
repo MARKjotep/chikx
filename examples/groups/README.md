@@ -6,9 +6,9 @@ ordinary cascade — no new runtime, no generated code, no CSS emitted for the d
 
 ```text
 groups/
-  chikx.config.json        project prefix `ui`; modules excluded from entry discovery
-  src/chrome.cssx          `@group.chrome` and `@group.elevated` plus their compile-time tokens
-  src/theme.cssx           runtime `surface`/`accent` tokens, imported with `styles`
+  chikx.config.json        minimal config: project prefix `ui` only
+  src/chrome.cssx          `@group.chrome` and `@group.elevated` plus tokens; `module: true`
+  src/theme.cssx           runtime `surface`/`accent` tokens; `module: true`, imported with `styles`
   src/entry.cssx           both `styles` imports, a same-named local token, one rule per behaviour
   generated/styles/app.css
   generated/maps/app.map.js
@@ -62,8 +62,9 @@ cd examples/groups && chikx build
 - **Visibility.** Only `@use "./chrome.cssx" styles;` exposes the groups. A token-only import would
   expose none (ADR-0017 decision (a)); `theme.cssx` is imported with `styles` so its `:root` block
   is emitted.
-- `classes.prefix: "ui"` in `chikx.config.json` prefixes entry classes (`ui-card`) and runtime
-  properties (`--ui-surface`); no prefix leaks into the imported modules.
+- `classes.prefix: "ui"` is the only project setting (the config demonstrates a non-default value).
+  It prefixes entry classes (`ui-card`) and runtime properties (`--ui-surface`); no prefix leaks
+  into the imported modules, which self-declare `module: true`.
 
 These are **declaration groups, not mixins**. v0.1 is non-parametric and unconditional: no
 parameters, interpolation or `@apply`; no group chaining; no conditional or variant use sites; no

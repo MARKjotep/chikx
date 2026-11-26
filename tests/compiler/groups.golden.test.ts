@@ -222,11 +222,11 @@ describe("groups: ADR-0017 semantics the goldens pin", () => {
     const css = result.css ?? "";
 
     const order = [
-      "padding: 12px;",
-      "border: 1px solid #ddd;",
-      "color: black;",
-      "padding: 20px;",
-      "color: navy;",
+      "padding:12px;",
+      "border:1px solid #ddd;",
+      "color:black;",
+      "padding:20px;",
+      "color:navy;",
     ].map((line) => css.indexOf(line));
     expect(order).toEqual([...order].sort((left, right) => left - right));
     expect(order.every((index) => index !== -1)).toBe(true);
@@ -239,17 +239,17 @@ describe("groups: ADR-0017 semantics the goldens pin", () => {
 
     // One merged `.status` block: the second use site sees the first rule's
     // override-free defaults, not a mutated group.
-    expect(css.match(/^\.status \{/gm)).toHaveLength(1);
-    expect(css.match(/font-size: 12px;/g)).toHaveLength(2);
-    expect(css.indexOf("border-radius: 0;")).toBeGreaterThan(css.indexOf("border-radius: 4px;"));
+    expect(css.match(/^\.status\{/gm)).toHaveLength(1);
+    expect(css.match(/font-size:12px;/g)).toHaveLength(2);
+    expect(css.indexOf("border-radius:0;")).toBeGreaterThan(css.indexOf("border-radius:4px;"));
   });
 
   test("important-default keeps the group's !important ahead of the plain override", async () => {
     const fixture = cases.find((candidate) => candidate.name === "important-default");
     if (fixture === undefined) throw new Error("important-default fixture is missing");
     const css = (await compileCase(fixture)).css ?? "";
-    expect(css.indexOf("display: flex !important;")).toBeGreaterThan(-1);
-    expect(css.indexOf("display: flex !important;")).toBeLessThan(css.indexOf("display: block;"));
+    expect(css.indexOf("display:flex !important;")).toBeGreaterThan(-1);
+    expect(css.indexOf("display:flex !important;")).toBeLessThan(css.indexOf("display:block;"));
   });
 
   test("ambiguous-import names both defining modules in the message", async () => {
@@ -272,9 +272,9 @@ describe("groups: ADR-0017 semantics the goldens pin", () => {
     const css = result.css ?? "";
 
     expect(result.diagnostics).toEqual([]);
-    expect(css).toContain("padding: 12px;");
+    expect(css).toContain("padding:12px;");
     expect(css).not.toContain("40px");
-    expect(css.indexOf("padding: 12px;")).toBeLessThan(css.indexOf("padding: 24px;"));
+    expect(css.indexOf("padding:12px;")).toBeLessThan(css.indexOf("padding:24px;"));
   });
 
   test("token-only omits the block, drops the emptied rule and emits no CSS", async () => {
@@ -292,9 +292,9 @@ describe("groups: ADR-0017 semantics the goldens pin", () => {
     const result = await compileCase(fixture);
     const css = result.css ?? "";
 
-    expect(css).toContain("--gap: 4px;");
-    expect(css).toContain("padding: 12px;");
-    expect(css).toContain("color: navy;");
+    expect(css).toContain("--gap:4px;");
+    expect(css).toContain("padding:12px;");
+    expect(css).toContain("color:navy;");
     expect(css).not.toContain("var(--gap)");
   });
 });

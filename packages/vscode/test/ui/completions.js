@@ -318,6 +318,63 @@ async function run(t) {
       t.equal(applied.split("#").length - 1, 1, "accepting a hex item never doubles the `#`");
     }
 
+    // 8b. `#` — selector position lists the document ids (feature 26). The
+    // value state below stays colour-only; ids never leak into it.
+    {
+      contexts += 1;
+      const { document, editor } = await workspace.open(
+        "selector-hash.cssx",
+        [
+          "#panel { color: red; }",
+          "#panel-header { color: blue; }",
+          "#sidebar { color: green; }",
+          ".card {",
+          "  #",
+          "}",
+          "",
+        ].join("\n"),
+      );
+      const position = host.positionOf(document, "  #\n", 3);
+      const items = await host.completionItems(document, position, "#");
+      const by = host.byLabel(items);
+      for (const id of ["#panel", "#panel-header", "#sidebar"]) {
+        t.ok(by.has(id), `selector # must list ${id} (got [${[...by.keys()].join(", ")}])`);
+        t.equal(by.get(id).kind, KIND.Class, `${id} maps to Class like a class item`);
+        t.equal(by.get(id).detail, "id selector", `${id} carries the id-selector detail`);
+      }
+      t.equal(by.get(".card"), undefined, "a selector # offers no class items");
+      t.equal(by.get("&:hover"), undefined, "a selector # offers no nested-selector starters");
+      t.equal(
+        items.some((item) => item.kind === KIND.Color),
+        false,
+        "a selector # offers no colours",
+      );
+      const panel = by.get("#panel");
+      const range = host.rangeOf(panel);
+      t.equal(range.start.character, position.character - 1, "id range starts on the typed #");
+      t.equal(range.end.character, position.character, "id range ends at the caret");
+      const applied = await host.applyCompletion(editor, panel);
+      t.match(applied, /\n {2}#panel\n/, "accepting an id writes exactly one `#panel`");
+      t.equal(applied.includes("##"), false, "accepting an id never doubles the `#`");
+    }
+    {
+      contexts += 1;
+      const { document } = await workspace.open("selector-hash-color.cssx", ".card { color: # }\n");
+      const position = host.positionOf(document, "color: #", "color: #".length);
+      const items = await host.completionItems(document, position, "#");
+      t.ok(items.length > 0, "`color: #` still lists colours");
+      t.equal(
+        items.every((item) => item.kind === KIND.Color),
+        true,
+        "`color: #` lists colours only",
+      );
+      t.equal(
+        items.some((item) => item.detail === "id selector"),
+        false,
+        "`color: #` offers no selector ids",
+      );
+    }
+
     // 9. value word with no trigger — colours, keywords and units.
     {
       contexts += 1;
@@ -457,13 +514,49 @@ async function run(t) {
       );
     }
 
+    // 10b. group definition body — the real host must offer properties there
+    // too (board bug 25: a group body was classified as no context).
+    {
+      contexts += 1;
+      const { document, editor } = await workspace.open(
+        "group-body-property.cssx",
+        ['@setup { prefix: "ui"; }', "@group.card {", "  ", "}", ""].join("\n"),
+      );
+      const position = host.positionOf(document, "@group.card {\n  ", "@group.card {\n  ".length);
+      const items = await host.completionItems(document, position);
+      t.ok(items.length > 0, "a group definition body must offer property items");
+      const padding = host.byLabel(items).get("padding");
+      t.ok(padding, "the group definition body offers `padding`");
+      t.equal(padding.kind, KIND.Property, "group body properties map to Property");
+      t.equal(padding.detail, "CSS property");
+      t.equal(host.insertTextOf(padding), "padding: ;", "property acceptance inserts `padding: ;`");
+      const applied = await host.applyCompletion(editor, padding);
+      t.match(
+        applied,
+        /@group\.card \{\n {2}padding: ;\n\}/,
+        "accepting a group-body property writes `padding: ;` at the declaration line",
+      );
+    }
+
     // 11. `@setup` keys and boolean values.
     {
       contexts += 1;
       const { document } = await workspace.open("setup-key.cssx", "@setup {\n  \n}\n");
       const position = host.positionOf(document, "@setup {\n  ", "@setup {\n  ".length);
       const items = await host.completionItems(document, position);
-      t.equal(items.length, 12, `expected the 12 setup keys, got ${items.length}`);
+      t.equal(items.length, 15, `expected the 15 setup keys, got ${items.length}`);
+      t.ok(
+        items.some((item) => host.labelOf(item) === "map-inherit"),
+        "the map-inherit key (ADR-0020) is offered",
+      );
+      t.ok(
+        items.some((item) => host.labelOf(item) === "import-css"),
+        "the import-css key (ADR-0021) is offered",
+      );
+      t.ok(
+        items.some((item) => host.labelOf(item) === "media-grouping"),
+        "the media-grouping key (ADR-0024) is offered",
+      );
       t.ok(
         items.every((item) => item.kind === KIND.Property && item.detail === "Chikx @setup key"),
         "setup keys map to Property with their own detail",
@@ -548,7 +641,7 @@ async function run(t) {
       t.equal(filteredApplied, ".card { color: red!important }\n", "the typed suffix is replaced");
     }
 
-    t.equal(contexts, 22, "every suggest-widget context of the U0 table was driven");
+    t.equal(contexts, 25, "every suggest-widget context of the U0 table was driven");
     return `${contexts} completion states driven (suggest widget)`;
   } finally {
     await settings.update(

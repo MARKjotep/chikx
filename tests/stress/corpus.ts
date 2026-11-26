@@ -424,7 +424,6 @@ export function syntheticTemplates(): readonly { readonly id: string; readonly s
         "  emit-map: true;",
         "  emit-types: true;",
         "  source-map: true;",
-        "  import-css: false;",
         "  minify: true;",
         "  module: false;",
         "}",

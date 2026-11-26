@@ -1,6 +1,3 @@
 {
-  "include": ["src/**/*.cssx"],
-  "exclude": ["src/chrome.cssx", "src/theme.cssx", "generated"],
-  "classes": { "strategy": "prefix", "prefix": "ui" },
-  "compiler": { "strict": true, "mediaGrouping": "safe" }
+  "classes": { "strategy": "prefix", "prefix": "ui" }
 }

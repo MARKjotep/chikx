@@ -36,15 +36,21 @@ export const OUTPUT_DEFAULTS: Readonly<{
   readonly emitMap: boolean;
   readonly emitTypes: boolean;
   readonly sourceMap: boolean;
-  readonly importCss: boolean;
   readonly minify: boolean;
+  readonly mapInherit: boolean;
+  readonly importCss: boolean;
 }> = Object.freeze({
   emitCss: true,
   emitMap: true,
-  emitTypes: true,
+  // `.d.ts` beside the JS map is opt-in (`map-types`, CSSX-A52).
+  emitTypes: false,
   sourceMap: false,
-  importCss: true,
-  minify: false,
+  // Compact CSS by default (ADR-0022); readers opt out with `minify: false`.
+  minify: true,
+  // Style-merged modules join the importing map unless they opt out (ADR-0020).
+  mapInherit: true,
+  // The map carries a CSS import only when a bundler consumer opts in (ADR-0021).
+  importCss: false,
 });
 
 /** Where a directory or filename came from, used to apply the correct base. */
@@ -65,6 +71,12 @@ interface NameSetting {
 export interface ResolvedOutputSettings {
   /** Absolute POSIX CSS output directory. */
   readonly cssDir: string;
+  /**
+   * Absolute POSIX CSS destinations in authored order. A scalar input yields one
+   * entry identical to {@link cssDir}; a file `css-dir` list yields one per item
+   * (ADR-0019).
+   */
+  readonly cssDirs: readonly string[];
   /** Absolute POSIX JS map output directory. */
   readonly mapDir: string;
   /** Validated CSS basename. */
@@ -79,8 +91,6 @@ export interface ResolvedOutputSettings {
   readonly emitTypes: boolean;
   /** Write the CSS source map. */
   readonly sourceMap: boolean;
-  /** Include the CSS side-effect import in the JS map. */
-  readonly importCss: boolean;
   /** Compact generated CSS whitespace. */
   readonly minify: boolean;
 }
@@ -134,6 +144,7 @@ export function resolveOutputSettings(
 ): ResolvedOutputSettings {
   const defaults = defaultNames(source.stem);
   let cssDir: DirectorySetting = { value: source.directory, origin: "default" };
+  let cssDirs: readonly string[] | undefined;
   let mapDir: DirectorySetting = { value: source.directory, origin: "default" };
   let cssName: NameSetting = { value: defaults.cssName, origin: "default" };
   let mapName: NameSetting = { value: defaults.mapName, origin: "default" };
@@ -141,7 +152,6 @@ export function resolveOutputSettings(
   let emitMap: boolean = OUTPUT_DEFAULTS.emitMap;
   let emitTypes: boolean = OUTPUT_DEFAULTS.emitTypes;
   let sourceMap: boolean = OUTPUT_DEFAULTS.sourceMap;
-  let importCss: boolean = OUTPUT_DEFAULTS.importCss;
   let minify: boolean = OUTPUT_DEFAULTS.minify;
 
   const projectOutput = input.projectConfig?.output;
@@ -160,11 +170,18 @@ export function resolveOutputSettings(
   if (projectOutput?.emitCss !== undefined) emitCss = projectOutput.emitCss;
   if (projectOutput?.emitMap !== undefined) emitMap = projectOutput.emitMap;
   if (projectOutput?.emitTypes !== undefined) emitTypes = projectOutput.emitTypes;
+  // `map-types` is the canonical spelling; it wins over the legacy alias.
+  if (projectOutput?.mapTypes !== undefined) emitTypes = projectOutput.mapTypes;
   if (projectOutput?.sourceMap !== undefined) sourceMap = projectOutput.sourceMap;
-  if (projectOutput?.importCss !== undefined) importCss = projectOutput.importCss;
   if (projectOutput?.minify !== undefined) minify = projectOutput.minify;
 
-  if (
+  const fileCssDirs = input.setup.cssDirs;
+  if (fileCssDirs !== undefined && fileCssDirs.length > 1) {
+    // A file-level list replaces project/CLI single directories entirely and
+    // resolves every item exactly against the source file (ADR-0019).
+    cssDirs = fileCssDirs;
+    cssDir = { value: fileCssDirs[0] ?? ".", origin: "file" };
+  } else if (
     projectOutput?.cssDir !== undefined &&
     sameAuthoredPath(input.setup.cssDir, projectOutput.cssDir)
   ) {
@@ -190,24 +207,31 @@ export function resolveOutputSettings(
   if (input.setup.emitMap !== OUTPUT_DEFAULTS.emitMap) emitMap = input.setup.emitMap;
   if (input.setup.emitTypes !== OUTPUT_DEFAULTS.emitTypes) emitTypes = input.setup.emitTypes;
   if (input.setup.sourceMap !== OUTPUT_DEFAULTS.sourceMap) sourceMap = input.setup.sourceMap;
-  if (input.setup.importCss !== OUTPUT_DEFAULTS.importCss) importCss = input.setup.importCss;
   if (input.setup.minify !== OUTPUT_DEFAULTS.minify) minify = input.setup.minify;
 
   const cli = input.cliOverrides;
-  if (cli?.cssDir !== undefined) cssDir = { value: cli.cssDir, origin: "cli" };
+  if (cli?.cssDir !== undefined) {
+    cssDir = { value: cli.cssDir, origin: "cli" };
+    cssDirs = undefined;
+  }
   if (cli?.mapDir !== undefined) mapDir = { value: cli.mapDir, origin: "cli" };
   if (cli?.cssName !== undefined) cssName = { value: cli.cssName, origin: "cli" };
   if (cli?.mapName !== undefined) mapName = { value: cli.mapName, origin: "cli" };
   if (cli?.emitCss !== undefined) emitCss = cli.emitCss;
   if (cli?.emitMap !== undefined) emitMap = cli.emitMap;
   if (cli?.emitTypes !== undefined) emitTypes = cli.emitTypes;
+  if (cli?.mapTypes !== undefined) emitTypes = cli.mapTypes;
   if (cli?.sourceMap !== undefined) sourceMap = cli.sourceMap;
-  if (cli?.importCss !== undefined) importCss = cli.importCss;
   if (cli?.minify !== undefined) minify = cli.minify;
 
   const include = input.projectConfig?.include;
+  const resolvedCssDirs =
+    cssDirs === undefined
+      ? [resolveDirectory(cssDir, source, workspaceRoot, include)]
+      : cssDirs.map((value) => resolveFileDirectory(value, source));
   return Object.freeze({
-    cssDir: resolveDirectory(cssDir, source, workspaceRoot, include),
+    cssDir: resolvedCssDirs[0] ?? source.directory,
+    cssDirs: Object.freeze(resolvedCssDirs),
     mapDir: resolveDirectory(mapDir, source, workspaceRoot, include),
     cssName: cssName.value,
     mapName: mapName.value,
@@ -215,7 +239,6 @@ export function resolveOutputSettings(
     emitMap,
     emitTypes,
     sourceMap,
-    importCss,
     minify,
   });
 }
@@ -255,9 +278,7 @@ function resolveDirectory(
     case "default":
       return source.directory;
     case "file":
-      return isAbsolutePath(setting.value)
-        ? normalizePath(setting.value)
-        : joinPath(source.directory, setting.value);
+      return resolveFileDirectory(setting.value, source);
     case "cli":
       return isAbsolutePath(setting.value)
         ? normalizePath(setting.value)
@@ -265,6 +286,11 @@ function resolveDirectory(
     case "project":
       return resolveProjectDirectory(setting.value, source, workspaceRoot, include);
   }
+}
+
+/** Resolve a file-level directory exactly against the source directory. */
+function resolveFileDirectory(value: string, source: ResolvedSource): string {
+  return isAbsolutePath(value) ? normalizePath(value) : joinPath(source.directory, value);
 }
 
 function resolveProjectDirectory(
@@ -368,7 +394,8 @@ export function defaultSetupFor(file: string): ResolvedSetup {
     emitMap: OUTPUT_DEFAULTS.emitMap,
     emitTypes: OUTPUT_DEFAULTS.emitTypes,
     sourceMap: OUTPUT_DEFAULTS.sourceMap,
-    importCss: OUTPUT_DEFAULTS.importCss,
     minify: OUTPUT_DEFAULTS.minify,
+    mapInherit: OUTPUT_DEFAULTS.mapInherit,
+    importCss: OUTPUT_DEFAULTS.importCss,
   };
 }

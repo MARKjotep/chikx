@@ -125,7 +125,7 @@ describe("output planning", () => {
       ["js", "tests/fixtures/canonical/generated/maps/button.map.js"],
     ]);
     const js = plan.plan.outputs.find((output) => output.kind === "js");
-    expect(js?.importSpecifier).toBe("../styles/button.css");
+    expect(js?.workspacePath).toBe("tests/fixtures/canonical/generated/maps/button.map.js");
   });
 
   test("project output configuration is the middle layer", () => {

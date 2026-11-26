@@ -7,6 +7,10 @@
 * values, never @runtime tokens. These tokens resolve in THIS module, so the
 * entry's local `chrome-padding: 40px` cannot leak into the defaults below.
 */
+@setup {
+  module: true;
+}
+
 @variables {
   chrome-padding: 12px;
   chrome-radius: 8px;

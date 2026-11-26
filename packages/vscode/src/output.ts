@@ -35,19 +35,18 @@ export function defaultSetupFor(sourcePath: string): ResolvedSetup {
     mapName: `${stem}.map.js`,
     emitCss: true,
     emitMap: true,
-    emitTypes: true,
+    emitTypes: false,
     sourceMap: false,
-    importCss: true,
-    minify: false,
+    minify: true,
   };
 }
 
 const BOOLEAN_KEYS = new Set([
   "emit-css",
   "emit-map",
+  "map-types",
   "emit-types",
   "source-map",
-  "import-css",
   "minify",
   "module",
 ]);
@@ -68,6 +67,10 @@ export function fileSetup(
     prefix,
   };
   let moduleOnly = false;
+  // `map-types` is canonical; `emit-types` remains a deprecated alias. Resolve
+  // after the loop so the canonical key wins regardless of authored order.
+  let mapTypes: boolean | undefined;
+  let emitTypes: boolean | undefined;
   for (const setting of settings) {
     const value = setting.value;
     switch (setting.key) {
@@ -91,21 +94,22 @@ export function fileSetup(
           if (boolean === undefined) break;
           if (setting.key === "emit-css") setup.emitCss = boolean;
           if (setting.key === "emit-map") setup.emitMap = boolean;
-          if (setting.key === "emit-types") setup.emitTypes = boolean;
+          if (setting.key === "map-types") mapTypes = boolean;
+          if (setting.key === "emit-types") emitTypes = boolean;
           if (setting.key === "source-map") setup.sourceMap = boolean;
-          if (setting.key === "import-css") setup.importCss = boolean;
           if (setting.key === "minify") setup.minify = boolean;
           if (setting.key === "module") moduleOnly = boolean;
         }
         break;
     }
   }
+  if (mapTypes !== undefined) setup.emitTypes = mapTypes;
+  else if (emitTypes !== undefined) setup.emitTypes = emitTypes;
   if (moduleOnly) {
     // ADR-0014: a rule-bearing module plans no artifacts of its own.
     setup.emitCss = false;
     setup.emitMap = false;
     setup.emitTypes = false;
-    setup.importCss = false;
   }
   return setup;
 }

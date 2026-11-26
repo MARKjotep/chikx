@@ -1,2 +1,2 @@
-@setup { import-css: false; }
+@setup { emit-css: false;   }
 .button { color: red; }

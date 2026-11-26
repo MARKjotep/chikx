@@ -175,7 +175,7 @@ describe("interrupted writes", () => {
     const after = artifactContents(root);
     expect(Object.keys(after)).toHaveLength(ENTRY_COUNT);
     for (const [path, content] of Object.entries(after)) {
-      expect(content).toContain("padding: 2px");
+      expect(content).toContain("padding:2px");
       // Every surviving artifact is either the old or the new complete file —
       // never a prefix or a mixture.
       expect([before[path], content]).toContain(content);

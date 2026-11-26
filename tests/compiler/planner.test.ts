@@ -4,7 +4,6 @@ import type {
   PlanOutputsResult,
   ResolvedSetup,
 } from "../../packages/compiler/src/index.ts";
-import { importSpecifierFor } from "../../packages/compiler/src/output/importPath.ts";
 import type { OutputPlannerContext } from "../../packages/compiler/src/output/index.ts";
 import { planOutputs } from "../../packages/compiler/src/output/index.ts";
 import {
@@ -58,12 +57,7 @@ describe("output precedence and project configuration", () => {
         output: { cssDir: "dist/styles", mapDir: "dist/maps" },
       },
     });
-    expect(outputsOf(result)).toEqual([
-      "css:dist/styles/button.css",
-      "js:dist/maps/button.map.js",
-      "types:dist/maps/button.map.d.ts",
-    ]);
-    expect(result.plan.outputs[1]?.importSpecifier).toBe("../styles/button.css");
+    expect(outputsOf(result)).toEqual(["css:dist/styles/button.css", "js:dist/maps/button.map.js"]);
   });
 
   test("file setup overrides project directories and names without losing project defaults", () => {
@@ -74,12 +68,7 @@ describe("output precedence and project configuration", () => {
         output: { cssDir: "dist/styles", mapDir: "dist/maps" },
       },
     });
-    expect(outputsOf(result)).toEqual([
-      "css:file-out/file.css",
-      "js:dist/maps/button.map.js",
-      "types:dist/maps/button.map.d.ts",
-    ]);
-    expect(result.plan.outputs[1]?.importSpecifier).toBe("../../file-out/file.css");
+    expect(outputsOf(result)).toEqual(["css:file-out/file.css", "js:dist/maps/button.map.js"]);
   });
 
   test("file setup can disable map emission over project configuration", () => {
@@ -87,7 +76,7 @@ describe("output precedence and project configuration", () => {
       setup: setupFor("src/button.cssx", { emitMap: false }),
       projectConfig: {
         include: ["src/**/*.cssx"],
-        output: { cssDir: "dist/styles", mapDir: "dist/maps", emitMap: true },
+        output: { cssDir: "dist/styles", mapDir: "dist/maps", emitMap: true, mapTypes: true },
       },
     });
     expect(outputsOf(result)).toEqual(["css:dist/styles/button.css"]);
@@ -95,9 +84,9 @@ describe("output precedence and project configuration", () => {
     expect(result.diagnostics[0]?.severity).toBe("warning");
   });
 
-  test("project configuration disabling maps suppresses types with a warning", () => {
+  test("project configuration disabling maps suppresses requested types with a warning", () => {
     const result = run({
-      projectConfig: { output: { emitMap: false } },
+      projectConfig: { output: { emitMap: false, mapTypes: true } },
     });
     expect(outputsOf(result)).toEqual(["css:src/button.css"]);
     expect(result.diagnostics).toHaveLength(1);
@@ -124,9 +113,9 @@ describe("output precedence and project configuration", () => {
     expect(sourceRootFor("/ws", undefined, "/ws/src/a.cssx")).toBe("/ws");
   });
 
-  test("CLI disabling maps suppresses types and still applies CLI names", () => {
+  test("CLI disabling maps suppresses requested types and still applies CLI names", () => {
     const result = run({
-      cliOverrides: { emitMap: false, cssName: "cli.css" },
+      cliOverrides: { emitMap: false, emitTypes: true, cssName: "cli.css" },
     });
     expect(outputsOf(result)).toEqual(["css:src/cli.css"]);
     expect(result.diagnostics).toHaveLength(1);
@@ -214,17 +203,6 @@ describe("path and import helpers", () => {
     expect(isWithinPath("/ws", "/ws/src/x.css")).toBe(true);
     expect(isWithinPath("/ws", "/ws-other/x.css")).toBe(false);
     expect(isWithinPath("C:/Project", "c:/project/src/x.css")).toBe(true);
-  });
-
-  test("import specifiers add ./ where needed and preserve ../", () => {
-    expect(importSpecifierFor("/ws/src/button.map.js", "/ws/src/button.css")).toBe("./button.css");
-    expect(importSpecifierFor("/ws/modules/button.map.js", "/ws/styles/button.css")).toBe(
-      "../styles/button.css",
-    );
-    expect(importSpecifierFor("/ws/src/a.map.js", "/ws/src/styles/theme.css")).toBe(
-      "./styles/theme.css",
-    );
-    expect(importSpecifierFor("/ws/src/a.map.js", '/ws/src/the"me.css')).toBe('./the\\"me.css');
   });
 
   test("declaration and source-map names derive from the configured basenames", () => {

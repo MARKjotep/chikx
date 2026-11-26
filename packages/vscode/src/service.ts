@@ -37,6 +37,11 @@ export class AnalysisService {
   private readonly cache = new Map<string, DocumentState>();
   private readonly latestVersion = new Map<string, number>();
   private readonly pending = new Map<string, PendingEntry>();
+  /**
+   * Bumped by {@link invalidateAll}. Results computed before an invalidation
+   * belong to the old module graph and are neither cached nor notified.
+   */
+  private generation = 0;
   private readonly delayMs: number;
   private readonly setTimer: (callback: () => void, milliseconds: number) => unknown;
   private readonly clearTimer: (handle: unknown) => void;
@@ -67,7 +72,12 @@ export class AnalysisService {
       source.path,
       Math.max(source.version, this.latestVersion.get(source.path) ?? source.version),
     );
+    const generation = this.generation;
     const state = await this.analyze(source);
+
+    // A dependency changed while this analysis was running: the result may
+    // reference the old module graph, so never cache it.
+    if (generation !== this.generation) return state;
 
     const current = this.latestVersion.get(source.path) ?? source.version;
     const existing = this.cache.get(source.path);
@@ -110,11 +120,29 @@ export class AnalysisService {
     this.latestVersion.delete(path);
   }
 
+  /**
+   * Drop every cached result and pending debounce.
+   *
+   * Used when a `.cssx` document changes: any document may import the changed
+   * file, and the service deliberately keeps no reverse-import index in 0.1.0.
+   * Callers re-schedule the open documents afterwards; a result that was
+   * already running across this call is discarded by the generation guard.
+   */
+  invalidateAll(): void {
+    for (const pending of this.pending.values()) this.clearTimer(pending.handle);
+    this.pending.clear();
+    this.cache.clear();
+    this.latestVersion.clear();
+    this.generation += 1;
+  }
+
   private async runScheduled(
     source: SourceText,
     notify: (state: DocumentState) => void,
   ): Promise<void> {
+    const generation = this.generation;
     const state = await this.analyzeNow(source);
+    if (generation !== this.generation) return;
     if (state.analysis.version !== (this.latestVersion.get(source.path) ?? source.version)) return;
     notify(state);
   }

@@ -93,7 +93,7 @@ async function run(t) {
   await vscode.commands.executeCommand("chikx.compileFile");
   await waitForFile(path.join(rootA, "entry.css"));
   const cssA = await readText(vscode.Uri.file(path.join(rootA, "entry.css")));
-  t.match(cssA, /\.alpha-button \{/, "root-a's chikx.config.json prefix was not applied");
+  t.match(cssA, /\.alpha-button\{/, "root-a's chikx.config.json prefix was not applied");
 
   const entryB = await host.openDocument(vscode.Uri.file(path.join(rootB, "beta.cssx")));
   t.equal(

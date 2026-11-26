@@ -14,8 +14,9 @@ npm install --global @chikx/cli
 npx @chikx/cli build
 ```
 
-The published `bin` entry is `src/index.ts`, which relies on Bun's TypeScript loader. On Node.js,
-invoke the built entry point directly: `node node_modules/@chikx/cli/dist/index.js build`.
+The published `bin` entry is the built `dist/index.js`, so `npx @chikx/cli` / `bunx chikx` no longer
+need a TypeScript loader. The source and built entry use the `#!/usr/bin/env node` shebang, so the
+CLI runs on a Node-only machine (Bun executes the same file).
 
 ## Commands
 

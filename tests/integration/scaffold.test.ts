@@ -8,6 +8,7 @@ interface PackageManifest {
   type?: string;
   workspaces?: string[];
   bin?: Record<string, string>;
+  main?: string;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 }
@@ -31,10 +32,16 @@ describe("workspace scaffold", () => {
     expect(pkg.dependencies ?? {}).toEqual({});
   });
 
-  test("@chikx/cli exposes the Bun-native chikx bin", async () => {
+  test("@chikx/cli exposes the built Node-compatible chikx bin", async () => {
     const pkg = await readManifest("packages/cli/package.json");
     expect(pkg.name).toBe("@chikx/cli");
-    expect(pkg.bin).toEqual({ chikx: "src/index.ts" });
+    expect(pkg.bin).toEqual({ chikx: "./dist/index.js" });
+    expect(pkg.bin?.chikx).toBe(pkg.main);
+  });
+
+  test("CLI source entry uses the Node shebang so the built bin runs without Bun", async () => {
+    const source = await Bun.file(new URL("packages/cli/src/index.ts", root)).text();
+    expect(source.split("\n")[0]).toBe("#!/usr/bin/env node");
   });
 
   test("language service and VS Code packages are present", async () => {

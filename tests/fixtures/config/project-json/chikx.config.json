@@ -6,9 +6,8 @@
     "mapDir": "dist/maps",
     "emitCss": true,
     "emitMap": true,
-    "emitTypes": true,
+    "mapTypes": true,
     "sourceMap": false,
-    "importCss": true,
     "minify": false
   },
   "classes": { "strategy": "prefix", "prefix": "ui" },

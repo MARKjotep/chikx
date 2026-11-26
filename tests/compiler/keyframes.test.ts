@@ -344,8 +344,8 @@ describe("keyframes: merged fixture builds", () => {
   test("style-import/entry.cssx references an imported keyframe and emits its block", async () => {
     const entry = await compileFixtureBuild("style-import");
     expect(entry.diagnostics).toEqual([]);
-    expect(entry.css?.indexOf("@keyframes spin {")).toBe(0);
-    expect(entry.css).toContain("animation-name: spin;");
+    expect(entry.css?.indexOf("@keyframes spin{")).toBe(0);
+    expect(entry.css).toContain("animation-name:spin;");
   });
 
   test("token-only/entry.cssx is rejected because the imported block is not emitted", async () => {
@@ -358,8 +358,8 @@ describe("keyframes: merged fixture builds", () => {
     const entry = await compileFixtureBuild("duplicate-name");
     expect(entry.diagnostics).toEqual([]);
     const css = entry.css ?? "";
-    expect(css.split("@keyframes spin {")).toHaveLength(3);
-    expect(css).toContain("animation-name: spin;");
+    expect(css.split("@keyframes spin{")).toHaveLength(3);
+    expect(css).toContain("animation-name:spin;");
   });
 
   test("every merged fixture matches its expected/css byte-exact", async () => {

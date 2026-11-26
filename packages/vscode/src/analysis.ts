@@ -15,6 +15,7 @@ import type {
   ConditionalBlock,
   Declaration,
   Diagnostic,
+  MediaGroupingMode,
   NativeAtRule,
   OutputOptions,
   Rule,
@@ -54,20 +55,21 @@ export const SETUP_KEYS: readonly string[] = Object.freeze([
   "map-name",
   "emit-css",
   "emit-map",
+  "map-types",
   "emit-types",
   "source-map",
-  "import-css",
   "minify",
   "module",
+  "media-grouping",
 ]);
 
 /** Boolean `@setup` keys, the only ones whose values complete to `true`/`false`. */
 export const BOOLEAN_SETUP_KEYS: readonly string[] = Object.freeze([
   "emit-css",
   "emit-map",
+  "map-types",
   "emit-types",
   "source-map",
-  "import-css",
   "minify",
   "module",
 ]);
@@ -229,6 +231,8 @@ export interface AnalyzeOptions {
   readonly workspaceRoot?: string;
   /** Project output settings passed to `compile` so generated imports match the CLI. */
   readonly output?: OutputOptions;
+  /** Project-level media grouping (`compiler.mediaGrouping`); file `@setup` still wins. */
+  readonly mediaGrouping?: MediaGroupingMode;
   /** Run `compile` after parsing. Default `true`. */
   readonly compile?: boolean;
 }
@@ -917,6 +921,7 @@ export async function compileSource(
       file: source.file ?? source.path,
       workspaceRoot,
       ...(options.media === undefined ? {} : { media: options.media }),
+      ...(options.mediaGrouping === undefined ? {} : { mediaGrouping: options.mediaGrouping }),
       naming: { strategy: options.namingStrategy ?? "prefix" },
       ...(effectivePrefix === undefined ? {} : { prefix: effectivePrefix }),
       ...(options.output ?? {}),

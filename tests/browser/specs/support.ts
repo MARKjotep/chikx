@@ -87,7 +87,14 @@ export interface OpenOptions {
 
 /** Deterministic page URL for one scenario variant. */
 export function pagePath(scenarioName: string, variant: PageVariant): string {
-  const suffix = variant === "minified" ? ".min" : variant === "nogroup" ? ".nogroup" : "";
+  const suffix =
+    variant === "minified"
+      ? ".min"
+      : variant === "nogroup"
+        ? ".nogroup"
+        : variant === "merge"
+          ? ".merge"
+          : "";
   return `/pages/${scenarioName}${suffix}.html`;
 }
 

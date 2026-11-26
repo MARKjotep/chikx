@@ -112,7 +112,7 @@ describe("analysis diagnostics", () => {
       1,
     );
     // The first value still wins in the tolerant compile.
-    expect(state.compiled?.css).toContain("padding: 4px;");
+    expect(state.compiled?.css).toContain("padding:4px;");
   });
 
   test("a module-graph duplicate is reported once by the compiler (CSSX-U04)", async () => {
@@ -339,5 +339,54 @@ describe("analysis service", () => {
     gates.get(1)?.({ analysis: analyzeText(versionOne) });
     await first;
     expect(service.cached(versionTwo)?.analysis.version).toBe(2);
+  });
+
+  test("invalidateAll drops every cached state so importers re-analyze", async () => {
+    let analyses = 0;
+    const service = new AnalysisService(async (input) => {
+      analyses += 1;
+      return { analysis: analyzeText(input) };
+    });
+    const importer = source(".a { padding: $t.space; }", "importer.cssx", 3);
+
+    await service.analyzeNow(importer);
+    expect(service.cached(importer)?.analysis.version).toBe(3);
+    expect(analyses).toBe(1);
+
+    // A dependency changed: the cached entry for an unchanged importer
+    // version must not survive and must be recomputed on the next request.
+    service.invalidateAll();
+    expect(service.cached(importer)).toBeUndefined();
+    await service.analyzeNow(importer);
+    expect(analyses).toBe(2);
+    expect(service.cached(importer)?.analysis.version).toBe(3);
+  });
+
+  test("an analysis spanning invalidateAll is neither cached nor notified", async () => {
+    const callbacks: (() => void)[] = [];
+    let release: (() => void) | undefined;
+    const service = new AnalysisService(
+      (input) =>
+        new Promise((resolve) => {
+          release = () => resolve({ analysis: analyzeText(input) });
+        }),
+      {
+        setTimer: (callback) => {
+          callbacks.push(callback);
+          return callbacks.length - 1;
+        },
+        clearTimer: () => undefined,
+      },
+    );
+    const importer = source(".a { padding: $t.space; }", "inflight.cssx", 1);
+    const seen: number[] = [];
+    service.schedule(importer, (state) => seen.push(state.analysis.version));
+    callbacks[0]?.();
+    service.invalidateAll();
+    release?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(seen).toEqual([]);
+    expect(service.cached(importer)).toBeUndefined();
   });
 });

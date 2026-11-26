@@ -3,15 +3,18 @@
  *
  * | Assertion | How |
  * |---|---|
- * | literal class-name keys infer | a consumer that imports the generated map declares `map["card-one"]` and the camelCase export as `"ui-card-one"` literals and typechecks clean |
- * | a wrong key still errors | `@ts-expect-error` on `map["card-three"]` produces tsc exit 0; the same file **without** the directive is a red run (the directive is genuinely consumed, not unused) |
- * | the value is a literal, not `string` | assigning `map["card-one"]` to `"ui-card-two"` is an error, so a stray `@ts-expect-error` there is consumed |
- * | the mechanism cannot pass vacuously | a stray `@ts-expect-error` on a **correct** key leaves an unused directive (`TS2578`) and tsc fails |
+ * | literal class-name exports infer | a consumer that imports the generated map declares `cardOne` as the `"ui-card-one"` literal and typechecks clean |
+ * | a missing export still errors | `@ts-expect-error` on `import { cardThree }` produces tsc exit 0; the same file **without** the directive is a red run (the directive is genuinely consumed, not unused) |
+ * | the value is a literal, not `string` | assigning `cardOne` to `"ui-card-two"` is an error, so a stray `@ts-expect-error` there is consumed |
+ * | the mechanism cannot pass vacuously | a stray `@ts-expect-error` on a **correct** assignment leaves an unused directive (`TS2578`) and tsc fails |
  *
- * `tsc` is the repository's own TypeScript binary run as a subprocess under the newest
- * installed Node runtime (falling back to Bun when no Node is installed); the consumer
- * files are written into the generated project so the import path is the real one a
- * consumer writes: `./dist/maps/src/card.map.js` → `card.map.d.ts`.
+ * The declarations are opt-in (`map-types: true` in the generated project), so
+ * this row also proves the CLI emits and type-checks them on request. `tsc` is
+ * the repository's own TypeScript binary run as a subprocess under the newest
+ * installed Node runtime (falling back to Bun when no Node is installed); the
+ * consumer files are written into the generated project so the import path is
+ * the real one a consumer writes: `./dist/maps/src/card.map.js` →
+ * `card.map.d.ts`.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -38,52 +41,53 @@ let tscRuntime = "";
 /** Path of the generated map module, relative to {@link root}. */
 const MAP_MODULE = "./dist/maps/src/card.map.js";
 
-/** Baseline: literals infer from both the named exports and the default map. */
-const CONSUMER_CLEAN = `import map, { cardOne, cardTwo } from ${JSON.stringify(MAP_MODULE)};
+/** Baseline: literal types from the named exports. */
+const CONSUMER_CLEAN = `import { cardOne, cardTwo } from ${JSON.stringify(MAP_MODULE)};
 
 // Named exports are literal types, not \`string\`.
 const namedLiteral: "ui-card-one" = cardOne;
 const secondLiteral: "ui-card-two" = cardTwo;
-// Keys are literal class names and their values are the emitted literal.
-const keyedLiteral: "ui-card-one" = map["card-one"];
-const camelLiteral: "ui-card-two" = map.cardTwo;
-// A map lookup is assignable to the wide type as well.
-const wide: string = map["card-one"];
+// A class name is assignable to the wide type as well.
+const wide: string = cardOne;
 
-export { namedLiteral, secondLiteral, keyedLiteral, camelLiteral, wide };
+export { namedLiteral, secondLiteral, wide };
 `;
 
-/** Wrong key with the expectation that it errors. */
-const CONSUMER_WRONG_KEY = `import map from ${JSON.stringify(MAP_MODULE)};
+/** Missing export with the expectation that it errors (there is no default map). */
+const CONSUMER_WRONG_EXPORT = `// @ts-expect-error - "cardThree" is not exported by this stylesheet
+import { cardThree } from ${JSON.stringify(MAP_MODULE)};
 
-// @ts-expect-error - "card-three" is not a class in this stylesheet
-const wrongKey: string = map["card-three"];
+void cardThree;
+`;
 
-export { wrongKey };
+/** Control: the same missing export without the directive must fail. */
+const CONTROL_WRONG_EXPORT = `import { cardThree } from ${JSON.stringify(MAP_MODULE)};
+
+void cardThree;
 `;
 
 /** Wrong literal with the expectation that it errors: proves the value type is literal. */
-const CONSUMER_WRONG_LITERAL = `import map from ${JSON.stringify(MAP_MODULE)};
+const CONSUMER_WRONG_LITERAL = `import { cardOne } from ${JSON.stringify(MAP_MODULE)};
 
-// @ts-expect-error - the map value is the literal "ui-card-one", not an arbitrary string
-const wrongLiteral: "ui-card-two" = map["card-one"];
+// @ts-expect-error - the export value is the literal "ui-card-one", not an arbitrary string
+const wrongLiteral: "ui-card-two" = cardOne;
 
 export { wrongLiteral };
 `;
 
-/** Control: the same wrong key without the directive must fail. */
-const CONTROL_WRONG_KEY = `import map from ${JSON.stringify(MAP_MODULE)};
+/** Control: the same wrong literal without the directive must fail. */
+const CONTROL_WRONG_LITERAL = `import { cardOne } from ${JSON.stringify(MAP_MODULE)};
 
-const wrongKey: string = map["card-three"];
+const wrongLiteral: "ui-card-two" = cardOne;
 
-export { wrongKey };
+export { wrongLiteral };
 `;
 
-/** Control: a stray directive on a correct key must fail with TS2578. */
-const CONTROL_UNUSED_DIRECTIVE = `import map from ${JSON.stringify(MAP_MODULE)};
+/** Control: a stray directive on a correct assignment must fail with TS2578. */
+const CONTROL_UNUSED_DIRECTIVE = `import { cardOne } from ${JSON.stringify(MAP_MODULE)};
 
-// @ts-expect-error - nothing is wrong with this key
-const fine: string = map["card-one"];
+// @ts-expect-error - nothing is wrong with this assignment
+const fine: "ui-card-one" = cardOne;
 
 export { fine };
 `;
@@ -120,7 +124,7 @@ beforeAll(async () => {
   const bun = matrix.rows.find((row) => row.engine === "bun" && row.status === "verified")?.runtime;
   tscBinary = node?.binary ?? bun?.binary ?? "bun";
   tscRuntime = node === undefined ? `bun ${bun?.version ?? "?"}` : `node ${node.version}`;
-  root = createTempProject(generatedProject({ importCss: false, sourceMap: false }).files);
+  root = createTempProject(generatedProject({ sourceMap: false, mapTypes: true }).files);
   // The declarations under test are generated artifacts, so build with the built CLI first.
   const cliEntry = join(REPO_ROOT, "packages", "cli", "dist", "index.js");
   const buildOutcome = runProcess(tscBinary, [cliEntry, "build"], { cwd: root });
@@ -128,9 +132,10 @@ beforeAll(async () => {
   expect(existsSync(join(root, "dist", "maps", "src", "card.map.d.ts"))).toBe(true);
   writeProjectFiles(root, {
     "consumer.ts": CONSUMER_CLEAN,
-    "wrong-key.ts": CONSUMER_WRONG_KEY,
+    "wrong-export.ts": CONSUMER_WRONG_EXPORT,
+    "control-wrong-export.ts": CONTROL_WRONG_EXPORT,
     "wrong-literal.ts": CONSUMER_WRONG_LITERAL,
-    "control-wrong-key.ts": CONTROL_WRONG_KEY,
+    "control-wrong-literal.ts": CONTROL_WRONG_LITERAL,
     "control-unused-directive.ts": CONTROL_UNUSED_DIRECTIVE,
   });
 });
@@ -140,38 +145,42 @@ afterAll(() => {
 });
 
 describe("type inference from the generated declarations", () => {
-  test("the generated declarations pin literal class names", () => {
+  test("the generated declarations pin the literal bindings", () => {
     const declarations = readFileSync(join(root, "dist", "maps", "src", "card.map.d.ts"), "utf8");
     expect(declarations).toContain('export declare const cardOne: "ui-card-one";');
-    expect(declarations).toContain('readonly "card-one": "ui-card-one"');
-    expect(declarations).toContain('readonly "card-two": "ui-card-two"');
+    expect(declarations).toContain('export declare const cardTwo: "ui-card-two";');
+    expect(declarations).not.toContain("export default");
+    expect(declarations).not.toContain("readonly");
     expect(tscBinary.startsWith("/")).toBe(true);
   });
 
-  test("literal keys and exports infer in a plain consumer", () => {
+  test("literal exports infer in a plain consumer", () => {
     const outcome = typecheck(["consumer.ts"]);
     expectStatus(label("consumer.ts"), outcome, 0);
     expect(outcome.status).toBe(0);
   });
 
-  test("a wrong key still errors under @ts-expect-error", () => {
-    const expected = typecheck(["wrong-key.ts"]);
-    const control = typecheck(["control-wrong-key.ts"]);
+  test("a missing class export still errors under @ts-expect-error", () => {
+    const expected = typecheck(["wrong-export.ts"]);
+    const control = typecheck(["control-wrong-export.ts"]);
     // The directive is consumed: with it tsc is clean, without it tsc is red.
-    expectStatus(label("wrong-key.ts"), expected, 0);
+    expectStatus(label("wrong-export.ts"), expected, 0);
     expect(expected.status).toBe(0);
     expect(control.status).not.toBe(0);
-    expect(control.stdout + control.stderr).toContain("card-three");
-    expect(control.stdout + control.stderr).toMatch(/TS7053|TS2339/u);
+    expect(control.stdout + control.stderr).toContain("cardThree");
+    expect(control.stdout + control.stderr).toMatch(/TS2305|TS2724/u);
   });
 
-  test("the map value is a literal, so a wrong literal is an error too", () => {
+  test("the export value is a literal, so a wrong literal is an error too", () => {
     const expected = typecheck(["wrong-literal.ts"]);
+    const control = typecheck(["control-wrong-literal.ts"]);
     expectStatus(label("wrong-literal.ts"), expected, 0);
     expect(expected.status).toBe(0);
+    expect(control.status).not.toBe(0);
+    expect(control.stdout + control.stderr).toMatch(/TS2322|TS2741/u);
   });
 
-  test("a stray @ts-expect-error on a correct key fails with TS2578", () => {
+  test("a stray @ts-expect-error on a correct assignment fails with TS2578", () => {
     const control = typecheck(["control-unused-directive.ts"]);
     expectStatus(label("control-unused-directive.ts"), control, 2);
     expect(control.stdout + control.stderr).toContain("TS2578");

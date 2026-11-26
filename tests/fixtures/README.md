@@ -15,8 +15,8 @@ tests/fixtures/<group>/<fixture>/
   source-path.txt          # optional virtual entry path used instead of `input.cssx`
   expected/
     css                    # golden CSS; filled in P2
-    map.js                 # golden JS class map; filled in P3/P4
-    map.d.ts               # golden TypeScript declarations; filled in P4
+    map.js                 # golden JS class map (named `export const` bindings)
+    map.d.ts               # optional golden declarations, only for the two fixtures that pin them
     diagnostics.json       # diagnostics expectations (see below)
 ```
 
@@ -36,10 +36,15 @@ tests/fixtures/<group>/<fixture>/
 
 ## Golden artifact status
 
-`expected/css`, `expected/map.js` and `expected/map.d.ts` are intentionally empty placeholders. They
-are filled in when the owning phase lands — CSS in P2, JS class maps in P3/P4, declarations in P4 —
-and are reviewed by the lead before being treated as golden. Do not "fix" a fixture by editing an
-expected artifact to match buggy output; fix the compiler or escalate the contract.
+`expected/css` and `expected/map.js` are intentionally empty placeholders. They are filled in when the
+owning phase lands — CSS in P2, JS class maps in P3/P4 — and are reviewed by the lead before being
+treated as golden. Do not "fix" a fixture by editing an expected artifact to match buggy output; fix
+the compiler or escalate the contract.
+
+`expected/map.d.ts` is no longer part of the default layout: declarations are opt-in (`map-types`),
+so only fixtures whose goldens pin the declaration text (`canonical/button`, `naming/prefix`) ship
+one. The map is one `export const <camelCase> = "<emitted>";` line per class with no default export;
+see SPECIFICATION.md §8 (CSSX-A52).
 
 `expected/diagnostics.json` is authored now **only** where the expectation follows from the frozen
 syntax/lexical rules and the diagnostic registry in
@@ -167,14 +172,13 @@ points at end of file, where an unclosed block is reported.
 | `naming/empty-prefix` | An explicit empty prefix leaves names unchanged. |
 | `naming/camel-collision` | `foo-bar` and `fooBar` collide; intended CHIKX4001 error. |
 | `naming/reserved-js-identifier` | `.default` and `.delete` stay in the quoted-key map, omit named exports and warn (CHIKX4001 warning) in P4. |
-| `output/no-setup` | Defaults: CSS and map beside the source, declarations enabled, no source map. |
+| `output/no-setup` | Defaults: CSS and map beside the source, declarations off (`map-types` opt-in), no source map. |
 | `output/only-css-dir` | Only `css-dir` is overridden; map output uses the default directory. |
 | `output/only-map-dir` | Only `map-dir` is overridden; CSS output uses the default directory. |
 | `output/only-names` | Only `css-name`/`map-name` are overridden; effective directories are retained. |
 | `output/dirs-and-names` | Both directories and both names; `classes.js` yields `classes.d.ts`, `theme.css` yields `theme.css.map`. |
 | `output/nested-source` | Uses `source-path.txt` (`src/pages/dashboard.cssx`) to pin project-relative subdirectory preservation. |
 | `output/disabled-emit` | `emit-map: false`; types are auto-suppressed with a documented warning (SPECIFICATION.md §8). |
-| `output/custom-import-css-false` | `import-css: false`; JS map omits the CSS side-effect import. |
 | `config/project-json` | Every `chikx.config.json` key from SPECIFICATION.md §10 beside `input.cssx`, which uses them. |
 
 ## Authoring rules

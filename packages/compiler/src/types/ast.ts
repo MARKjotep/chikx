@@ -72,6 +72,12 @@ export interface Setting {
    * (`"ui"`, `true`, `12`). Decoders remove quotes and resolve escapes.
    */
   readonly value: string;
+  /**
+   * Covers the raw {@link value} slice only, excluding the key, colon and
+   * terminator. List decoders use it to report per-item spans; it is zero-width
+   * when the authored value is empty.
+   */
+  readonly valueSpan: Span;
   /** Covers the key through the terminating `;`. */
   readonly span: Span;
 }

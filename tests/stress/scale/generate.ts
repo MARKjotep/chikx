@@ -362,7 +362,6 @@ export function projectOutputOptions(): OutputOptions {
     emitMap: true,
     emitTypes: true,
     sourceMap: false,
-    importCss: true,
     minify: false,
   };
 }
@@ -681,7 +680,6 @@ const results = await compileProject(entries, createNodeHost(root), {
     emitCss: true,
     emitMap: true,
     emitTypes: true,
-    importCss: true,
     sourceMap: false,
     minify: false,
   },

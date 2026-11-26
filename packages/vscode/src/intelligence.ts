@@ -91,6 +91,13 @@ export interface CompletionResult {
   readonly replaceEnd: number;
 }
 
+/** One id selector authored in the current document. */
+export interface IdOccurrence {
+  readonly name: string;
+  /** Range of the name text after `#` (the rename-addressable span). */
+  readonly range: Range;
+}
+
 /** Hover text plus the range it applies to. */
 export interface HoverContent {
   readonly range: Range;
@@ -781,14 +788,15 @@ function hexColorItems(word: string, replaceStart?: number): readonly Completion
 }
 
 /**
- * Offset of the `#` the author typed in front of a value word.
+ * Offset of the `#` the author typed directly in front of a completion word.
  *
  * `#` is not a word character, so the scan stops at it: `color: #` has an empty
- * word and `color: #f7` only `f7`. The offset is the replacement start for the
- * colour items, so accepting one swaps the typed `#…` prefix instead of
- * appending to it (`color: #` + `red` → `color: red`).
+ * word and `color: #f7` only `f7`; a selector `#` behaves the same (`#` and
+ * `#pan`). The offset is the replacement start for the colour and id items, so
+ * accepting one swaps the typed `#…` prefix instead of appending to it
+ * (`color: #` + `red` → `color: red`; selector `#pan` + `#panel` → `#panel`).
  */
-function hashColorStart(text: string, offset: number, word: string): number | undefined {
+function hashPrefixStart(text: string, offset: number, word: string): number | undefined {
   const hash = offset - word.length - 1;
   return hash >= 0 && text[hash] === "#" ? hash : undefined;
 }
@@ -1345,13 +1353,77 @@ const SETUP_DOCS: Readonly<Record<string, string>> = Object.freeze({
   "map-name": "Optional JS map basename (must end in `.js`).",
   "emit-css": "Write the stylesheet (default true).",
   "emit-map": "Write the JS class map (default true).",
-  "emit-types": "Write `.d.ts` beside the JS map (default true).",
+  "map-types": "Write `.d.ts` beside the JS map (default false; opt-in).",
+  "emit-types": "Deprecated alias for `map-types` (default false).",
   "source-map": "Write a CSS source map (default false).",
-  "import-css": "Include the relative CSS import in the JS map (default true).",
-  minify: "Compact generated CSS whitespace (default false).",
+  minify: "Compact generated CSS whitespace (default true; set false for readable output).",
   module:
     "Rule-bearing module: imported for its rules only, so the file plans no artifacts of its own (ADR-0014).",
+  "map-inherit":
+    "Keep a style-merged module's class bindings out of the importer's map and `.d.ts` (default true; ADR-0020).",
+  "import-css":
+    "Prepend a CSS side-effect import to the generated class map for bundlers (default false; ADR-0021).",
+  "media-grouping":
+    "Grouping of emitted conditional runs (default `safe`; `merge` is the opt-in disjoint-family optimizer; ADR-0024).",
 });
+
+/**
+ * Exact Markdown for the `media-grouping` hover card (owner request, ADR-0024).
+ * Kept as one frozen string so the intelligence test can pin it verbatim.
+ */
+const MEDIA_GROUPING_HOVER = [
+  "**`media-grouping`** — Chikx `@setup` key",
+  "",
+  "Controls how emitted CSS groups conditional declaration runs.",
+  "",
+  "- `none` — no grouping; every run is emitted where it was authored.",
+  "- `safe` — default; merges only adjacent runs with the same selector, condition and native at-rule context.",
+  "- `merge` — additionally merges same-selector/same-condition media runs across declarations whose property families are provably disjoint. It never merges across a shared property family, `all`, a `var()` value, or a different selector or condition.",
+  "",
+  "Default: `safe`, unless the project config or this file overrides it. See ADR-0024.",
+].join("\n");
+
+/** Value completions for `@setup` keys that accept a small fixed set. */
+const SETUP_VALUE_COMPLETIONS: Readonly<Record<string, readonly CompletionSuggestion[]>> =
+  Object.freeze({
+    "media-grouping": Object.freeze<CompletionSuggestion[]>([
+      {
+        label: "merge",
+        kind: "setup-value",
+        detail: "Merge disjoint-family conditional runs (ADR-0024)",
+        insertText: "merge",
+      },
+      {
+        label: "safe",
+        kind: "setup-value",
+        detail: "Merge adjacent compatible runs (default)",
+        insertText: "safe",
+      },
+      {
+        label: "none",
+        kind: "setup-value",
+        detail: "No grouping; emit runs in place",
+        insertText: "none",
+      },
+    ]),
+  });
+
+/**
+ * `@setup` keys offered by completion: the analysis table plus ADR-0020's
+ * module-side `map-inherit` switch and ADR-0021's `import-css` opt-in.
+ */
+const SETUP_COMPLETION_KEYS: readonly string[] = Object.freeze([
+  ...SETUP_KEYS,
+  "map-inherit",
+  "import-css",
+]);
+
+/** Boolean `@setup` keys offered by completion (analysis table plus the opt-ins). */
+const SETUP_BOOLEAN_COMPLETION_KEYS: readonly string[] = Object.freeze([
+  ...BOOLEAN_SETUP_KEYS,
+  "map-inherit",
+  "import-css",
+]);
 
 function skipString(text: string, start: number): number {
   const quote = text[start];
@@ -1658,6 +1730,41 @@ function findEnclosingNativeAtRule(
   return found;
 }
 
+/**
+ * Innermost `@group.<name>` definition or use-site block containing `offset`.
+ *
+ * A group body holds declarations only (ADR-0017), so the interior is a
+ * declaration context even though a definition is not a style rule; the
+ * authored brace depth separates the block interior from its closing brace.
+ */
+function findEnclosingGroupBody(analysis: AnalyzeResult, offset: number): SpanLike | undefined {
+  let found: SpanLike | undefined;
+  const visit = (node: unknown): void => {
+    const candidate = node as {
+      kind?: string;
+      span?: SpanLike;
+      body?: readonly unknown[];
+      block?: readonly unknown[];
+    };
+    if (
+      candidate.span !== undefined &&
+      (offset < candidate.span.start || offset > candidate.span.end)
+    ) {
+      return;
+    }
+    if (
+      (candidate.kind === "group-definition" || candidate.kind === "group-use-site") &&
+      candidate.span !== undefined
+    ) {
+      found = candidate.span;
+    }
+    for (const child of candidate.body ?? []) visit(child);
+    for (const child of candidate.block ?? []) visit(child);
+  };
+  for (const item of analysis.ast.items) visit(item);
+  return found;
+}
+
 function findEnclosingSetup(analysis: AnalyzeResult, offset: number): SpanLike | undefined {
   for (const item of analysis.ast.items) {
     if (item.kind === "setup" && offset >= item.span.start && offset <= item.span.end)
@@ -1717,6 +1824,21 @@ function groupModuleLabel(analysis: AnalyzeResult, file: string): string {
 function groupDefaultLines(symbol: GroupSymbol): string[] {
   if (symbol.defaults.length === 0) return ["_No default declarations._"];
   return symbol.defaults.map((entry) => `\`${entry.property}: ${entry.value}\``);
+}
+
+/**
+ * Hover section for default declarations.
+ *
+ * One bullet per declaration keeps every property on its own rendered line
+ * (consecutive inline-code paragraphs otherwise soft-collapse into one).
+ * An empty definition keeps the existing single italic line instead of an
+ * empty heading.
+ */
+function groupDefaultSection(
+  defaults: readonly { readonly property: string; readonly value: string }[],
+): string[] {
+  if (defaults.length === 0) return ["_No default declarations._"];
+  return ["**Defaults**", ...defaults.map((entry) => `- \`${entry.property}: ${entry.value}\``)];
 }
 
 /** Completion item for one visible group name, local first and ambiguity marked. */
@@ -1894,10 +2016,7 @@ function groupHover(analysis: AnalyzeResult, cursor: GroupCursor): HoverContent 
     if (declarations.length === 0) {
       lines.push("_No default declarations; the group is inert._");
     } else {
-      lines.push(
-        "Defaults:",
-        ...declarations.map((entry) => `\`${entry.property}: ${entry.value}\``),
-      );
+      lines.push(...groupDefaultSection(declarations));
     }
     return { markdown: lines.join("\n"), range };
   }
@@ -1932,13 +2051,11 @@ function groupHover(analysis: AnalyzeResult, cursor: GroupCursor): HoverContent 
     "",
     `Defined in ${groupModuleLabel(analysis, entry.symbol.file)}.`,
     "",
-    "Defaults:",
-    ...groupDefaultLines(entry.symbol),
-    "",
-    overrides.length === 0
-      ? "Overrides in this use site: none."
-      : `Overrides in this use site: ${overrides.map((name) => `\`${name}\``).join(", ")}`,
+    ...groupDefaultSection(entry.symbol.defaults),
   ];
+  if (overrides.length > 0) {
+    lines.push("", "**Overrides at this use site**", ...overrides.map((name) => `- \`${name}\``));
+  }
   return { markdown: lines.join("\n"), range };
 }
 
@@ -2338,6 +2455,23 @@ export function contextAt(
     return { kind: "property", word };
   }
 
+  // ADR-0017: a group definition (top level) and a use site (inside a rule)
+  // accept declarations only. Their interiors are therefore declaration
+  // contexts exactly like a rule body, but never a selector context. Without
+  // this branch a top-level definition body fell through to `none`, so the
+  // suggest list dropped every CSS property (board bug 25).
+  const groupBody = findEnclosingGroupBody(analysis, offset);
+  if (groupBody !== undefined && braceDepthAt(text, offset) > braceDepthAt(text, groupBody.start)) {
+    const statement = currentLineStatement(text, offset);
+    const declarationStatement = /^\s*([A-Za-z-]+)\s*:(\s.*)?$/.exec(statement);
+    if (declarationStatement !== null) {
+      const property = declarationStatement[1];
+      const valueWord = declarationStatement[2] === undefined ? "" : word;
+      return { kind: "value", property, word: valueWord };
+    }
+    return { kind: "property", word };
+  }
+
   const enclosing = findEnclosingRule(analysis, offset);
   if (enclosing !== undefined) {
     const { rule, nestedInRule } = enclosing;
@@ -2492,6 +2626,118 @@ function importPathItems(
     });
   }
   return items;
+}
+
+/**
+ * Id tokens inside one authored selector.
+ *
+ * Mirrors `scanSelector`'s selector-only contract: quoted text, escapes,
+ * selector comments and attribute contents are inert, while every selector
+ * position counts — base selectors, comma lists, `&` nesting and functional
+ * pseudo arguments (`:is(#a)`, `:not(#b)`, `:has(> #c)`). `:global(#x)` is
+ * deliberately included: a global id is authored CSS and is never renamed or
+ * mapped, but it is still an addressable id in this document.
+ */
+function scanSelectorIds(
+  selector: string,
+): readonly { readonly name: string; readonly start: number; readonly end: number }[] {
+  const ids: { name: string; start: number; end: number }[] = [];
+  let index = 0;
+  let bracketDepth = 0;
+  while (index < selector.length) {
+    const char = selector[index] ?? "";
+    if (char === '"' || char === "'") {
+      index = skipString(selector, index);
+      continue;
+    }
+    if (char === "\\") {
+      index += 2;
+      continue;
+    }
+    if (char === "/" && selector[index + 1] === "*") {
+      const close = selector.indexOf("*/", index + 2);
+      index = close < 0 ? selector.length : close + 2;
+      continue;
+    }
+    if (char === "[") {
+      bracketDepth += 1;
+      index += 1;
+      continue;
+    }
+    if (char === "]") {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+      index += 1;
+      continue;
+    }
+    if (char === "#" && bracketDepth === 0 && /[A-Za-z_]/.test(selector[index + 1] ?? "")) {
+      let end = index + 2;
+      while (end < selector.length && /[A-Za-z0-9_-]/.test(selector[end] ?? "")) end += 1;
+      ids.push({ name: selector.slice(index + 1, end), start: index + 1, end });
+      index = end;
+      continue;
+    }
+    index += 1;
+  }
+  return ids;
+}
+
+/**
+ * Every id token in the current document, one entry per authored occurrence,
+ * in document order.
+ *
+ * Ids are document-global: rename and completion only ever reach names authored
+ * in this file, never ids from imports (those keep their authored selectors and
+ * are not renamed). Only rule selectors are scanned, so declaration values such
+ * as `content: "#x"` or a `#fff` colour stay out by construction; nested rules,
+ * conditional blocks and native at-rule blocks are traversed like the class
+ * collector. A repeated name keeps one entry per occurrence for rename;
+ * {@link collectIdSelectors} dedupes it for completion.
+ */
+export function collectIdOccurrences(analysis: AnalyzeResult): readonly IdOccurrence[] {
+  const occurrences: IdOccurrence[] = [];
+  const visit = (node: unknown): void => {
+    const candidate = node as {
+      kind?: string;
+      selector?: string;
+      selectorSpan?: SpanLike;
+      body?: readonly unknown[];
+      block?: readonly unknown[];
+    };
+    if (
+      candidate.kind === "rule" &&
+      typeof candidate.selector === "string" &&
+      candidate.selectorSpan !== undefined
+    ) {
+      for (const token of scanSelectorIds(candidate.selector)) {
+        occurrences.push({
+          name: token.name,
+          range: rangeAt(
+            analysis.lineStarts,
+            candidate.selectorSpan.start + token.start,
+            candidate.selectorSpan.start + token.end,
+          ),
+        });
+      }
+    }
+    for (const child of blockMembers(candidate)) visit(child);
+  };
+  for (const item of analysis.ast.items) visit(item);
+  return occurrences;
+}
+
+/**
+ * Every distinct id selector in the current document, in first-appearance
+ * order.
+ *
+ * Completion offers one item per name, so this dedupes the full occurrence
+ * list. Rename uses {@link collectIdOccurrences} directly.
+ */
+export function collectIdSelectors(analysis: AnalyzeResult): readonly IdOccurrence[] {
+  const occurrences = new Map<string, IdOccurrence>();
+  for (const occurrence of collectIdOccurrences(analysis)) {
+    if (!occurrences.has(occurrence.name)) occurrences.set(occurrence.name, occurrence);
+  }
+  return [...occurrences.values()];
 }
 
 /**
@@ -2670,15 +2916,22 @@ export function completionsAt(
     case "setup-key": {
       const replaceStart = offset - context.word.length;
       return result(
-        SETUP_KEYS.filter((key) => context.word === "" || key.startsWith(context.word)).map(
-          setupKeyItem,
-        ),
+        SETUP_COMPLETION_KEYS.filter(
+          (key) => context.word === "" || key.startsWith(context.word),
+        ).map(setupKeyItem),
         replaceStart,
       );
     }
     case "setup-value": {
       const replaceStart = offset - context.word.length;
-      if (!BOOLEAN_SETUP_KEYS.includes(context.key)) return result([], replaceStart);
+      const fixed = SETUP_VALUE_COMPLETIONS[context.key];
+      if (fixed !== undefined) {
+        return result(
+          fixed.filter((item) => context.word === "" || item.label.startsWith(context.word)),
+          replaceStart,
+        );
+      }
+      if (!SETUP_BOOLEAN_COMPLETION_KEYS.includes(context.key)) return result([], replaceStart);
       return result(
         [
           { label: "true", kind: "setup-value", insertText: "true" },
@@ -2727,7 +2980,7 @@ export function completionsAt(
       // replacing the typed prefix. Outside a colour-accepting property a `#`
       // is no value at all (`width: #`, `url(#frag)` handles its own text), so
       // the list stays empty instead of offering unrelated generic values.
-      const hash = hashColorStart(text, offset, context.word);
+      const hash = hashPrefixStart(text, offset, context.word);
       if (hash !== undefined) {
         if (!COLOR_PROPERTIES.has(context.property ?? "")) return result([], replaceStart);
         return result(hashColorItems(context.word, hash), replaceStart);
@@ -2797,6 +3050,26 @@ export function completionsAt(
       );
     }
     case "selector": {
+      // A `#` typed in selector position is the id state: every id authored in
+      // this document, one item per distinct name and in first-appearance
+      // order. The item's range starts on the typed `#`, so accepting `#panel`
+      // after `#pan` replaces the whole `#…` word and leaves exactly one `#`.
+      // Ids are document-global, so no imported or cross-file names join.
+      const hash = hashPrefixStart(text, offset, context.word);
+      if (hash !== undefined) {
+        const items = collectIdSelectors(analysis)
+          .filter((occurrence) => context.word === "" || occurrence.name.startsWith(context.word))
+          .map<CompletionSuggestion>((occurrence) => ({
+            label: `#${occurrence.name}`,
+            kind: "selector",
+            detail: "id selector",
+            insertText: `#${occurrence.name}`,
+            replaceStart: hash,
+          }));
+        // No colour/hex values, class items, starters or directives: a selector
+        // `#` is an id state only, just as a value `#` is a colour state only.
+        return result(items, offset - context.word.length);
+      }
       // `.` is a word character, so a typed dot is part of `context.word`
       // (`.te` after `&.`). Class items insert the bare name, so the range must
       // start after the last dot — otherwise accepting `.test` dropped the typed
@@ -2953,8 +3226,15 @@ function groupDirectiveAt(
   return { start: start - 1, end };
 }
 
-function classAt(analysis: AnalyzeResult, offset: number): ClassOccurrence | undefined {
+export function classAt(analysis: AnalyzeResult, offset: number): ClassOccurrence | undefined {
   return analysis.classes.find((occurrence) => rangeContains(analysis, occurrence.range, offset));
+}
+
+/** Id token under the cursor, using the rename-addressable name range. */
+export function idAt(analysis: AnalyzeResult, offset: number): IdOccurrence | undefined {
+  return collectIdOccurrences(analysis).find((occurrence) =>
+    rangeContains(analysis, occurrence.range, offset),
+  );
 }
 
 /**
@@ -2987,6 +3267,33 @@ function cssFunctionAt(
 }
 
 /**
+ * The `@setup` key under `offset`, when the caret is on the key rather than its
+ * value or inside a quoted string.
+ *
+ * `@setup` shares the declaration-ish scanner with ordinary values, so the
+ * colon check matters: `media-grouping: merge` hovering `merge` must not look
+ * like a key hover even if a value happened to spell a key name.
+ */
+function setupKeyAt(
+  text: string,
+  offset: number,
+  analysis: AnalyzeResult,
+): { readonly key: string; readonly start: number; readonly end: number } | undefined {
+  const setup = findEnclosingSetup(analysis, offset);
+  if (setup === undefined) return undefined;
+  if (enclosingString(text, offset) !== undefined) return undefined;
+  let start = offset;
+  while (start > 0 && /[A-Za-z-]/.test(text[start - 1] ?? "")) start -= 1;
+  let end = offset;
+  while (end < text.length && /[A-Za-z-]/.test(text[end] ?? "")) end += 1;
+  const key = text.slice(start, end);
+  if (!SETUP_COMPLETION_KEYS.includes(key)) return undefined;
+  const head = text.slice(setup.start, start);
+  const boundary = Math.max(head.lastIndexOf(";"), head.lastIndexOf("{"));
+  return head.lastIndexOf(":") > boundary ? undefined : { key, start, end };
+}
+
+/**
  * Hover content for `$tokens`, media aliases, CSS declaration properties,
  * curated CSS functions and selector classes.
  *
@@ -3012,6 +3319,16 @@ export function hoverAt(
         "`@group.<name> { … }` defines a reusable declaration group at the top level and applies one with overrides inside a rule body (ADR-0017). A group name is required after the dot.",
       ].join("\n"),
       range: rangeAt(analysis.lineStarts, directive.start, directive.end),
+    };
+  }
+  const setupKey = setupKeyAt(text, offset, analysis);
+  if (setupKey !== undefined) {
+    return {
+      markdown:
+        setupKey.key === "media-grouping"
+          ? MEDIA_GROUPING_HOVER
+          : `**\`${setupKey.key}\`** — Chikx \`@setup\` key\n\n${SETUP_DOCS[setupKey.key] ?? ""}`,
+      range: rangeAt(analysis.lineStarts, setupKey.start, setupKey.end),
     };
   }
   const keyframe = keyframeAt(text, offset, analysis);
@@ -3133,6 +3450,158 @@ export function hoverAt(
   return undefined;
 }
 
+/** Canonical identity of one `$token` definition, independent of the cursor file. */
+export interface TokenDefinition {
+  /** Absolute normalized module path of the defining file. */
+  readonly file: string;
+  /** Token name without the `$` sigil. */
+  readonly name: string;
+  readonly kind: "compile" | "runtime";
+}
+
+/** One resolved declaration or reference occurrence in a module. */
+export interface TokenOccurrence {
+  /** Absolute normalized module path. */
+  readonly file: string;
+  readonly name: string;
+  readonly range: Range;
+}
+
+/**
+ * `@use` bindings in authored order, paired with the raw alias clause.
+ *
+ * `analysis.imports` always carries the computed default alias, so only the
+ * parsed `@use` item distinguishes a namespaced import (`as t`) from an
+ * unqualified/style import (no `as`).
+ */
+function importBindings(
+  analysis: AnalyzeResult,
+): readonly { readonly module: ImportedModule; readonly alias: string | undefined }[] {
+  const aliases = analysis.ast.items
+    .filter((item) => item.kind === "use")
+    .map((item) => item.alias);
+  return analysis.imports.map((module, index) => ({ module, alias: aliases[index] }));
+}
+
+/**
+ * Definition a `$name` / `$ns.member` reference resolves to, mirroring the
+ * compiler's scope rules.
+ *
+ * A local token shadows every unqualified import of the same name; a namespaced
+ * reference resolves only through an explicit `@use … as <alias>`; two distinct
+ * unqualified providers make the name ambiguous (CHIKX2001) and therefore
+ * unresolved. Only direct `@use` imports are considered: Chikx has no implicit
+ * re-export, so a module's tokens are visible solely to its direct importers.
+ */
+export function resolveTokenReference(
+  reference: TokenReference,
+  analysis: AnalyzeResult,
+): TokenDefinition | undefined {
+  const bindings = importBindings(analysis);
+  if (reference.namespace !== undefined) {
+    const binding = bindings.find(
+      (entry) =>
+        entry.alias !== undefined && entry.alias !== "" && entry.alias === reference.namespace,
+    );
+    if (binding === undefined) return undefined;
+    const symbol = binding.module.tokens.find((token) => token.name === reference.name);
+    return symbol === undefined
+      ? undefined
+      : { file: normalizePath(binding.module.path), name: symbol.name, kind: symbol.kind };
+  }
+
+  const local = analysis.tokens.find(
+    (token) => token.namespace === undefined && token.name === reference.name,
+  );
+  if (local !== undefined) {
+    return { file: normalizePath(analysis.path), name: local.name, kind: local.kind };
+  }
+
+  const providers = new Map<string, TokenDefinition>();
+  for (const entry of bindings) {
+    if (entry.alias !== undefined) continue;
+    const symbol = entry.module.tokens.find((token) => token.name === reference.name);
+    if (symbol === undefined) continue;
+    const definition: TokenDefinition = {
+      file: normalizePath(entry.module.path),
+      name: symbol.name,
+      kind: symbol.kind,
+    };
+    providers.set(`${definition.file}\u0000${definition.kind}`, definition);
+  }
+  if (providers.size !== 1) return undefined;
+  return [...providers.values()][0];
+}
+
+/** The definition selected by the cursor, including unqualified imported names. */
+export function tokenDefinitionAt(
+  text: string,
+  offset: number,
+  analysis: AnalyzeResult,
+): TokenDefinition | undefined {
+  const token = tokenAt(text, offset, analysis);
+  if (token !== undefined) {
+    return token.symbol.namespace === undefined
+      ? {
+          file: normalizePath(analysis.path),
+          name: token.symbol.name,
+          kind: token.symbol.kind,
+        }
+      : {
+          file: normalizePath(token.symbol.file),
+          name: token.symbol.name,
+          kind: token.symbol.kind,
+        };
+  }
+  // `tokenAt` resolves locals and namespaced members; an unqualified imported
+  // name has no local symbol, so the reference resolver supplies the target.
+  const reference = collectTokenReferences(text, analysis.ast).find(
+    (candidate) => offset >= candidate.start && offset <= candidate.end,
+  );
+  return reference === undefined ? undefined : resolveTokenReference(reference, analysis);
+}
+
+/**
+ * Declaration (when requested and defined here) plus every reference in this
+ * file that resolves to `target`.
+ *
+ * Resolution, not text matching, decides inclusion: aliases, unqualified
+ * imports and style imports count; a local shadow or an ambiguous unqualified
+ * import does not. Ranges come from this file's own analysis.
+ */
+export function referencesToToken(
+  text: string,
+  analysis: AnalyzeResult,
+  target: TokenDefinition,
+  options: { readonly includeDeclaration?: boolean } = {},
+): readonly TokenOccurrence[] {
+  const includeDeclaration = options.includeDeclaration !== false;
+  const file = normalizePath(analysis.path);
+  const targetFile = normalizePath(target.file);
+  const occurrences: TokenOccurrence[] = [];
+  if (includeDeclaration && file === targetFile) {
+    const declaration = analysis.tokens.find(
+      (token) =>
+        token.namespace === undefined && token.name === target.name && token.kind === target.kind,
+    );
+    if (declaration !== undefined) {
+      occurrences.push({ file, name: target.name, range: declaration.declaration });
+    }
+  }
+  for (const reference of collectTokenReferences(text, analysis.ast)) {
+    if (reference.name !== target.name) continue;
+    const resolved = resolveTokenReference(reference, analysis);
+    if (resolved === undefined) continue;
+    if (normalizePath(resolved.file) !== targetFile || resolved.kind !== target.kind) continue;
+    occurrences.push({
+      file,
+      name: target.name,
+      range: rangeAt(analysis.lineStarts, reference.start, reference.end),
+    });
+  }
+  return occurrences;
+}
+
 /** Definition targets for the token under the cursor. */
 export function definitionsAt(
   text: string,
@@ -3172,11 +3641,105 @@ export function referencesAt(
 const TOKEN_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 
 /**
- * Single-file token rename driven by parser spans.
+ * Class name accepted by a single-file rename.
  *
- * Only `$` references collected from declaration value segments are edited, so
- * selectors (including `:global(...)` classes), strings, comments and import
- * paths are never rewritten. Namespace members are refused with guidance.
+ * A subset of the strict CSS identifier: the name must start with a letter or
+ * underscore, because the editor's selector scanner only recognises that start
+ * after the dot. Renaming to anything the scanner cannot read back would leave
+ * hover, completion and the next occurrence out of sync.
+ */
+const CLASS_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+
+/**
+ * Single-file class rename: every non-global occurrence of the same class name
+ * in the current document, name bytes only (the leading dot stays).
+ *
+ * `:global(...)` classes are authored CSS that is never prefixed or mapped, so
+ * they are excluded from a normal rename and refused when selected. A name that
+ * already exists anywhere in this file is refused before any edit (CSSX-U04
+ * precedent): applying it would silently merge two authored classes. The
+ * generated class and map alias change on the next build, and literal
+ * `className="…"` strings are outside the document's analysis.
+ */
+function renameClass(
+  occurrence: ClassOccurrence,
+  newName: string,
+  analysis: AnalyzeResult,
+): RenamePlan {
+  if (occurrence.global) {
+    return {
+      ok: false,
+      reason: "Global classes inside `:global(...)` are not renamed.",
+    };
+  }
+  if (!CLASS_NAME_PATTERN.test(newName)) {
+    return {
+      ok: false,
+      reason:
+        "Class names must start with a letter or underscore and contain only letters, digits, `_` or `-`.",
+    };
+  }
+  if (newName !== occurrence.name && analysis.classes.some((entry) => entry.name === newName)) {
+    return {
+      ok: false,
+      reason: `A class named ".${newName}" already exists in this document.`,
+    };
+  }
+  const edits = analysis.classes
+    .filter((entry) => entry.name === occurrence.name && !entry.global)
+    .map((entry) => ({ range: entry.range, newText: newName }));
+  return { ok: true, placeholder: occurrence.name, edits };
+}
+
+/**
+ * Id name accepted by a single-file rename.
+ *
+ * Same shape as {@link CLASS_NAME_PATTERN}: the editor's selector scanner only
+ * recognises a letter or underscore after `#`, so a name it cannot read back
+ * would desynchronise hover, completion and the next occurrence.
+ */
+const ID_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+
+/**
+ * Single-file id rename: every occurrence of the same id name in the current
+ * document, name bytes only (the leading `#` stays).
+ *
+ * Ids have no local/global split, so `:global(#x)` occurrences are included:
+ * they are authored CSS and are never prefixed, mapped or emitted under another
+ * name. A name that already exists anywhere in this file is refused before any
+ * edit (CSSX-U04 precedent), and the map, `.d.ts`, JSX `id="…"` anchors and
+ * inbound links are outside the document's analysis.
+ */
+function renameId(occurrence: IdOccurrence, newName: string, analysis: AnalyzeResult): RenamePlan {
+  if (!ID_NAME_PATTERN.test(newName)) {
+    return {
+      ok: false,
+      reason:
+        "Id names must start with a letter or underscore and contain only letters, digits, `_` or `-`.",
+    };
+  }
+  const occurrences = collectIdOccurrences(analysis);
+  if (newName !== occurrence.name && occurrences.some((entry) => entry.name === newName)) {
+    return {
+      ok: false,
+      reason: `An id named "#${newName}" already exists in this document.`,
+    };
+  }
+  const edits = occurrences
+    .filter((entry) => entry.name === occurrence.name)
+    .map((entry) => ({ range: entry.range, newText: newName }));
+  return { ok: true, placeholder: occurrence.name, edits };
+}
+
+/**
+ * Rename dispatch for the symbol under the cursor.
+ *
+ * Groups, keyframes and selector classes apply their own scope rules (group and
+ * keyframe edits span the visible module set; class edits every non-global
+ * occurrence in the current document). For `$tokens`, only references collected
+ * from declaration value segments are edited, so strings, comments, selectors
+ * and import paths are never rewritten; namespace members are refused with
+ * guidance.
  */
 export function renameAt(
   text: string,
@@ -3189,6 +3752,10 @@ export function renameAt(
   if (group !== undefined) return renameGroup(group, newName, analysis);
   const keyframe = keyframeAt(text, offset, analysis);
   if (keyframe !== undefined) return renameKeyframe(keyframe, newName, analysis);
+  const occurrence = classAt(analysis, offset);
+  if (occurrence !== undefined) return renameClass(occurrence, newName, analysis);
+  const id = idAt(analysis, offset);
+  if (id !== undefined) return renameId(id, newName, analysis);
   const token = tokenAt(text, offset, analysis);
   if (token === undefined) {
     return { ok: false, reason: "Place the cursor on a Chikx token to rename it." };

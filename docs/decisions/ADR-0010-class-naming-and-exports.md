@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted (2026-11-25)
+Accepted (2026-11-25). **Amended by CSSX-A52 (2026-11-26):** the default object was removed and
+identifier collisions are now resolved with deterministic `_`/`_N` suffixes instead of failing the
+build; declarations are opt-in. See SPECIFICATION.md §8 for the current contract.
 
 Related: SPECIFICATION.md §7, §8; masterplan §3.5, §3.6
 

@@ -152,7 +152,7 @@ describe("planner safety", () => {
     // The first entry still wrote its artifact exactly once; the loser wrote
     // nothing, so no torn or duplicated output survives.
     expect(listFiles(`${root}/gen`)).toEqual(["shared.css"]);
-    expect(await readProjectFile(root, "gen/shared.css")).toContain("color: red");
+    expect(await readProjectFile(root, "gen/shared.css")).toContain("color:red");
   }, 60_000);
 
   test("rejects a css-name that would overwrite the source file", async () => {

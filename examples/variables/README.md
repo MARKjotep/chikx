@@ -22,16 +22,18 @@ properties in one stylesheet.
 ## Build
 
 ```sh
-bun packages/cli/src/index.ts build --config examples/variables/chikx.config.json
+(cd examples/variables && bun ../../packages/cli/src/index.ts build)
 ```
 
-or `cd examples/variables && chikx build`.
+or `cd examples/variables && chikx build`. No config is needed; the default `**/*.cssx` discovery
+finds the entry and both modules, and the minimal `package.json` marks the workspace boundary.
 
 ## What it demonstrates
 
 - Compile-time variables substitute **token sequences**, not JavaScript expressions.
-- `src/tokens.cssx` and `src/layout.cssx` are token-only modules: they are excluded from the entry
-  globs and emit no artifacts of their own. Their tokens still resolve for importers.
+- `src/tokens.cssx` and `src/layout.cssx` are token-only modules: they declare
+  `@setup { module: true; }`, so discovery finds them but they emit no artifacts of their own. Their
+  tokens still resolve for importers.
 - Namespaced members (`$layout.gutter`) and unqualified tokens stay independent.
 - A local definition overrides an unqualified imported definition; imported modules are not
   mutated.

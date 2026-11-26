@@ -6,9 +6,9 @@
  * 1. {@link renameClasses} — walks the lowered IR after {@link substitute},
  *    rebuilds every rule selector with the naming table applied (prefix strategy,
  *    `:global(...)` escape), and returns the first-appearance class table.
- * 2. `generateClassMap` — turns that table into an ESM class map plus matching
- *    TypeScript declarations, with the strict CHIKX4001 collision policy,
- *    reserved/invalid-identifier warnings and `__proto__`-safe keys.
+ * 2. `generateClassMap` — turns that table into an ESM module of camelCase
+ *    `export const` bindings plus matching opt-in TypeScript declarations, with
+ *    deterministic `_`/`_N` identifier adjustments and CHIKX4001 warnings.
  * 3. {@link mergeClassTables} — unions the renamed tables of a rule-bearing
  *    (`styles`) module graph into the single table the importing build exports
  *    (ADR-0014), enforcing the strict same-name/different-emitted conflict.
@@ -18,7 +18,7 @@
  * ```text
  * parse → buildModuleGraph → (per module) lower → substitute → renameClasses
  *       → mergeClassTables → emitRuntimeTokens → groupRuns → flattenIr → emitCss
- *       (→ generateClassMap for the JS map and .d.ts)
+ *       (→ generateClassMap for the JS map and opt-in .d.ts)
  * ```
  *
  * `renameClasses` only rewrites selectors, so it is independent of the single
@@ -31,10 +31,10 @@
 
 export { renameClasses } from "./rewrite.js";
 export { generateClassMap } from "./mapgen.js";
+export type { ClassMapOptions } from "./mapgen.js";
 export { mergeClassTables } from "./merge.js";
 export type {
   ClassEntry,
-  ClassMapOptions,
   ClassMapResult,
   ClassNamingOptions,
   ClassTable,

@@ -4,6 +4,7 @@
   css-name: "button.css";
   map-dir: "../generated/maps";
   map-name: "button.map.js";
+  map-types: true;
 }
 @variables {
   radius: 6px;

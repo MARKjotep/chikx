@@ -15,10 +15,11 @@ conditional blocks in one stylesheet.
 ## Build
 
 ```sh
-bun packages/cli/src/index.ts build --config examples/responsive/chikx.config.json
+(cd examples/responsive && bun ../../packages/cli/src/index.ts build)
 ```
 
-or `cd examples/responsive && chikx build`.
+or `cd examples/responsive && chikx build`. No config is needed; the example relies on the default
+`**/*.cssx` discovery and its `package.json` workspace boundary.
 
 ## What it demonstrates
 

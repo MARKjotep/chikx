@@ -320,8 +320,8 @@ describe("CHIKX1002 recovery through compile()", () => {
     const result = await compile(source, { file, workspaceRoot: fixturesRoot });
 
     expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["CHIKX1002"]);
-    expect(result.css).toContain("color: red");
+    expect(result.css).toContain("color:red");
     expect(result.css).toContain(".ui-button:hover");
-    expect(result.css).toBe(readFileSync(join(fixturesRoot, id, "expected", "css"), "utf8"));
+    expect(result.css).toBe(readFileSync(join(fixturesRoot, id, "expected", "minified"), "utf8"));
   });
 });

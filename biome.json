@@ -15,7 +15,9 @@
       "bun.lock",
       "opencode.jsonc",
       "AGENTS.md",
-      "*.tsbuildinfo"
+      "*.tsbuildinfo",
+      "examples/*/generated",
+      "examples/modules/client/app.css"
     ]
   },
   "formatter": {

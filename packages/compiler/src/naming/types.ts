@@ -8,9 +8,9 @@ import type { Span } from "../types/span.js";
  *
  * The stage is two pure passes: {@link renameClasses} rewrites selectors and
  * builds a {@link ClassTable}; `generateClassMap` turns that table into an ESM
- * module plus `.d.ts` declarations. The table is the single source of truth for
- * both, so the CSS class text, the named exports and the declaration file can
- * never disagree (ADR-0010).
+ * module of camelCase `export const` bindings plus opt-in `.d.ts` declarations.
+ * The table is the single source of truth for both, so the CSS class text, the
+ * exported bindings and the declaration file can never disagree (ADR-0010).
  */
 
 /**
@@ -48,7 +48,7 @@ export interface RenameOptions {
  * authored selector bytes even when they contain escapes.
  */
 export interface ClassEntry {
-  /** Decoded authored class name; the key of the class map and its default object. */
+  /** Decoded authored class name; the source of the map's camelCase binding. */
   readonly name: string;
   /** Decoded emitted class name; what `className` must use in applications. */
   readonly emitted: string;
@@ -84,22 +84,17 @@ export interface RenameResult {
   readonly diagnostics: Diagnostic[];
 }
 
-/** Options for `generateClassMap`. */
-export interface ClassMapOptions {
-  /**
-   * Relative CSS import specifier for the JS map's side-effect import line
-   * (`SPECIFICATION.md` §8, §9). The path is computed by A10's output planner;
-   * a string emits `import "<path>";`, `null`/omitted emits no import.
-   */
-  readonly cssImport?: string | null;
-}
-
-/** Result of `generateClassMap`. */
+/**
+ * Result of `generateClassMap`.
+ *
+ * The generated map has no CSS side-effect import: style loading belongs to the
+ * page (`<link>`) or the bundler (`import "./x.css"`).
+ */
 export interface ClassMapResult {
-  /** ESM JavaScript class map, deterministic and `__proto__`-safe. */
+  /** ESM JavaScript class map: one `export const` binding per class. */
   readonly js: string;
-  /** TypeScript declarations matching {@link ClassMapResult.js} exactly. */
+  /** Opt-in TypeScript declarations mirroring {@link ClassMapResult.js} exactly. */
   readonly types: string;
-  /** CHIKX4001 warnings/errors for omitted named exports. */
+  /** CHIKX4001 warnings for adjusted export identifiers. */
   readonly diagnostics: Diagnostic[];
 }

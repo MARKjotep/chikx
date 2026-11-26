@@ -215,8 +215,7 @@ async function measureSize(size: number): Promise<SizeReport> {
       mapDir: "dist/maps",
       emitCss: true,
       emitMap: true,
-      emitTypes: true,
-      importCss: true,
+      mapTypes: true,
       sourceMap: false,
       minify: false,
     } as const;

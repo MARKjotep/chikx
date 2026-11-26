@@ -1,11 +1,13 @@
 /**
- * CLI invocation and `chikx.config.json` validation (CSSX-A11).
+ * CLI invocation and `chikx.config.json` validation (CSSX-A11, CSSX-DEFAULTS).
  *
- * Covers exit code 2 for invocation/configuration failures, the strict-mode
- * unknown-key rule, nearest-config resolution and the glob engine.
+ * Covers exit code 2 for invocation/configuration failures, the strict-by-default
+ * unknown-key rule, optional configuration with the default include scope,
+ * nearest-config resolution and the glob engine.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { expandBraces, isExcluded, matchesGlob } from "../../packages/cli/src/glob.ts";
 import {
@@ -16,6 +18,7 @@ import {
   exists,
   parseJson,
   readText,
+  repoRoot,
   runCli,
   writeText,
 } from "./cli-helpers.ts";
@@ -146,7 +149,7 @@ describe("configuration validation", () => {
     expect(result.stderr).toContain('"output.minify" must be a boolean.');
   });
 
-  test("unknown keys outside strict mode are ignored with a warning", async () => {
+  test("unknown keys are rejected by default without a compiler block", async () => {
     const root = await createTempDirectory();
     temporaryProjects.push(root);
     await writeText(
@@ -156,16 +159,157 @@ describe("configuration validation", () => {
     await writeText(join(root, "src/ok.cssx"), ".ok { color: red; }\n");
 
     const result = runCli(["check"], root);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Unknown configuration key "mystery" (strict mode).');
+  });
+
+  test("an explicit strict false keeps the warning path", async () => {
+    const root = await createTempDirectory();
+    temporaryProjects.push(root);
+    await writeText(
+      join(root, "chikx.config.json"),
+      JSON.stringify({
+        include: ["src/*.cssx"],
+        mystery: true,
+        compiler: { strict: false },
+      }),
+    );
+    await writeText(join(root, "src/ok.cssx"), ".ok { color: red; }\n");
+
+    const result = runCli(["check"], root);
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('Ignoring unknown configuration key "mystery"');
   });
 
-  test("a project build without any config exits 2", async () => {
+  test("compiler.mediaGrouping accepts merge and stays safe by default", async () => {
+    const source = [
+      ".a { @md { color: red; } }",
+      ".b { padding: 1px; }",
+      ".a { @md { color: blue; } }",
+    ].join("\n");
+
+    const mergeRoot = await createTempDirectory();
+    temporaryProjects.push(mergeRoot);
+    await writeText(
+      join(mergeRoot, "chikx.config.json"),
+      JSON.stringify({
+        include: ["src/*.cssx"],
+        output: { cssDir: "out", mapDir: "out" },
+        compiler: { mediaGrouping: "merge" },
+      }),
+    );
+    await writeText(join(mergeRoot, "src/entry.cssx"), source);
+    expect(runCli(["build"], mergeRoot).status).toBe(0);
+    const merged = await readText(join(mergeRoot, "out/src/entry.css"));
+    expect((merged?.match(/@media/g) ?? []).length).toBe(1);
+
+    const defaultRoot = await createTempDirectory();
+    temporaryProjects.push(defaultRoot);
+    await writeText(
+      join(defaultRoot, "chikx.config.json"),
+      JSON.stringify({
+        include: ["src/*.cssx"],
+        output: { cssDir: "out", mapDir: "out" },
+      }),
+    );
+    await writeText(join(defaultRoot, "src/entry.cssx"), source);
+    expect(runCli(["build"], defaultRoot).status).toBe(0);
+    const safe = await readText(join(defaultRoot, "out/src/entry.css"));
+    expect((safe?.match(/@media/g) ?? []).length).toBe(2);
+  });
+
+  test("file @setup media-grouping overrides project none", async () => {
     const root = await createTempDirectory();
     temporaryProjects.push(root);
+    await writeText(
+      join(root, "chikx.config.json"),
+      JSON.stringify({
+        include: ["src/*.cssx"],
+        output: { cssDir: "out", mapDir: "out" },
+        compiler: { mediaGrouping: "none" },
+      }),
+    );
+    await writeText(
+      join(root, "src/entry.cssx"),
+      [
+        "@setup { media-grouping: merge; }",
+        ".a { @md { color: red; } }",
+        ".b { padding: 1px; }",
+        ".a { @md { color: blue; } }",
+      ].join("\n"),
+    );
+    expect(runCli(["build"], root).status).toBe(0);
+    const css = await readText(join(root, "out/src/entry.css"));
+    expect((css?.match(/@media/g) ?? []).length).toBe(1);
+  });
+
+  test("a config omitting include uses the default **/*.cssx globs", async () => {
+    const root = await createTempDirectory();
+    temporaryProjects.push(root);
+    await writeText(
+      join(root, "chikx.config.json"),
+      JSON.stringify({ classes: { strategy: "prefix", prefix: "x" } }),
+    );
+    await writeText(join(root, "src/ok.cssx"), ".ok { color: red; }\n");
+    await writeText(join(root, "other/deep/extra.cssx"), ".extra { color: red; }\n");
+
+    const result = runCli(["check", "--json"], root);
+    expect(result.status).toBe(0);
+    const report = parseJson<JsonReportShape>(result.stdout);
+    expect(report.entries.map((entry) => entry.file)).toEqual([
+      "other/deep/extra.cssx",
+      "src/ok.cssx",
+    ]);
+  });
+
+  test("a project build without any config discovers **/*.cssx", async () => {
+    const root = await createTempDirectory();
+    temporaryProjects.push(root);
+    await writeText(join(root, "package.json"), '{\n  "private": true\n}\n');
+    await writeText(join(root, "src/ok.cssx"), ".ok { color: red; }\n");
+    await writeText(join(root, "src/deep/extra.cssx"), ".extra { color: red; }\n");
+
+    const result = runCli(["build", "--json"], root);
+    expect(result.status).toBe(0);
+    const report = parseJson<JsonReportShape>(result.stdout);
+    expect(report.configFile).toBeNull();
+    expect(report.workspaceRoot).toBe(await realpath(root));
+    expect(report.entries.map((entry) => entry.file)).toEqual([
+      "src/deep/extra.cssx",
+      "src/ok.cssx",
+    ]);
+    expect(await exists(join(root, "src/ok.css"))).toBe(true);
+    expect(await exists(join(root, "src/deep/extra.css"))).toBe(true);
+  });
+
+  test("a config-less project with no .cssx sources still exits 2", async () => {
+    const root = await createTempDirectory();
+    temporaryProjects.push(root);
+    await writeText(join(root, "package.json"), '{\n  "private": true\n}\n');
     const result = runCli(["build"], root);
     expect(result.status).toBe(2);
-    expect(result.stderr).toContain("No chikx.config.json found");
+    expect(result.stderr).toBe("chikx: No .cssx sources matched the project include globs.\n");
+  });
+
+  test("config-less examples discover from their own package.json boundary", async () => {
+    for (const example of [
+      "basic",
+      "responsive",
+      "variables",
+      "jsx",
+      "custom-output",
+      "portfolio",
+      "modules",
+    ]) {
+      const root = join(repoRoot, "examples", example);
+      const result = runCli(["check", "--json"], root);
+      expect(result.status).toBe(0);
+      const report = parseJson<JsonReportShape>(result.stdout);
+      expect(report.workspaceRoot).toBe(root);
+      expect(report.configFile).toBeNull();
+      expect(report.entries.length).toBeGreaterThan(0);
+      expect(report.entries.every((entry) => entry.file.startsWith("src/"))).toBe(true);
+    }
   });
 
   test("--json keeps invocation failures machine-readable", async () => {

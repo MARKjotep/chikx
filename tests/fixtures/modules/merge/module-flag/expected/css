@@ -1,7 +1,1 @@
-.ui-card {
-  padding: 8px;
-}
-
-.app-page {
-  display: block;
-}
+.ui-card{padding:8px;}.app-page{display:block;}

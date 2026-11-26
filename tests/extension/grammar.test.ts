@@ -137,14 +137,14 @@ describe("directive and media alias matchers", () => {
     ]) {
       expect(matcher.test(reserved)).toBe(false);
     }
-    expect(grammar.repository.alias?.name).toBe("meta.variant.chikx entity.name.function.chikx");
+    expect(grammar.repository.alias?.name).toBe("meta.variant.chikx markup.deleted.chikx");
   });
 
   test("conditional blocks reuse the reserved-name exclusion and group aliases in meta.variant", () => {
     const block = grammar.repository["conditional-block"];
     expect(block?.begin ?? "").toContain("setup");
     expect(block?.begin ?? "").toContain("media-types");
-    expect(block?.beginCaptures?.["1"]?.name).toBe("meta.variant.chikx entity.name.function.chikx");
+    expect(block?.beginCaptures?.["1"]?.name).toBe("meta.variant.chikx markup.deleted.chikx");
     expect(block?.contentName).toBe("meta.variant.chikx");
   });
 });
@@ -188,7 +188,7 @@ describe("group directive scoping structure", () => {
     }
     expect(definition?.name).not.toBe(use?.name);
     expect(definition?.beginCaptures?.["3"]?.name).not.toBe("variable.other.member.chikx");
-    expect(definition?.beginCaptures?.["3"]?.name).not.toBe("entity.name.function.chikx");
+    expect(definition?.beginCaptures?.["3"]?.name).not.toBe("markup.deleted.chikx");
   });
 
   test("definitions match at the root before aliases and use sites live in block bodies", () => {
@@ -221,7 +221,7 @@ describe("UI acceptance scopes", () => {
     const scopes = new Set(referencedScopes(grammar));
     for (const scope of [
       "meta.variant.chikx",
-      "entity.name.function.chikx",
+      "markup.deleted.chikx",
       "keyword.control.directive.chikx",
       "keyword.other.chikx",
       "entity.other.attribute-name.class.css",

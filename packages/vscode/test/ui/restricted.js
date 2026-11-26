@@ -120,7 +120,7 @@ async function run(t) {
   t.equal(preview.document.uri.scheme, "chikx-preview", "the preview is not a virtual document");
   t.match(
     preview.document.getText(),
-    /\.restricted-button \{/,
+    /\.restricted-button\{/,
     "the Restricted Mode preview lacks the compiled CSS",
   );
   t.deepEqual(await namesOf(root), afterBuild, "Preview wrote a file in Restricted Mode");

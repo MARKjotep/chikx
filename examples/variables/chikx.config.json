@@ -1,5 +1,0 @@
-{
-  "include": ["src/**/*.cssx"],
-  "exclude": ["src/tokens.cssx", "src/layout.cssx", "generated"],
-  "compiler": { "strict": true, "mediaGrouping": "safe" }
-}

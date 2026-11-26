@@ -13,7 +13,6 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { posix } from "node:path";
 import { compile } from "../../../packages/compiler/src/index.ts";
 import { createLabelledRng, readStressSeed } from "../prng.ts";
 import {
@@ -133,13 +132,7 @@ describe("TT2 1000-file project", () => {
       const types = readProjectFile(root, typesPath);
       reparseErrors.push(...cssErrorMessages(css).map((message) => `${cssPath}: ${message}`));
 
-      const importMatch = /^import "([^"]+)";$/mu.exec(js);
-      if (importMatch === null || importMatch[1] === undefined) {
-        mismatches.push(`${jsPath}: no CSS import`);
-      } else {
-        const resolved = posix.normalize(posix.join(posix.dirname(jsPath), importMatch[1]));
-        if (resolved !== cssPath) mismatches.push(`${jsPath}: imports ${resolved}, not ${cssPath}`);
-      }
+      if (js.includes("import ")) mismatches.push(`${jsPath}: map imports CSS`);
 
       const mapped = mapClassNames(js).sort();
       const declared = declaredClassValues(types).sort();

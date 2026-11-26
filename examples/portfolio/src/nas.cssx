@@ -1,0 +1,5 @@
+@use "./tokens.cssx" as tk;
+
+.tk {
+  color: $tk.raised;
+}

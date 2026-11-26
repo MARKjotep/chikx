@@ -10,6 +10,7 @@
  * remove the duplication.
  */
 
+import { decodeSetupList } from "@chikx/compiler";
 import type { ResolvedSetup, SetupBlock, Stylesheet, StylesheetItem } from "@chikx/compiler";
 import type { CliConfig } from "./config.js";
 import { basenamePosix, dirnamePosix } from "./paths.js";
@@ -18,40 +19,60 @@ import { basenamePosix, dirnamePosix } from "./paths.js";
 export interface FileSetupValues {
   readonly prefix?: string;
   readonly cssDir?: string;
+  /** File-level `css-dir` list when more than one destination was authored. */
+  readonly cssDirs?: readonly string[];
   readonly cssName?: string;
   readonly mapDir?: string;
   readonly mapName?: string;
   readonly emitCss?: boolean;
   readonly emitMap?: boolean;
+  /** Resolved declaration flag; `map-types` is canonical, `emit-types` the alias. */
   readonly emitTypes?: boolean;
   readonly sourceMap?: boolean;
-  readonly importCss?: boolean;
   readonly minify?: boolean;
+  /** Module map inheritance default (ADR-0020): `@setup { map-inherit: false; }`. */
+  readonly mapInherit?: boolean;
+  /** Class-map CSS side-effect import (ADR-0021): `@setup { import-css: true; }`. */
+  readonly importCss?: boolean;
   /** `@setup { module: true }`: rule-bearing module with no artifacts of its own (ADR-0014). */
   readonly module?: boolean;
 }
 
-const STRING_SETUP_KEYS = ["prefix", "css-dir", "css-name", "map-dir", "map-name"] as const;
+const STRING_SETUP_KEYS = ["prefix", "css-name", "map-dir", "map-name"] as const;
 const BOOLEAN_SETUP_KEYS = [
   "emit-css",
   "emit-map",
+  "map-types",
   "emit-types",
   "source-map",
-  "import-css",
   "minify",
   "module",
+  "map-inherit",
+  "import-css",
 ] as const;
 
 /** Decode every top-level `@setup` block of an entry, first occurrence winning. */
 export function decodeFileSetup(ast: Stylesheet): FileSetupValues {
   const values: Record<string, string | boolean> = {};
   const seen = new Set<string>();
+  let cssDir: string | undefined;
+  let cssDirs: readonly string[] | undefined;
 
   for (const item of ast.items) {
     if (!isSetupBlock(item)) continue;
     for (const setting of item.settings) {
       const key = setting.key;
       if (seen.has(key)) continue;
+      if (key === "css-dir") {
+        seen.add(key);
+        const decoded = decodeSetupList(setting.value, setting.valueSpan);
+        const first = decoded.entries[0];
+        if (first !== undefined) cssDir = first.value;
+        if (decoded.entries.length > 1) {
+          cssDirs = decoded.entries.map((entry) => entry.value);
+        }
+        continue;
+      }
       if (isStringKey(key)) {
         seen.add(key);
         values[key] = decodeScalar(setting.value);
@@ -64,19 +85,30 @@ export function decodeFileSetup(ast: Stylesheet): FileSetupValues {
     }
   }
 
+  // `map-types` is the canonical declaration flag; `emit-types` is its legacy
+  // alias, so the canonical key wins when both are authored in one layer.
+  const types =
+    typeof values["map-types"] === "boolean"
+      ? values["map-types"]
+      : typeof values["emit-types"] === "boolean"
+        ? values["emit-types"]
+        : undefined;
+
   return {
     ...(typeof values.prefix === "string" ? { prefix: values.prefix } : {}),
-    ...(typeof values["css-dir"] === "string" ? { cssDir: values["css-dir"] } : {}),
+    ...(cssDir === undefined ? {} : { cssDir }),
+    ...(cssDirs === undefined ? {} : { cssDirs }),
     ...(typeof values["css-name"] === "string" ? { cssName: values["css-name"] } : {}),
     ...(typeof values["map-dir"] === "string" ? { mapDir: values["map-dir"] } : {}),
     ...(typeof values["map-name"] === "string" ? { mapName: values["map-name"] } : {}),
     ...(typeof values["emit-css"] === "boolean" ? { emitCss: values["emit-css"] } : {}),
     ...(typeof values["emit-map"] === "boolean" ? { emitMap: values["emit-map"] } : {}),
-    ...(typeof values["emit-types"] === "boolean" ? { emitTypes: values["emit-types"] } : {}),
+    ...(types === undefined ? {} : { emitTypes: types }),
     ...(typeof values["source-map"] === "boolean" ? { sourceMap: values["source-map"] } : {}),
-    ...(typeof values["import-css"] === "boolean" ? { importCss: values["import-css"] } : {}),
     ...(typeof values.minify === "boolean" ? { minify: values.minify } : {}),
     ...(typeof values.module === "boolean" ? { module: values.module } : {}),
+    ...(typeof values["map-inherit"] === "boolean" ? { mapInherit: values["map-inherit"] } : {}),
+    ...(typeof values["import-css"] === "boolean" ? { importCss: values["import-css"] } : {}),
   };
 }
 
@@ -99,10 +131,11 @@ export function defaultSetupFor(relativeFile: string): ResolvedSetup {
     mapName: `${stem}.map.js`,
     emitCss: true,
     emitMap: true,
-    emitTypes: true,
+    emitTypes: false,
     sourceMap: false,
-    importCss: true,
-    minify: false,
+    minify: true,
+    mapInherit: true,
+    importCss: false,
   };
 }
 
@@ -115,8 +148,8 @@ export function defaultSetupFor(relativeFile: string): ResolvedSetup {
  * applied last for reporting; the compiler's project API cannot place it above
  * file `@setup`, which the caller reports as a warning when a file authors a
  * conflicting value. `@setup { module: true }` (ADR-0014) removes the default
- * CSS, map, type and CSS-import outputs of a rule-bearing module; authoring any
- * of those keys explicitly restores it.
+ * CSS, map and type outputs of a rule-bearing module; authoring one of those
+ * keys explicitly restores it.
  */
 export function resolveEffectiveSetup(
   relativeFile: string,
@@ -131,12 +164,14 @@ export function resolveEffectiveSetup(
   const moduleDefaults = fileSetup.module === true;
   const emitCssDefault = moduleDefaults ? false : (project?.emitCss ?? defaults.emitCss);
   const emitMapDefault = moduleDefaults ? false : (project?.emitMap ?? defaults.emitMap);
-  const emitTypesDefault = moduleDefaults ? false : (project?.emitTypes ?? defaults.emitTypes);
-  const importCssDefault = moduleDefaults ? false : (project?.importCss ?? defaults.importCss);
+  const emitTypesDefault = moduleDefaults
+    ? false
+    : (project?.mapTypes ?? project?.emitTypes ?? defaults.emitTypes);
 
   return {
     prefix,
     cssDir: fileSetup.cssDir ?? project?.cssDir ?? defaults.cssDir,
+    ...(fileSetup.cssDirs === undefined ? {} : { cssDirs: fileSetup.cssDirs }),
     cssName: fileSetup.cssName ?? project?.cssName ?? defaults.cssName,
     mapDir: fileSetup.mapDir ?? project?.mapDir ?? defaults.mapDir,
     mapName: fileSetup.mapName ?? project?.mapName ?? defaults.mapName,
@@ -144,8 +179,9 @@ export function resolveEffectiveSetup(
     emitMap: fileSetup.emitMap ?? emitMapDefault,
     emitTypes: fileSetup.emitTypes ?? emitTypesDefault,
     sourceMap: fileSetup.sourceMap ?? project?.sourceMap ?? defaults.sourceMap,
-    importCss: fileSetup.importCss ?? importCssDefault,
     minify: minifyFlag ?? fileSetup.minify ?? project?.minify ?? defaults.minify,
+    mapInherit: fileSetup.mapInherit ?? project?.mapInherit ?? defaults.mapInherit,
+    importCss: fileSetup.importCss ?? project?.importCss ?? defaults.importCss,
   };
 }
 

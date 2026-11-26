@@ -69,7 +69,7 @@ describe("chikx build", () => {
     expect(buttonCss).not.toContain(".app-button");
 
     const buttonMap = await readText(join(root, "generated/maps/button.map.js"));
-    expect(buttonMap).toContain('import "../styles/button.css";');
+    expect(buttonMap).not.toContain("import ");
     expect(buttonMap).toContain('export const button = "ui-button";');
 
     // Determinism: a second build produces identical bytes.
@@ -260,8 +260,8 @@ describe("chikx build", () => {
     expect(await exists(cssPath)).toBe(true);
     expect(await exists(mapPath)).toBe(true);
     expect(await readText(cssPath)).toContain(".widget");
-    // The generated import must point at the artifact the CLI actually wrote.
-    expect(await readText(mapPath)).toContain('import "../../../styles/src/deep/widget.css";');
+    // The map holds only bindings; it never imports the stylesheet.
+    expect(await readText(mapPath)).not.toContain("import ");
   });
 
   test("two entries targeting one artifact fail with CHIKX5001", async () => {
@@ -319,6 +319,33 @@ describe("chikx check", () => {
     expect(diagnostic?.column).toBe(10);
 
     expect(await exists(join(root, "src/broken.css"))).toBe(false);
+    expect(await exists(join(root, ".cssx-manifest.json"))).toBe(false);
+  });
+
+  test("an importer with a missing $ member is CHIKX2001 and exits 1", async () => {
+    const root = await createTempDirectory("chikx-cli-import-");
+    temporaryProjects.push(root);
+    await writeText(join(root, "chikx.config.json"), JSON.stringify({ include: ["src/*.cssx"] }));
+    await writeText(
+      join(root, "src/tokens.cssx"),
+      "@setup { module: true; }\n@variables { space: 8px; }\n",
+    );
+    await writeText(
+      join(root, "src/main.cssx"),
+      '@use "./tokens.cssx" as t;\n.x { padding: $t.missing; }\n',
+    );
+
+    const check = runCli(["check", "--json"], root);
+    expect(check.status).toBe(1);
+
+    const report = parseJson<JsonReportShape>(check.stdout);
+    expect(report.success).toBe(false);
+    expect(report.exitCode).toBe(1);
+    const diagnostic = report.diagnostics.find((entry) => entry.code === "CHIKX2001");
+    expect(diagnostic?.severity).toBe("error");
+    expect(diagnostic?.file).toBe("src/main.cssx");
+    expect(diagnostic?.message).toContain("$t.missing");
+    expect(await exists(join(root, "src/main.css"))).toBe(false);
     expect(await exists(join(root, ".cssx-manifest.json"))).toBe(false);
   });
 });

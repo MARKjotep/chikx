@@ -1,5 +1,1 @@
-.panel {
-  padding: 12px;
-  color: black;
-  color: navy;
-}
+.panel{padding:12px;color:black;color:navy;}

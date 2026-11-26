@@ -5,16 +5,18 @@ that emits no CSS.
 
 | Entry | CSS | Class map | Notes |
 |---|---|---|---|
-| `src/panel.cssx` | `generated/styles/theme.css` + `theme.css.map` | `generated/maps/classes.js` + `.d.ts` | `css-name: "theme.css"`, `map-name: "classes.js"`, `source-map: true`; the map imports `../styles/theme.css` |
-| `src/plain.cssx` | — | `generated/maps/plain.js` + `.d.ts` | `emit-css: false`, `import-css: false` |
+| `src/panel.cssx` | `generated/styles/theme.css` + `theme.css.map` | `generated/maps/classes.js` + `.d.ts` | `css-name: "theme.css"`, `map-name: "classes.js"`, `source-map: true`, `map-types: true` |
+| `src/plain.cssx` | — | `generated/maps/plain.js` + `.d.ts` | `emit-css: false`, `map-types: true` |
 
 ## Build
 
 ```sh
-bun packages/cli/src/index.ts build --config examples/custom-output/chikx.config.json
+(cd examples/custom-output && bun ../../packages/cli/src/index.ts build)
 ```
 
-or `cd examples/custom-output && chikx build`.
+or `cd examples/custom-output && chikx build`. The example has no `chikx.config.json`; all of its
+non-default output settings live in each file's `@setup`, and the minimal `package.json` marks the
+workspace boundary.
 
 ## What it demonstrates
 
@@ -23,9 +25,8 @@ or `cd examples/custom-output && chikx build`.
 - `css-name` and `map-name` are basenames only. `classes.js` yields `classes.d.ts`; `theme.css` with
   `source-map: true` yields `theme.css.map`, and the emitted CSS ends with
   `/*# sourceMappingURL=theme.css.map */`.
-- `emit-css: false` requires `import-css: false`; the planner rejects the inconsistent combination.
-  The map for `plain.cssx` therefore has no CSS side-effect import, while it still exports its
-  class names and declarations.
+- `emit-css: false` is valid now that class maps never import their stylesheet. The map for
+  `plain.cssx` still exports its class names and declarations; only the CSS artifact is absent.
 - Output planning validates every destination before writing: no input/output overlap, no
   traversal, no workspace escape, no duplicate targets. See
   [docs/configuration.md](../../docs/configuration.md).

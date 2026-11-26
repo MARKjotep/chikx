@@ -37,10 +37,9 @@ const PALETTE = [
   { id: "chikx.checkProject", title: "Check Project" },
 ];
 
-const ENTRY = '@setup { prefix: "app"; }\n.button { color: red; }\n';
+const ENTRY = '@setup { prefix: "app"; map-types: true; }\n.button { color: red; }\n';
 const SECOND = '@setup { prefix: "app"; }\n.card { padding: 4px; }\n';
-const NO_CSS =
-  '@setup { prefix: "app"; emit-css: false; import-css: false; }\n.map-only { color: red; }\n';
+const NO_CSS = '@setup { prefix: "app"; emit-css: false; }\n.map-only { color: red; }\n';
 const BROKEN = '@setup { prefix: "app"; }\n.button {\n  color: red\n  padding: 4px;\n}\n';
 
 async function findExtension() {
@@ -107,7 +106,7 @@ async function run(t) {
     t.ok(await appears(workspace, "entry.css"), "Compile File wrote no CSS");
     t.ok(await appears(workspace, "entry.map.js"), "Compile File wrote no class map");
     t.ok(await appears(workspace, "entry.map.d.ts"), "Compile File wrote no types");
-    t.match(await workspace.read("entry.css"), /\.app-button \{/, "compiled CSS lacks the prefix");
+    t.match(await workspace.read("entry.css"), /\.app-button\{/, "compiled CSS lacks the prefix");
     t.equal(await workspace.exists("second.css"), false, "Compile File built another entry");
 
     // ---- Compile File on a broken document: no write, previous output intact. ----
@@ -183,7 +182,7 @@ async function run(t) {
       true,
       "the preview URI does not name the source document",
     );
-    t.match(preview.document.getText(), /\.app-button \{/, "preview lacks the compiled CSS");
+    t.match(preview.document.getText(), /\.app-button\{/, "preview lacks the compiled CSS");
     t.equal(preview.document.languageId, "css", "the preview document is not rendered as CSS");
     for (const name of generated) {
       t.equal(await workspace.read(name), "stale", `Preview wrote ${name}`);
@@ -203,7 +202,7 @@ async function run(t) {
     );
     t.match(
       brokenPreview.document.getText(),
-      /\.app-button \{/,
+      /\.app-button\{/,
       "the tolerant preview lost the valid rule",
     );
     t.equal(

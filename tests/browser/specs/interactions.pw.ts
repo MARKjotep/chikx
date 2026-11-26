@@ -17,9 +17,13 @@ test.describe("media and interaction states", () => {
     }
   });
 
-  test("hover, focus and disabled change opacity per the cascade", async ({ page }) => {
+  test("hover, focus, disabled and attribute states change per the cascade", async ({ page }) => {
     await open(page, "states", "pretty", { width: 1280 });
 
+    // The base button carries `data-state="open"`, so the nested attribute rule
+    // `.card[data-state="open"]` (compiled from `&[data-state="open"]`) must win
+    // over the UA button background. The class prefix is outside the brackets.
+    expect(await readStyle(page, "state-base", "background-color")).toBe("rgb(10, 20, 30)");
     expect(await readStyle(page, "state-base", "opacity")).toBe("1");
 
     await page.locator('[data-testid="state-hover"]').hover();

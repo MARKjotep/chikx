@@ -170,16 +170,7 @@ describe("groups: expansion is a splice at the authored position", () => {
     const result = await buildProject({ [file]: CARD_SOURCE }, WORKSPACE);
     expect(result.diagnostics).toEqual([]);
     expect(result.css).toBe(
-      [
-        ".panel {",
-        "  padding: 12px;",
-        "  border-radius: 8px;",
-        "  color: black;",
-        "  padding: 20px;",
-        "  color: navy;",
-        "}",
-        "",
-      ].join("\n"),
+      ".panel{padding:12px;border-radius:8px;color:black;padding:20px;color:navy;}",
     );
   });
 
@@ -204,20 +195,7 @@ describe("groups: expansion is a splice at the authored position", () => {
     const result = await buildProject({ [`${WORKSPACE}/entry.cssx`]: source }, WORKSPACE);
     expect(result.diagnostics).toEqual([]);
     expect(result.css).toBe(
-      [
-        ".panel {",
-        "  padding: 12px;",
-        "  border-radius: 8px;",
-        "  padding: 20px;",
-        "}",
-        "",
-        ".tile {",
-        "  padding: 12px;",
-        "  border-radius: 8px;",
-        "  border-radius: 0;",
-        "}",
-        "",
-      ].join("\n"),
+      ".panel{padding:12px;border-radius:8px;padding:20px;}.tile{padding:12px;border-radius:8px;border-radius:0;}",
     );
   });
 
@@ -253,32 +231,7 @@ describe("groups: expansion is a splice at the authored position", () => {
     const result = await buildProject({ [`${WORKSPACE}/entry.cssx`]: source }, WORKSPACE);
     expect(result.diagnostics).toEqual([]);
     expect(result.css).toBe(
-      [
-        ".outer {",
-        "  padding: 12px;",
-        "  gap: 1px;",
-        "}",
-        "",
-        ".outer .inner {",
-        "  padding: 12px;",
-        "  margin: 0;",
-        "}",
-        "",
-        "@media (min-width: 768px) {",
-        "  .outer .cond {",
-        "    padding: 12px;",
-        "    color: red;",
-        "  }",
-        "}",
-        "",
-        "@supports (display: grid) {",
-        "  .outer {",
-        "    padding: 12px;",
-        "    display: grid;",
-        "  }",
-        "}",
-        "",
-      ].join("\n"),
+      ".outer{padding:12px;gap:1px;}.outer .inner{padding:12px;margin:0;}@media (min-width: 768px){.outer .cond{padding:12px;color:red;}}@supports (display: grid){.outer{padding:12px;display:grid;}}",
     );
   });
 
@@ -310,20 +263,7 @@ describe("groups: expansion is a splice at the authored position", () => {
       root,
     );
     expect(result.diagnostics).toEqual([]);
-    expect(result.css).toBe(
-      [
-        ".card {",
-        "  padding: 12px;",
-        "  color: black;",
-        "}",
-        "",
-        ".panel {",
-        "  padding: 12px;",
-        "  color: navy;",
-        "}",
-        "",
-      ].join("\n"),
-    );
+    expect(result.css).toBe(".card{padding:12px;color:black;}.panel{padding:12px;color:navy;}");
   });
 
   test("an empty definition expands to the use-site declarations only", async () => {
@@ -339,7 +279,7 @@ describe("groups: expansion is a splice at the authored position", () => {
     ].join("\n");
     const result = await buildProject({ [`${WORKSPACE}/entry.cssx`]: source }, WORKSPACE);
     expect(result.diagnostics).toEqual([]);
-    expect(result.css).toBe(".x {\n  color: red;\n}\n");
+    expect(result.css).toBe(".x{color:red;}");
   });
 
   test("the single-source compile() path expands through the same wiring", async () => {
@@ -349,16 +289,7 @@ describe("groups: expansion is a splice at the authored position", () => {
     });
     expect(result.diagnostics).toEqual([]);
     expect(result.css).toBe(
-      [
-        ".panel {",
-        "  padding: 12px;",
-        "  border-radius: 8px;",
-        "  color: black;",
-        "  padding: 20px;",
-        "  color: navy;",
-        "}",
-        "",
-      ].join("\n"),
+      ".panel{padding:12px;border-radius:8px;color:black;padding:20px;color:navy;}",
     );
   });
 
@@ -405,9 +336,7 @@ describe("groups: token attribution across modules", () => {
     const result = await buildProject({ [entry]: entrySource, [definer]: definerSource }, root);
     expect(result.diagnostics).toEqual([]);
     // The entry's identically named `$pad` must not leak into the default.
-    expect(result.css).toBe(
-      [".panel {", "  padding: 12px;", "  margin: 40px;", "}", ""].join("\n"),
-    );
+    expect(result.css).toBe(".panel{padding:12px;margin:40px;}");
     expect(result.css).not.toContain("padding: 40px");
   });
 
@@ -434,19 +363,7 @@ describe("groups: token attribution across modules", () => {
     // The namespaced runtime member is only known from the use-site declaration,
     // so reference attribution must walk group use sites or the `var()` would
     // point at a custom property that is never declared.
-    expect(result.css).toBe(
-      [
-        ":root {",
-        "  --space: 4px;",
-        "}",
-        "",
-        ".panel {",
-        "  padding: 12px;",
-        "  gap: var(--space);",
-        "}",
-        "",
-      ].join("\n"),
-    );
+    expect(result.css).toBe(":root{--space:4px;}.panel{padding:12px;gap:var(--space);}");
   });
 
   test("an unresolved $ref in a use-site block reports the exact reference span", async () => {
@@ -472,7 +389,7 @@ describe("groups: token attribution across modules", () => {
       end: start + "$missing".length,
       file: `${WORKSPACE}/entry.cssx`,
     });
-    expect(result.css).toBe(".panel {\n  padding: 12px;\n}\n");
+    expect(result.css).toBe(".panel{padding:12px;}");
   });
 
   test("a spliced declaration maps to its authored file and line in the source map", async () => {
@@ -553,7 +470,7 @@ describe("groups: diagnostics and recovery", () => {
     expect(source.slice(diagnostic.span.start, diagnostic.span.end)).toBe(
       "@group.missing {\n    color: blue;\n  }",
     );
-    expect(result.css).toBe(".panel {\n  color: red;\n}\n");
+    expect(result.css).toBe(".panel{color:red;}");
   });
 
   test("a rule emptied by the rejection is dropped like any other", async () => {
@@ -619,7 +536,7 @@ describe("groups: diagnostics and recovery", () => {
     expect(diagnostic.message).toContain(`${root}/a.cssx`);
     expect(diagnostic.message).toContain(`${root}/b.cssx`);
     // Both definitions stay inert and never emit `padding`.
-    expect(result.css).toBe(".panel {\n  margin: 0;\n}\n");
+    expect(result.css).toBe(".panel{margin:0;}");
   });
 
   test("a local definition shadows an imported one without a diagnostic", async () => {
@@ -642,7 +559,7 @@ describe("groups: diagnostics and recovery", () => {
       root,
     );
     expect(result.diagnostics).toEqual([]);
-    expect(result.css).toBe(".panel {\n  padding: 99px;\n  color: red;\n}\n");
+    expect(result.css).toBe(".panel{padding:99px;color:red;}");
   });
 
   test("a duplicate definition is CHIKX2001 at the later statement and the first expands", async () => {
@@ -669,7 +586,7 @@ describe("groups: diagnostics and recovery", () => {
     expect(source.slice(diagnostic.span.start, diagnostic.span.end)).toBe(
       "@group.card {\n  padding: 99px;\n}",
     );
-    expect(result.css).toBe(".p {\n  padding: 8px;\n  color: red;\n}\n");
+    expect(result.css).toBe(".p{padding:8px;color:red;}");
   });
 
   test("a @runtime reference in a default is CHIKX2001 and only that default is omitted", async () => {
@@ -698,8 +615,8 @@ describe("groups: diagnostics and recovery", () => {
     const css = result.css ?? "";
     expect(css).not.toContain("padding");
     expect(css).not.toContain("var(");
-    expect(css).toContain("border: 1px solid;");
-    expect(css).toContain("color: red;");
+    expect(css).toContain("border:1px solid;");
+    expect(css).toContain("color:red;");
   });
 });
 
@@ -721,10 +638,10 @@ describe("groups: authored declaration shapes", () => {
     const css = result.css ?? "";
 
     // Authored order: base segment, then the `@md` segment, then the override.
-    const base = css.indexOf("padding: 10px;");
+    const base = css.indexOf("padding:10px;");
     const media = css.indexOf("@media (min-width: 768px)");
-    const variant = css.indexOf("padding: 20px;");
-    const override = css.indexOf("color: red;");
+    const variant = css.indexOf("padding:20px;");
+    const override = css.indexOf("color:red;");
     expect(base).toBeGreaterThanOrEqual(0);
     expect(media).toBeGreaterThan(base);
     expect(variant).toBeGreaterThan(media);
@@ -745,9 +662,7 @@ describe("groups: authored declaration shapes", () => {
     ].join("\n");
     const result = await buildProject({ [`${WORKSPACE}/entry.cssx`]: source }, WORKSPACE);
     expect(result.diagnostics).toEqual([]);
-    expect(result.css).toBe(
-      [".panel {", "  padding: 12px !important;", "  padding: 20px;", "}", ""].join("\n"),
-    );
+    expect(result.css).toBe(".panel{padding:12px !important;padding:20px;}");
   });
 });
 

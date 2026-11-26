@@ -3,7 +3,7 @@
  * entry.cssx imports it first, then theme-alt.cssx, which is why theme-alt
  * would win the module merge order if the entry did not override `primary`.
  */
-@setup { prefix: "ui"; }
+@setup { prefix: "ui"; module: true; }
 
 @runtime {
   primary: #2563eb @dark #60a5fa;

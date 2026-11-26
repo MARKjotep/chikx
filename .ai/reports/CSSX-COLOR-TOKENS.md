@@ -634,3 +634,69 @@ Code --user-data-dir=…/node_modules/.vscode-test-chikx/zero-profile2 \
 New window **PID 39656** (`ps -p 39656` alive). No `zero-profile2/User/settings.json` exists, so this
 is still the settings-less default experience. Session log `logs/20261126T124248/window1/exthost/exthost.log`
 shows `ExtensionService#_doActivateExtension chikx.chikx … activationEvent: 'onLanguage:chikx'`.
+
+## Media variant marker tuning
+
+Owner follow-up (2026-11-26): the three grammar variant rules (inline value variants, block variant
+headers, and the `@media-types` caption) emitted `entity.name.function.chikx`, which measures violet
+`#D2A8FF` on 2026 Dark and pale amber `#DCDCAA` on Dark+ — too close to numeric values when variants
+sit inline (`padding: $spacing @md 20px @xl 32px`). One scope-family change: variants → **`markup.deleted.chikx`**
+(inside `meta.variant.chikx`); no classifier change.
+
+### Candidate measurement (shipped theme trees)
+
+Resolved from `theme-defaults/themes/` includes (`2026-dark` → `dark_modern` → `dark_plus` →
+`dark_vs`; `light_plus` → `light_vs`), using the same precedence as the `variable.language` tune:
+deepest selector, then last declaration. Candidate values:
+
+| Candidate scope | 2026 Dark | Dark+ | Light+ | Verdict |
+|---|---|---|---|---|
+| `string` | `#A5D6FF` | `#CE9178` | `#A31515` | blue on default — collides with `variable` |
+| `constant.character` | `#FF7B72` | `#569CD6` | `#0000FF` | blue on Dark+/Light+ — collides with `variable` |
+| `constant.character.escape` | `#D7BA7D` | `#D7BA7D` | `#EE0000` | ΔE 25.7 from numeric and 17.4 from keyframe — too close |
+| `markup.changed` | `#FFA657` | `#569CD6` | `#0451A5` | blue on Dark+/Light+ — collides with `variable` |
+| **`markup.deleted`** | **`#FFA198`** | **`#CE9178`** | **`#A31515`** | **chosen: warm orange/red in all three** |
+
+`markup.deleted` is ΔE ≥ 35 from all five mapped kinds in every theme (minimum: 41.5 vs keyword on
+2026 Dark, 35.1 vs keyframe on Dark+, 50.6 vs keyframe on Light+), with contrast **9.57:1** on 2026
+Dark, **6.31:1** on Dark+ and **7.85:1** on Light+. **Light+ tradeoff:** `markup.deleted` shares the
+string hex `#A31515` (as Dark+ shares `#CE9178` with strings); variants and quoted strings therefore
+share a hue in those two themes. They remain different constructs, and all five mapped kinds stay
+distinct.
+
+### DOM-measured paint (decisive)
+
+Fresh settings-less CDP profile (`profileHasSettings: false`), default “2026 Dark”, dev extension
+rebuilt, `examples/basic/src/button.cssx` open. PID **64455** (`pgrep -fl chikx-cdp` showed the
+launcher alive while measuring; the probe disposed it afterwards):
+
+| Span | Token class | Painted colour |
+|---|---|---|
+| `@md`, `@dark`, `@xl` | `mtk29` | `rgb(255, 161, 152)` = `#FFA198` |
+| `20px`, `32px` | `mtk7` | `rgb(181, 206, 168)` = `#B5CEA8` |
+
+Distinct red vs green confirmed on the rendered DOM.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `packages/vscode/syntaxes/chikx.tmLanguage.json` | Four `meta.variant.chikx entity.name.function.chikx` captures → `meta.variant.chikx markup.deleted.chikx` (inline alias, conditional block, alias block start, `@media-types` caption). |
+| `tests/extension/grammar.scopes.test.ts`, `tests/extension/grammar.test.ts` | Variant pins moved to the new scope; all three positions still pinned; UI-contract reachable-scope list updated. |
+| `packages/vscode/README.md` | Zero-config table gains the media-variant row and the measured min-ΔE/contrast tradeoff; grammar scope table updated. |
+| `README.md`, `docs/usage.md` | One-line variant-marker colour pointer. |
+| `.ai/HANDOVER.md` | Palette and verification refreshed. |
+
+### Validation
+
+```
+bun test tests/extension/grammar.test.ts tests/extension/grammar.scopes.test.ts
+# 41 pass, 0 fail, 538 expect() calls
+bun test tests/extension/host.test.ts
+# 14 scenarios, 856 assertions
+bun run verify
+# 1225 pass, 2 skip, 0 fail — 994862 expect() calls, 1227 tests across 89 files
+```
+
+No assertion was weakened: scope pins changed value only, and all three variant positions still
+assert the exact scope.

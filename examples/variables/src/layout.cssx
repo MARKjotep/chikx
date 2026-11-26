@@ -1,3 +1,7 @@
+@setup {
+  module: true;
+}
+
 @variables {
   gutter: 16px;
 }

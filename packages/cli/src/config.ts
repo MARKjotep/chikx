@@ -13,16 +13,25 @@
  * | `map-name` | `output.mapName` | `output` |
  * | `emit-css` | `output.emitCss` | `output` |
  * | `emit-map` | `output.emitMap` | `output` |
+ * | `map-types` | `output.mapTypes` | `output` |
  * | `emit-types` | `output.emitTypes` | `output` |
  * | `source-map` | `output.sourceMap` | `output` |
- * | `import-css` | `output.importCss` | `output` |
  * | `minify` | `output.minify` | `output` |
+ * | `map-inherit` | `output.mapInherit` | `output` |
+ * | `import-css` | `output.importCss` | `output` |
+ * | `media-grouping` | `compiler.mediaGrouping` | `compiler` |
  *
  * `output.prefix` is deliberately rejected: class naming lives under `classes`
  * so strategy and prefix stay together.
  *
- * Unknown keys are rejected (exit 2) when `compiler.strict` is `true`; otherwise
- * they are ignored with a warning. Known keys are always type-checked.
+ * Unknown keys are rejected (exit 2) by default; an explicit
+ * `compiler.strict: false` downgrades them to warnings. Known keys are always
+ * type-checked.
+ *
+ * `include` defaults to {@link DEFAULT_INCLUDE} (`**\/*.cssx`), so a configuration
+ * file is only needed to change a default or scope discovery. `exclude` stays
+ * empty by default: imported modules declare themselves with
+ * `@setup { module: true; }` rather than appearing in a project-wide list.
  */
 
 import { readFile, stat } from "node:fs/promises";
@@ -35,15 +44,18 @@ import type {
 } from "@chikx/compiler";
 import { absolutePath, dirnamePosix, toPosix } from "./paths.js";
 
+/** Entry globs used when a project does not configure `include`. */
+export const DEFAULT_INCLUDE: readonly string[] = Object.freeze(["**/*.cssx"]);
+
 /** Validated project configuration with its resolved location. */
 export interface CliConfig {
   /** Absolute POSIX path of the configuration file. */
   readonly file: string;
   /** Absolute POSIX workspace root: the directory containing the configuration file. */
   readonly root: string;
-  /** Include globs used for project entry discovery. */
+  /** Include globs used for project entry discovery; defaults to {@link DEFAULT_INCLUDE}. */
   readonly include: readonly string[];
-  /** Exclude globs and directory names removed from discovery. */
+  /** Exclude globs and directory names removed from discovery. Default `[]`. */
   readonly exclude: readonly string[];
   /** Project-level output settings, resolved against the workspace root. */
   readonly output?: OutputOptions;
@@ -103,10 +115,12 @@ const OUTPUT_KEYS: ReadonlySet<string> = new Set([
   "mapName",
   "emitCss",
   "emitMap",
+  "mapTypes",
   "emitTypes",
   "sourceMap",
-  "importCss",
   "minify",
+  "mapInherit",
+  "importCss",
 ]);
 
 const CLASSES_KEYS: ReadonlySet<string> = new Set(["strategy", "prefix"]);
@@ -189,16 +203,20 @@ export function parseConfigDocument(text: string, file: string): ConfigDocument 
   const errors: string[] = [];
   const warnings: string[] = [];
   const compilerValue = value.compiler;
-  const strict = isRecord(compilerValue) && compilerValue.strict === true;
+  // Strict is the default; only an explicit `false` downgrades unknown keys.
+  const strict = !(isRecord(compilerValue) && compilerValue.strict === false);
 
   reportUnknownKeys(value, TOP_LEVEL_KEYS, "", strict, errors, warnings);
 
-  const include = readStringArray(value.include, "include", errors);
+  const include = readStringArray(value.include, "include", errors) ?? DEFAULT_INCLUDE;
   const exclude = readStringArray(value.exclude, "exclude", errors) ?? [];
   const output = readOutput(value.output, strict, errors, warnings);
   const classes = readClasses(value.classes, strict, errors, warnings);
   const media = readMedia(value.media, errors);
-  const compiler = readCompiler(value.compiler, strict, errors, warnings);
+  const compiler = readCompiler(value.compiler, strict, errors, warnings) ?? {
+    strict: true,
+    mediaGrouping: "safe",
+  };
 
   if (errors.length > 0) return { errors, warnings };
 
@@ -206,12 +224,12 @@ export function parseConfigDocument(text: string, file: string): ConfigDocument 
     config: {
       file,
       root: dirnamePosix(file),
-      include: include ?? [],
+      include,
       exclude,
       ...(output === undefined ? {} : { output }),
       ...(classes === undefined ? {} : { classes }),
       ...(media === undefined ? {} : { media }),
-      ...(compiler === undefined ? {} : { compiler }),
+      compiler,
     },
     errors,
     warnings,
@@ -237,10 +255,12 @@ function readOutput(
   assignString(output, value, "mapName", "output", errors);
   assignBoolean(output, value, "emitCss", "output", errors);
   assignBoolean(output, value, "emitMap", "output", errors);
+  assignBoolean(output, value, "mapTypes", "output", errors);
   assignBoolean(output, value, "emitTypes", "output", errors);
   assignBoolean(output, value, "sourceMap", "output", errors);
-  assignBoolean(output, value, "importCss", "output", errors);
   assignBoolean(output, value, "minify", "output", errors);
+  assignBoolean(output, value, "mapInherit", "output", errors);
+  assignBoolean(output, value, "importCss", "output", errors);
   return output as OutputOptions;
 }
 
@@ -319,19 +339,19 @@ function readCompiler(
   }
 
   const groupingValue = value.mediaGrouping;
-  let mediaGrouping: MediaGroupingMode | undefined;
+  let mediaGrouping: MediaGroupingMode = "safe";
   if (groupingValue !== undefined) {
-    if (groupingValue === "safe" || groupingValue === "none") {
+    if (groupingValue === "safe" || groupingValue === "none" || groupingValue === "merge") {
       mediaGrouping = groupingValue;
     } else {
-      errors.push(`"compiler.mediaGrouping" must be "safe" or "none".`);
+      errors.push(`"compiler.mediaGrouping" must be "safe", "none" or "merge".`);
     }
   }
 
-  const compiler: { strict?: boolean; mediaGrouping?: MediaGroupingMode } = {};
-  if (typeof strictValue === "boolean") compiler.strict = strictValue;
-  if (mediaGrouping !== undefined) compiler.mediaGrouping = mediaGrouping;
-  return compiler;
+  return {
+    strict: typeof strictValue === "boolean" ? strictValue : true,
+    mediaGrouping,
+  };
 }
 
 function reportUnknownKeys(

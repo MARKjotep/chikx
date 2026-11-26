@@ -5,7 +5,7 @@
   map-dir: "../generated/maps";
   map-name: "plain.js";
   emit-css: false;
-  import-css: false;
+  map-types: true;
 }
 .badge {
   padding: 2px 8px;

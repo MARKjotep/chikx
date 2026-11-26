@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "opencode-go/glm-5.3-flash",
+  "model": "opencode-go/deepseek-v4.1-flash#high",
   "default_agent": "build",
   "experimental": {
     "subagent_depth": 1,
@@ -17,9 +17,9 @@
   },
   "agents": {
     "build": {
-      "description": "Read-only lead architect; schedule at most four native workers, verify acceptance and coordinate handoffs. Follow AGENTS.md.",
+      "description": "DeepSeek V4.1 Flash 1017 High lead architect; schedule at most four native workers, coordinate handoffs, and use a fresh verify session for independent final validation. Follow AGENTS.md.",
       "mode": "primary",
-      "model": "opencode-go/glm-5.3-flash",
+      "model": "opencode-go/deepseek-v4.1-flash#high",
       "permissions": [
         {
           "action": "edit",
@@ -34,6 +34,16 @@
         {
           "action": "subagent",
           "resource": "code",
+          "effect": "allow"
+        },
+        {
+          "action": "subagent",
+          "resource": "verify",
+          "effect": "allow"
+        },
+        {
+          "action": "subagent",
+          "resource": "deepseek_max",
           "effect": "allow"
         },
         {
@@ -114,7 +124,7 @@
       ]
     },
     "code": {
-      "description": "Implement, fix, write tests and persistent task/report records within assigned scope.",
+      "description": "DeepSeek V4.1 Flash 1017 High implementation worker; fix, test and write persistent task/report records within assigned scope.",
       "mode": "all",
       "model": "opencode-go/deepseek-v4.1-flash#high",
       "permissions": [
@@ -125,10 +135,89 @@
         }
       ]
     },
+    "verify": {
+      "description": "Independent GLM-5.3-Flash final verifier. Use a fresh context with the original request, acceptance criteria and Git diff; run checks and return a verdict with evidence before build reads the code worker report. Do not edit files or spawn subagents.",
+      "mode": "subagent",
+      "model": "opencode-go/glm-5.3-flash#high",
+      "permissions": [
+        {
+          "action": "subagent",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "edit",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "shell",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "shell",
+          "resource": "git status*",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "git diff*",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "git show*",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "git log*",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "bun --version",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "bun test*",
+          "effect": "allow"
+        },
+        {
+          "action": "shell",
+          "resource": "bun run*",
+          "effect": "allow"
+        }
+      ]
+    },
+    "deepseek_max": {
+      "description": "DeepSeek V4.1 Flash 1017 Max read-only escalation. Use only for unusually complex plans or a task that is stuck; return recommendations to build or code. Do not edit files or spawn subagents.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4.1-flash#max",
+      "permissions": [
+        {
+          "action": "subagent",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "edit",
+          "resource": "*",
+          "effect": "deny"
+        },
+        {
+          "action": "shell",
+          "resource": "*",
+          "effect": "deny"
+        }
+      ]
+    },
     "ui": {
       "description": "Specify semantic HTML, CSS, responsive layout, accessibility, interaction states and acceptance criteria. Do not implement.",
       "mode": "subagent",
-      "model": "opencode-go/glm-5.3-flash",
+      "model": "opencode-go/glm-5.3-flash#high",
       "permissions": [
         {
           "action": "subagent",
@@ -150,7 +239,7 @@
     "browser_test": {
       "description": "Validate actual rendered DOM with existing Playwright tooling. Report reproduction and evidence; do not edit tests or source.",
       "mode": "subagent",
-      "model": "opencode-go/glm-5.3-flash",
+      "model": "opencode-go/glm-5.3-flash#high",
       "permissions": [
         {
           "action": "subagent",

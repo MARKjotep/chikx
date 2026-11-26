@@ -7,14 +7,13 @@ keyframe.
 
 ```text
 overrides/
-  chikx.config.json        project prefix `ui` for entry classes; modules excluded from entry discovery
+  chikx.config.json        minimal config: project prefix `ui` for entry classes only
   src/entry.cssx           the entry: both theme imports, tokens, local overrides and strategy rules
   src/theme-base.cssx      runtime defaults (`primary`, `surface`, `on-surface`) + `@keyframes fade`
   src/theme-alt.cssx       clashing runtime `primary` (#dc2626), imported later
   src/tokens.cssx          compile-time `radius`, `primary`, `gap`, imported unqualified
   generated/styles/app.css
   generated/maps/app.map.js
-  generated/maps/app.map.d.ts
 ```
 
 `generated/` is committed output produced by the CLI, not hand-written CSS. Rebuilding rewrites
@@ -36,7 +35,8 @@ cd examples/overrides && chikx build
 
 ## What it demonstrates
 
-- `classes.prefix: "ui"` in `chikx.config.json` prefixes the entry's classes (`ui-local-override`).
+- `classes.prefix: "ui"` is the example's only project setting; the config exists just to show a
+  non-default value. It prefixes the entry's classes (`ui-local-override`).
   Runtime custom properties take the same effective prefix, so names read `--ui-primary`, not
   `--primary`. (The CLI schema key is `classes.prefix`; `naming.prefix` is the compiler API field.)
 - **Entry-wins runtime override.** `theme-base.cssx` and `theme-alt.cssx` both declare `primary`;
@@ -55,9 +55,10 @@ cd examples/overrides && chikx build
 - **Imported keyframe.** `$keyframes.fade` resolves because `theme-base.cssx` is imported with
   `styles`, so its `@keyframes fade` block is emitted in this build; `animation-name` becomes the
   plain name `fade`. A token-only import would not make the name visible (ADR-0015).
-- Style modules keep their own `@setup prefix: "ui"`; project/API prefixes never leak into imported
-  module rules (ADR-0014). Their rules still reference the shared `var(--ui-*)` properties, so the
-  entry's winning values apply everywhere.
+- Style modules keep their own `@setup prefix: "ui"` and `module: true`, so discovery finds them but
+  they write no artifacts of their own; project/API prefixes never leak into imported module rules
+  (ADR-0014). Their rules still reference the shared `var(--ui-*)` properties, so the entry's winning
+  values apply everywhere.
 
 Rebuilding after editing a source updates `generated/`; the build exits 1 on any error diagnostic
 and leaves the last successful artifacts untouched.

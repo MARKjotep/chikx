@@ -16,7 +16,8 @@ built-in defaults  <  project chikx.config.json  <  file @setup  <  explicit CLI
   `setup minify false overridden by CLI flag (--minify).`
 - CLI path overrides are specified as single-entry only; no path flags are implemented yet.
 - Unknown `@setup` keys and duplicate settings are always errors (`CHIKX1001`). Unknown
-  `chikx.config.json` keys are errors when `compiler.strict` is `true` and warnings otherwise.
+  `chikx.config.json` keys are errors by default (`compiler.strict: true`); an explicit
+  `"compiler": { "strict": false }` downgrades them to warnings.
 - Class prefix precedence:
   - `compile()` API: `options.prefix` → `options.naming.prefix` → file `@setup prefix` → `""`.
   - `compileProject()` / CLI: file `@setup prefix` wins over project `classes.prefix`.
@@ -31,16 +32,19 @@ across all of them. String values are CSS-string decoded; booleans must be `true
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `prefix` | string | `""` | Class-name prefix. `ui` turns `card` into `ui-card`; empty leaves names unchanged. |
-| `css-dir` | string | source directory | CSS output directory, resolved relative to the source file. Exact — no mirrored subfolders. |
+| `css-dir` | string or comma-separated list | source directory | CSS output directory, resolved relative to the source file. Exact — no mirrored subfolders. A list (`"../client", "../src"`) writes the same stylesheet to every item. |
 | `css-name` | string | `<stem>.css` | CSS basename. Must end in `.css`; no separators or traversal. |
 | `map-dir` | string | source directory | Class-map output directory, resolved relative to the source file. |
 | `map-name` | string | `<stem>.map.js` | Class-map basename. Must end in `.js`; declarations become `<stem>.d.ts`. |
 | `emit-css` | boolean | `true` | Write the stylesheet. |
 | `emit-map` | boolean | `true` | Write the JS class map. |
-| `emit-types` | boolean | `true` | Write `.d.ts` beside the JS map. Suppressed with a warning when `emit-map` is false. |
+| `map-types` | boolean | `false` | Write `.d.ts` beside the JS map (opt-in, CSSX-A52). Suppressed with a warning when `emit-map` is false. |
+| `emit-types` | boolean | `false` | Deprecated alias for `map-types`; the canonical key wins when both are authored. |
 | `source-map` | boolean | `false` | Write a CSS v3 source map (`<css-name>.map`) beside the stylesheet. |
-| `import-css` | boolean | `true` | Add a relative CSS side-effect import to the JS map. Must be `false` when `emit-css` is `false`. |
-| `minify` | boolean | `false` | Compact generated structural whitespace; authored tokens and declaration order are preserved. |
+| `minify` | boolean | `true` | Compact generated structural whitespace; authored tokens and declaration order are preserved. Set `false` for readable output ([ADR-0022](decisions/ADR-0022-minified-output-default.md)). |
+| `map-inherit` | boolean | `true` | When `false`, a style-merged module keeps its rules in the importer's CSS but contributes no class bindings to the importer's map, `.d.ts` or `classes`. The module's own entry map is unaffected ([ADR-0020](decisions/ADR-0020-map-inheritance-opt-out.md)). |
+| `import-css` | boolean | `false` | When `true`, the generated `map.js` starts with one `import "<stylesheet>";` side-effect import for bundlers. Omitted when no stylesheet is emitted ([ADR-0021](decisions/ADR-0021-opt-in-css-import.md)). |
+| `media-grouping` | `"merge"` \| `"safe"` \| `"none"` | `"safe"` | Grouping of emitted conditional runs. `safe` merges only adjacent compatible runs; `merge` is the opt-in disjoint-family optimizer; `none` emits runs as authored. See §2.4 ([ADR-0024](decisions/ADR-0024-media-merge-grouping.md)). |
 
 Example:
 
@@ -53,14 +57,124 @@ Example:
   map-name: "dashboard.map.js";
   emit-css: true;
   emit-map: true;
-  emit-types: true;
+  map-types: true;
   source-map: false;
+  minify: true;
   import-css: false;
-  minify: false;
 }
 ```
 
+### 2.1 `css-dir` lists
+
+`css-dir` is the only `@setup` value that accepts more than one scalar. Write a comma-separated
+list to put the same stylesheet in several in-workspace directories:
+
+```chikx
+@setup {
+  css-dir: "../client", "../src";
+  css-name: "app.css";
+  source-map: true;
+}
+```
+
+- Every item resolves exactly like the single-value form: relative to the source file, no project
+  mirroring. A list depends on the source file's location just like one path does.
+- The same `css-name` is written to each directory. With `source-map: true`, each destination also
+  gets `<css-name>.map`.
+- The list replaces the project `output.cssDir` for that file; there is no per-item merge.
+  `map-dir`, `map-name` and project/CLI `cssDir` stay single-valued.
+- Empty items (`"a", , "b"`, a leading or trailing comma) and repeated paths are `CHIKX2001`
+  errors. Every item is checked against the workspace root; an external item fails the whole entry.
+- Each destination is a separate manifest record, so `clean` removes all copies and watch rebuilds
+  rewrite all of them.
+
+### 2.2 `map-inherit`
+
+By default a style-merged module joins the importing build's single class table (ADR-0014 §3): its
+rules and its class bindings both arrive. Set `map-inherit: false` in the **module** to keep only the
+rules:
+
+```chikx
+// src/card.cssx — a rule-only component module
+@setup {
+  prefix: "ui";
+  map-inherit: false;
+}
+
+.card { padding: 8px; }
+```
+
+```chikx
+// src/page.cssx — the importer
+@use "./card.cssx" styles;
+.page { color: red; }
+```
+
+`page.css` still contains `.ui-card` and `.page` in imported-first cascade order, while
+`page.map.js` and the opt-in `page.map.d.ts` export only `page`. The flag is the module's own
+declaration, so it applies to every importer; precedence is defaults < project
+`output.mapInherit` < the module's `@setup`. Compiling `card.cssx` as an entry still writes its own
+full map. Excluded bindings cannot collide, and combining `map-inherit: false` with
+`module: true` is allowed: the module's bindings then exist nowhere by default, which is the
+documented escape hatch for a rule-only module. See
+[ADR-0020](decisions/ADR-0020-map-inheritance-opt-out.md).
+
+### 2.3 `import-css`
+
+Bundlers that carry CSS through JavaScript imports can have the map load its stylesheet:
+
+```chikx
+@setup {
+  css-dir: "../styles";
+  import-css: true;
+}
+```
+
+```js
+// src/card.map.js
+import "../styles/card.css";
+export const card = "ui-card";
+```
+
+- The specifier is relative from the **map file** to the **emitted stylesheet**, with POSIX
+  separators and a `./` prefix when the stylesheet is in or below the map directory.
+- With a `css-dir` list (§2.1), the **first listed destination** is canonical and is the import
+  target; every copy is still written.
+- The import is omitted when the build emits no stylesheet (`emit-css: false`, or `module: true`
+  without a restored `emit-css`), so a map never points at a missing file.
+- `.d.ts` declarations never carry the import. Default `false` keeps the map plain-Node importable.
+  Precedence is defaults < `output.importCss` < file `@setup`. See
+  [ADR-0021](decisions/ADR-0021-opt-in-css-import.md).
+
+### 2.4 `media-grouping`
+
+Controls how the compiler groups emitted conditional declaration runs. The default is `safe`;
+`merge` is an opt-in optimizer for larger stylesheets:
+
+```chikx
+@setup {
+  media-grouping: merge;
+}
+```
+
+- `none` — no grouping; every run is emitted where it was authored.
+- `safe` — the default; merges only adjacent runs with the same selector chain, condition and
+  native at-rule context.
+- `merge` — keeps the safe pass and also moves same-selector/same-condition conditional runs into a
+  later run when every crossed declaration has a **provably disjoint property family**. It never
+  merges unconditional runs, different selectors, different conditions or different native contexts.
+  `all` and declarations containing `var(` are wildcards: they never merge and nothing merges across
+  them. See [ADR-0024](decisions/ADR-0024-media-merge-grouping.md) for the cascade proof and the
+  family approximation's limits.
+
+The file-level key overrides project `compiler.mediaGrouping`; precedence is defaults (`safe`) <
+project config < file `@setup`. An invalid value is `CHIKX1001`.
+
 ## 3. `chikx.config.json`
+
+The file is **optional**. A config is only needed to change a default or scope discovery; without
+one, project runs use the nearest `package.json` workspace root and the default include globs. The
+full example below shows every key:
 
 ```json
 {
@@ -71,10 +185,11 @@ Example:
     "mapDir": "dist/maps",
     "emitCss": true,
     "emitMap": true,
-    "emitTypes": true,
+    "mapTypes": true,
     "sourceMap": false,
-    "importCss": true,
-    "minify": false
+    "minify": true,
+    "mapInherit": true,
+    "importCss": false
   },
   "classes": { "strategy": "prefix", "prefix": "ui" },
   "media": { "md": "(min-width: 768px)", "xl": "(min-width: 1280px)" },
@@ -85,23 +200,25 @@ Example:
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `$schema` | string | — | Accepted and ignored, so editors can validate the document. |
-| `include` | string[] | required for project builds | Entry globs. Missing or empty in project mode exits 2, and so do globs that match no `.cssx` file (a configuration error, not an empty build). Optional for single-file mode. |
-| `exclude` | string[] | `[]` | Glob patterns and directory names removed from discovery. `node_modules` and `.git` are never walked. |
+| `include` | string[] | `["**/*.cssx"]` | Entry globs. Omit it for the default. An explicitly empty list exits 2, and so do globs that match no `.cssx` file (a configuration error, not an empty build). Optional for single-file mode. |
+| `exclude` | string[] | `[]` | Glob patterns and directory names removed from discovery. `node_modules` and `.git` are never walked. Imported modules normally self-declare with `@setup { module: true; }` instead of being listed here. |
 | `output.cssDir` | string | source directory | Project CSS directory, relative to the workspace root. Mirrors the source path (see §4). |
 | `output.cssName` | string | `<stem>.css` | Project default CSS basename. |
 | `output.mapDir` | string | source directory | Project class-map directory. |
 | `output.mapName` | string | `<stem>.map.js` | Project default class-map basename. |
 | `output.emitCss` | boolean | `true` | See the emit-flag rules in §5. |
 | `output.emitMap` | boolean | `true` | See §5. |
-| `output.emitTypes` | boolean | `true` | See §5. |
+| `output.mapTypes` | boolean | `false` | Write `.d.ts` beside the JS map (opt-in, CSSX-A52). See §5. |
+| `output.emitTypes` | boolean | `false` | Deprecated alias for `output.mapTypes`. |
 | `output.sourceMap` | boolean | `false` | See §6. |
-| `output.importCss` | boolean | `true` | See §5. |
-| `output.minify` | boolean | `false` | Compact CSS output. |
+| `output.minify` | boolean | `true` | Compact CSS output; set `false` for readable output ([ADR-0022](decisions/ADR-0022-minified-output-default.md)). |
+| `output.mapInherit` | boolean | `true` | Whether style-merged modules contribute class bindings to the importing build ([ADR-0020](decisions/ADR-0020-map-inheritance-opt-out.md)). |
+| `output.importCss` | boolean | `false` | Prepend the emitted stylesheet's side-effect import to the class map ([ADR-0021](decisions/ADR-0021-opt-in-css-import.md)). |
 | `classes.strategy` | `"prefix"` \| `"none"` | `"prefix"` | Naming strategy. |
 | `classes.prefix` | string | `""` | Prefix used by the `prefix` strategy. |
 | `media` | object | `{}` | Alias overrides merged after built-ins and before file `@media-types`. |
-| `compiler.strict` | boolean | `false` | Reject unknown configuration keys (error instead of warning). |
-| `compiler.mediaGrouping` | `"safe"` \| `"none"` | `"safe"` | Safe grouping of adjacent compatible runs. |
+| `compiler.strict` | boolean | `true` | Reject unknown configuration keys (exit 2). `"strict": false` keeps the warning path. |
+| `compiler.mediaGrouping` | `"merge"` \| `"safe"` \| `"none"` | `"safe"` | Grouping of conditional runs. `safe` merges adjacent compatible runs; `merge` is the opt-in disjoint-family optimizer ([ADR-0024](decisions/ADR-0024-media-merge-grouping.md)); `none` emits as authored. |
 
 ### Kebab-case ↔ camelCase mapping
 
@@ -114,10 +231,13 @@ Example:
 | `map-name` | `output.mapName` |
 | `emit-css` | `output.emitCss` |
 | `emit-map` | `output.emitMap` |
-| `emit-types` | `output.emitTypes` |
+| `map-types` | `output.mapTypes` |
+| `emit-types` (deprecated) | `output.emitTypes` |
 | `source-map` | `output.sourceMap` |
-| `import-css` | `output.importCss` |
 | `minify` | `output.minify` |
+| `map-inherit` | `output.mapInherit` |
+| `import-css` | `output.importCss` |
+| `media-grouping` | `compiler.mediaGrouping` |
 
 `output.prefix` is not a schema key; class naming lives under `classes` so strategy and prefix stay
 together. Writing `output.prefix` is an unknown key (`strict`: error).
@@ -126,7 +246,10 @@ together. Writing `output.prefix` is an unknown key (`strict`: error).
 
 - **Project mode** (`chikx build`, no file argument): the CLI walks up from the working directory to
   the nearest `chikx.config.json`; `--config <path>` overrides the walk. The config directory is the
-  workspace root. No config means exit 2 — there are no include globs to expand.
+  workspace root. When no config exists, the nearest ancestor `package.json` (else the starting
+  directory) is the workspace root and discovery uses the default include `["**/*.cssx"]`
+  ([ADR-0007](decisions/ADR-0007-workspace-root-and-containment.md),
+  [ADR-0023](decisions/ADR-0023-zero-config-defaults.md)).
 - **Single-file mode** (`chikx build src/button.cssx`): the nearest config is still used if found;
   otherwise the nearest ancestor `package.json` (else the file's directory) is the workspace root
   ([ADR-0007](decisions/ADR-0007-workspace-root-and-containment.md)).
@@ -142,6 +265,10 @@ together. Writing `output.prefix` is an unknown key (`strict`: error).
 
 - File-level directories resolve **relative to the source file** and are used exactly:
   `css-dir: "../styles"` in `src/button.cssx` writes `styles/button.css`.
+- A `css-dir` list applies the same rule to each item: `css-dir: "../client", "../src"` writes the
+  identical stylesheet to both `client/` and `src/` next to the source file. The list replaces
+  `output.cssDir` for that file and does not mirror project subdirectories. Empty or duplicate items
+  are `CHIKX2001`; each destination is validated and manifested separately.
 - Project-level directories resolve **relative to the workspace root** and mirror the source path
   relative to the workspace root. With `include: ["src/**/*.cssx"]` and `cssDir: "dist/styles"`,
   `src/deep/widget.cssx` writes `dist/styles/src/deep/widget.css`. This keeps same-named sources
@@ -153,7 +280,14 @@ together. Writing `output.prefix` is an unknown key (`strict`: error).
   directory is retained.
 - `css-name` must end in `.css`; `map-name` must end in `.js`. Both must be basenames: no `/`, `\`,
   `.`/`..`, NUL or traversal. Extension normalisation is not implemented.
-- A CSS source map is named `<css-name>.map`; a JS map `classes.js` has declarations `classes.d.ts`.
+- A CSS source map is named `<css-name>.map`; a JS map `classes.js` has opt-in declarations
+  `classes.d.ts`.
+- The JS map is one `export const <camelCase> = "<emitted class>";` per class, in first-appearance
+  order, with no default export and, by default, no CSS side-effect import. `<camelCase>` splits on
+  `-`/`_`; a digit-leading or reserved identifier gets a `_` prefix and duplicate identifiers get
+  `_2`/`_3`. Load the stylesheet from the page (`<link>`) or import it explicitly in the bundler
+  entry; `import-css: true` (§2.3) opts the map into that import instead. See §8 of
+  [SPECIFICATION.md](../SPECIFICATION.md), CSSX-A52 and [ADR-0021](decisions/ADR-0021-opt-in-css-import.md).
 - The same destination planned by two entries is a collision (`CHIKX5001`), as is a target that
   equals its own input source.
 
@@ -161,15 +295,17 @@ together. Writing `output.prefix` is an unknown key (`strict`: error).
 
 | Combination | Result |
 |---|---|
-| `emit-css: false` + `import-css: true` | **Error** `CHIKX5001`: the map cannot import a stylesheet that is not written. |
-| `emit-css: false` + `import-css: false` | Valid. No CSS artifact; maps and declarations are still produced. |
-| `emit-map: false` + `emit-types: true` | Types are suppressed and a `CHIKX5001` **warning** asks you to set `emit-types: false` explicitly. |
-| `emit-map: false` + `emit-types: false` | Valid. No JS or declarations. |
+| `emit-css: false` | Valid. No CSS artifact; maps (and requested declarations) are still produced, no source map is written, and `import-css` emits no import. |
+| `emit-map: false` + `map-types: true` | Types are suppressed and a `CHIKX5001` **warning** asks you to set `map-types: false` explicitly. |
+| `emit-map: false` + `map-types: false` (the default) | Valid. No JS or declarations. |
 | `source-map: true` + `emit-css: false` | No source map is planned or written. |
 | `emit-css: false` | `compile()` omits `css`; class maps and declarations are still returned. |
 
-`minify` only compacts generated structural whitespace. It preserves quoted strings, custom values,
-`calc()` spacing, at-rule prelude whitespace and declaration order; it never changes computed styles.
+`minify` defaults to `true` (ADR-0022): generated CSS is compact by default. It only compacts
+generated structural whitespace, preserving quoted strings, custom values, `calc()` spacing, at-rule
+prelude whitespace and declaration order; it never changes computed styles. Opt out per file with
+`@setup { minify: false; }`, per project with `"output": { "minify": false }`, or per invocation with
+`--no-minify`; `--minify` is the explicit override in the other direction. `format()` is unaffected.
 
 ## 6. Source maps
 

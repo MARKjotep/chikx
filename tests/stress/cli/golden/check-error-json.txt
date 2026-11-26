@@ -21,12 +21,6 @@
           "path": "src/broken.map.js",
           "written": false,
           "reason": "check"
-        },
-        {
-          "kind": "types",
-          "path": "src/broken.map.d.ts",
-          "written": false,
-          "reason": "check"
         }
       ],
       "diagnostics": [

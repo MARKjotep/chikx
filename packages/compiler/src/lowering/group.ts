@@ -1,10 +1,11 @@
 import { nativeBlockIr, ruleIr, stylesheetIr } from "../ir/factories.js";
 import type { NativeBlockChild, NativeBlockIr, RuleIr, StylesheetIr } from "../ir/types.js";
 import type { MediaGroupingMode } from "../types/options.js";
+import { mergeRuns } from "./merge.js";
 import { sameAncestors, sameCondition, sameContext } from "./spans.js";
 
 /**
- * Safe declaration-run grouping (SPECIFICATION.md §5.3).
+ * Declaration-run grouping (SPECIFICATION.md §5.3, ADR-0024).
  *
  * Grouping is a pure post-pass over the IR: the pipeline runs it **after**
  * class rewriting (P4/A09), so selector equality is prefix-insensitive there and
@@ -17,6 +18,11 @@ import { sameAncestors, sameCondition, sameContext } from "./spans.js";
  * rules therefore block a merge, so specificity, layers and scope never change
  * and computed styles are untouched (§5.3).
  *
+ * `merge` (opt-in, ADR-0024) runs the same safe pass and then moves conditional
+ * runs into later identical-selector identical-condition runs when every
+ * crossed declaration has a property family disjoint from the moved run and no
+ * wildcard (`all`, `var()`) is involved. See `merge.ts` for the cascade proof.
+ *
  * Grouping never crosses a native block boundary: children of a native at-rule
  * are grouped among themselves, and adjacent native blocks stay separate. No
  * global "group at the bottom" pass is performed.
@@ -26,7 +32,8 @@ import { sameAncestors, sameCondition, sameContext } from "./spans.js";
  */
 export function groupRuns(ir: StylesheetIr, mode: MediaGroupingMode = "safe"): StylesheetIr {
   if (mode === "none") return ir;
-  return stylesheetIr(groupList(ir.rules));
+  const grouped = stylesheetIr(groupList(ir.rules));
+  return mode === "merge" ? mergeRuns(grouped) : grouped;
 }
 
 function sameRun(left: RuleIr, right: RuleIr): boolean {

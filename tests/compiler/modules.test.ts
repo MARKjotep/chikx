@@ -4,7 +4,11 @@ import { decodeFileSetup, resolveEffectiveSetup } from "../../packages/cli/src/s
 import { compileProject, createNodeHost, parse } from "../../packages/compiler/src/index.ts";
 import { buildModuleGraph, styleModuleOrder } from "../../packages/compiler/src/resolver/index.ts";
 import type { UseImport } from "../../packages/compiler/src/types/ast.ts";
-import type { CompileOptions, ModuleHost } from "../../packages/compiler/src/types/options.ts";
+import type {
+  CompileOptions,
+  CompileProjectOptions,
+  ModuleHost,
+} from "../../packages/compiler/src/types/options.ts";
 
 /**
  * Stylesheet-modularization tests (ADR-0014, owner decision 2026-11-25).
@@ -57,9 +61,16 @@ function uses(source: string): UseImport[] {
   );
 }
 
-function compileFixture(name: string, entries: readonly string[] = ["entry.cssx"]) {
+function compileFixture(
+  name: string,
+  entries: readonly string[] = ["entry.cssx"],
+  output?: CompileProjectOptions["output"],
+) {
   const directory = join(FIXTURES, name);
-  return compileProject([...entries], createNodeHost(directory), { projectRoot: directory });
+  return compileProject([...entries], createNodeHost(directory), {
+    projectRoot: directory,
+    ...(output === undefined ? {} : { output }),
+  });
 }
 
 function diagnosticCodes(diagnostics: readonly { readonly code: string }[]): string[] {
@@ -193,20 +204,7 @@ describe("rule-merge compilation", () => {
 
     expect(diagnosticCodes(entry.diagnostics)).toEqual([]);
     expect(entry.css).toBe(
-      [
-        ".ui-panel {",
-        "  border-radius: 8px;",
-        "}",
-        "",
-        ".ui-tile {",
-        "  color: red;",
-        "}",
-        "",
-        ".admin-page {",
-        "  padding: 16px;",
-        "}",
-        "",
-      ].join("\n"),
+      ".ui-panel{border-radius:8px;}.ui-tile{color:red;}.admin-page{padding:16px;}",
     );
     expect({ ...entry.classes }).toEqual({
       panel: "ui-panel",
@@ -239,12 +237,12 @@ describe("rule-merge compilation", () => {
     if (entry === undefined) throw new Error("missing tokens-plus-rules entry result");
 
     expect(diagnosticCodes(entry.diagnostics)).toEqual([]);
-    expect(entry.css).toContain("--app-primary: #2563eb;");
+    expect(entry.css).toContain("--app-primary:#2563eb;");
     expect(entry.css).toContain("@media (prefers-color-scheme: dark)");
-    expect(entry.css).toContain("--app-primary: #60a5fa;");
-    expect(entry.css).toContain("padding: 10px;");
-    expect(entry.css).toContain("color: var(--app-primary);");
-    expect(entry.css).toContain("margin: 10px;");
+    expect(entry.css).toContain("--app-primary:#60a5fa;");
+    expect(entry.css).toContain("padding:10px;");
+    expect(entry.css).toContain("color:var(--app-primary);");
+    expect(entry.css).toContain("margin:10px;");
     expect({ ...entry.classes }).toEqual({ card: "ui-card", page: "app-page" });
   });
 
@@ -259,7 +257,7 @@ describe("rule-merge compilation", () => {
     });
     const entry = results["src/entry.cssx"];
     if (entry === undefined) throw new Error("missing token-only entry result");
-    expect(entry.css).toBe(".app-page {\n  color: red;\n}\n");
+    expect(entry.css).toBe(".app-page{color:red;}");
     expect({ ...entry.classes }).toEqual({ page: "app-page" });
   });
 
@@ -272,7 +270,7 @@ describe("rule-merge compilation", () => {
     const results = await compileProject(["src/entry.cssx"], host, { projectRoot: WORKSPACE });
     const entry = results["src/entry.cssx"];
     if (entry === undefined) throw new Error("missing prefix entry result");
-    expect(entry.css).toBe(".card {\n  color: blue;\n}\n\n.admin-page {\n  color: red;\n}\n");
+    expect(entry.css).toBe(".card{color:blue;}.admin-page{color:red;}");
     expect({ ...entry.classes }).toEqual({ card: "card", page: "admin-page" });
   });
 
@@ -288,7 +286,7 @@ describe("rule-merge compilation", () => {
     });
     const entry = results["src/entry.cssx"];
     if (entry === undefined) throw new Error("missing strategy-none result");
-    expect(entry.css).toBe(".card {\n  color: blue;\n}\n\n.page {\n  color: red;\n}\n");
+    expect(entry.css).toBe(".card{color:blue;}.page{color:red;}");
   });
 
   test("merged builds keep source maps for every contributing module", async () => {
@@ -342,7 +340,7 @@ describe("module: true (ADR-0014)", () => {
     const explicit = results["explicit.cssx"];
     if (explicit === undefined) throw new Error("missing explicit module result");
     expect(diagnosticCodes(explicit.diagnostics)).toEqual([]);
-    expect(explicit.css).toBe(".ui-card {\n  padding: 8px;\n}\n");
+    expect(explicit.css).toBe(".ui-card{padding:8px;}");
     // emit-map and emit-types were not authored, so they stay suppressed.
     expect(explicit.js).toBeUndefined();
     expect(explicit.types).toBeUndefined();
@@ -353,20 +351,20 @@ describe("module: true (ADR-0014)", () => {
     const entry = results["entry.cssx"];
     if (entry === undefined) throw new Error("missing module-flag entry result");
     expect(diagnosticCodes(entry.diagnostics)).toEqual([]);
-    expect(entry.css).toBe(".ui-card {\n  padding: 8px;\n}\n\n.app-page {\n  display: block;\n}\n");
+    expect(entry.css).toBe(".ui-card{padding:8px;}.app-page{display:block;}");
     expect(entry.js).toContain('export const card = "ui-card";');
   });
 
-  test("module: false keeps the default artifacts", async () => {
+  test("module: false keeps the default artifacts (map on, types opt-in)", async () => {
     const host = createHost({
       [`${WORKSPACE}/src/entry.cssx`]: "@setup { module: false; }\n.page { color: red; }\n",
     });
     const results = await compileProject(["src/entry.cssx"], host, { projectRoot: WORKSPACE });
     const entry = results["src/entry.cssx"];
     if (entry === undefined) throw new Error("missing module:false result");
-    expect(entry.css).toBe(".page {\n  color: red;\n}\n");
+    expect(entry.css).toBe(".page{color:red;}");
     expect(entry.js).toBeDefined();
-    expect(entry.types).toBeDefined();
+    expect(entry.types).toBeUndefined();
   });
 
   test("module: true does not make the CSS import requirement fail", async () => {
@@ -388,7 +386,6 @@ describe("module: true (ADR-0014)", () => {
     expect(setup.emitCss).toBe(false);
     expect(setup.emitMap).toBe(false);
     expect(setup.emitTypes).toBe(false);
-    expect(setup.importCss).toBe(false);
 
     const explicit = decodeFileSetup(
       parse("@setup { module: true; emit-map: true; } .card { color: red; }", {
@@ -403,17 +400,11 @@ describe("module: true (ADR-0014)", () => {
 
 describe("merged class tables and exports", () => {
   test("one merged map covers every module plus the entry", async () => {
-    const results = await compileFixture("basic");
+    const results = await compileFixture("basic", ["entry.cssx"], { mapTypes: true });
     const entry = results["entry.cssx"];
     if (entry === undefined) throw new Error("missing basic entry result");
     expect(entry.js).toBe(
-      [
-        'import "./entry.css";',
-        'export const card = "card-card";',
-        'export const page = "app-page";',
-        "export default { card, page };",
-        "",
-      ].join("\n"),
+      ['export const card = "card-card";', 'export const page = "app-page";', ""].join("\n"),
     );
     expect(entry.types).toContain('export declare const card: "card-card";');
   });
@@ -435,11 +426,11 @@ describe("merged class tables and exports", () => {
       page: "app-page",
     });
     // Both `.shared` module rules still emit their authored declarations.
-    expect(entry.css?.match(/\.ui-shared \{/g)).toHaveLength(2);
-    expect(entry.css).toContain(".shared {");
+    expect(entry.css?.match(/\.ui-shared\{/g)).toHaveLength(2);
+    expect(entry.css).toContain(".shared{");
   });
 
-  test("camelCase alias collisions across modules are CHIKX4001 and keep quoted keys", async () => {
+  test("camelCase alias collisions across modules warn and suffix the later export", async () => {
     const host = createHost({
       [`${WORKSPACE}/src/entry.cssx`]:
         '@setup { prefix: "app"; }\n@use "./card.cssx" styles;\n.fooBar { color: red; }\n',
@@ -450,9 +441,12 @@ describe("merged class tables and exports", () => {
     if (entry === undefined) throw new Error("missing alias-collision result");
 
     expect(diagnosticCodes(entry.diagnostics)).toEqual(["CHIKX4001"]);
-    expect(entry.js).toContain('"foo-bar": "ui-foo-bar"');
-    expect(entry.js).toContain('fooBar: "app-fooBar"');
-    expect(entry.js).not.toContain("export const fooBar");
+    expect(entry.diagnostics[0]?.severity).toBe("warning");
+    expect(entry.js).toBe(
+      ['export const fooBar = "ui-foo-bar";', 'export const fooBar_2 = "app-fooBar";', ""].join(
+        "\n",
+      ),
+    );
   });
 
   test("a global class in a module and a local class of the same name do not conflict", async () => {
@@ -466,8 +460,8 @@ describe("merged class tables and exports", () => {
     if (entry === undefined) throw new Error("missing global/local result");
     expect(diagnosticCodes(entry.diagnostics)).toEqual([]);
     expect({ ...entry.classes }).toEqual({ card: "app-card" });
-    expect(entry.css).toContain(".card {");
-    expect(entry.css).toContain(".app-card {");
+    expect(entry.css).toContain(".card{");
+    expect(entry.css).toContain(".app-card{");
   });
 
   test("merged builds are deterministic across runs", async () => {
@@ -480,6 +474,139 @@ describe("merged class tables and exports", () => {
     expect(left?.types).toBe(right?.types);
     expect(diagnosticCodes(left?.diagnostics ?? [])).toEqual(
       diagnosticCodes(right?.diagnostics ?? []),
+    );
+  });
+});
+
+describe("map-inherit (ADR-0020)", () => {
+  const ENTRY =
+    '@setup { prefix: "app"; map-types: true; }\n@use "./card.cssx" styles;\n.page { color: red; }\n';
+  const MODULE_FLAGGED =
+    '@setup { prefix: "ui"; map-inherit: false; }\n.card { color: blue; }\n.icon { width: 1em; }\n';
+  const MODULE_DEFAULT = '@setup { prefix: "ui"; }\n.card { color: blue; }\n';
+
+  test("the flagged module's CSS merges but its bindings leave js, types and classes", async () => {
+    const host = createHost({
+      [`${WORKSPACE}/src/entry.cssx`]: ENTRY,
+      [`${WORKSPACE}/src/card.cssx`]: MODULE_FLAGGED,
+    });
+    const results = await compileProject(["src/entry.cssx"], host, { projectRoot: WORKSPACE });
+    const entry = results["src/entry.cssx"];
+    if (entry === undefined) throw new Error("missing map-inherit entry result");
+
+    expect(diagnosticCodes(entry.diagnostics)).toEqual([]);
+    // Imported rules stay first, in cascade order, with the module's own prefix.
+    expect(entry.css).toBe(".ui-card{color:blue;}.ui-icon{width:1em;}.app-page{color:red;}");
+    expect(entry.js).toBe('export const page = "app-page";\n');
+    expect(entry.types).toBe('export declare const page: "app-page";\n');
+    expect({ ...entry.classes }).toEqual({ page: "app-page" });
+  });
+
+  test("without the flag the module still inherits by default", async () => {
+    const host = createHost({
+      [`${WORKSPACE}/src/entry.cssx`]: ENTRY,
+      [`${WORKSPACE}/src/card.cssx`]: MODULE_DEFAULT,
+    });
+    const results = await compileProject(["src/entry.cssx"], host, { projectRoot: WORKSPACE });
+    const entry = results["src/entry.cssx"];
+    if (entry === undefined) throw new Error("missing default-inherit entry result");
+    expect(entry.js).toBe(
+      ['export const card = "ui-card";', 'export const page = "app-page";', ""].join("\n"),
+    );
+  });
+
+  test("the flagged module's own entry map is unaffected", async () => {
+    const host = createHost({
+      [`${WORKSPACE}/src/card.cssx`]:
+        '@setup { prefix: "ui"; map-inherit: false; map-types: true; }\n.card { color: blue; }\n',
+    });
+    const results = await compileProject(["src/card.cssx"], host, { projectRoot: WORKSPACE });
+    const card = results["src/card.cssx"];
+    if (card === undefined) throw new Error("missing own-entry result");
+    expect(diagnosticCodes(card.diagnostics)).toEqual([]);
+    expect(card.js).toBe('export const card = "ui-card";\n');
+    expect(card.types).toBe('export declare const card: "ui-card";\n');
+  });
+
+  test("project output.mapInherit applies, and a file value overrides it", async () => {
+    const host = createHost({
+      [`${WORKSPACE}/src/entry.cssx`]: ENTRY,
+      [`${WORKSPACE}/src/card.cssx`]: MODULE_DEFAULT,
+      [`${WORKSPACE}/src/panel.cssx`]:
+        '@setup { prefix: "ui"; map-inherit: true; }\n.panel { color: blue; }\n',
+      [`${WORKSPACE}/src/entry-panel.cssx`]:
+        '@setup { prefix: "app"; }\n@use "./panel.cssx" styles;\n.page { color: red; }\n',
+    });
+    const results = await compileProject(["src/entry.cssx", "src/entry-panel.cssx"], host, {
+      projectRoot: WORKSPACE,
+      output: { mapInherit: false },
+    });
+    const entry = results["src/entry.cssx"];
+    const panel = results["src/entry-panel.cssx"];
+    if (entry === undefined || panel === undefined) throw new Error("missing config-layer results");
+    expect(entry.js).toBe('export const page = "app-page";\n');
+    expect(panel.js).toBe(
+      ['export const panel = "ui-panel";', 'export const page = "app-page";', ""].join("\n"),
+    );
+    expect(panel.css?.startsWith(".ui-panel{")).toBe(true);
+  });
+
+  test("excluded bindings never raise CHIKX4001", async () => {
+    const host = createHost({
+      [`${WORKSPACE}/src/entry.cssx`]:
+        '@setup { prefix: "app"; }\n@use "./card.cssx" styles;\n.shared { color: red; }\n.fooBar { color: red; }\n',
+      [`${WORKSPACE}/src/card.cssx`]:
+        '@setup { prefix: "ui"; map-inherit: false; }\n.shared { color: blue; }\n.foo-bar { color: blue; }\n',
+    });
+    const results = await compileProject(["src/entry.cssx"], host, { projectRoot: WORKSPACE });
+    const entry = results["src/entry.cssx"];
+    if (entry === undefined) throw new Error("missing collision result");
+
+    expect(diagnosticCodes(entry.diagnostics)).toEqual([]);
+    expect({ ...entry.classes }).toEqual({ shared: "app-shared", fooBar: "app-fooBar" });
+    expect(entry.js).toBe(
+      ['export const shared = "app-shared";', 'export const fooBar = "app-fooBar";', ""].join("\n"),
+    );
+    // The module's differently-emitted `.shared` and camelCase alias still emit CSS.
+    expect(entry.css).toContain(".ui-shared{");
+    expect(entry.css).toContain(".ui-foo-bar{");
+  });
+
+  test("module: true + map-inherit: false is silent and leaves no bindings anywhere", async () => {
+    const host = createHost({
+      [`${WORKSPACE}/src/entry.cssx`]:
+        '@setup { prefix: "app"; }\n@use "./card.cssx" styles;\n.page { color: red; }\n',
+      [`${WORKSPACE}/src/card.cssx`]:
+        '@setup { prefix: "ui"; module: true; map-inherit: false; }\n.card { color: blue; }\n',
+    });
+    const results = await compileProject(["src/entry.cssx", "src/card.cssx"], host, {
+      projectRoot: WORKSPACE,
+    });
+    const entry = results["src/entry.cssx"];
+    const module = results["src/card.cssx"];
+    if (entry === undefined || module === undefined) throw new Error("missing escape-hatch result");
+
+    expect(diagnosticCodes(entry.diagnostics)).toEqual([]);
+    expect(diagnosticCodes(module.diagnostics)).toEqual([]);
+    expect(entry.js).toBe('export const page = "app-page";\n');
+    expect(module.css).toBeUndefined();
+    expect(module.js).toBeUndefined();
+    expect(module.types).toBeUndefined();
+    expect({ ...entry.classes }).toEqual({ page: "app-page" });
+  });
+
+  test("map-inherit expects a boolean", async () => {
+    const host = createHost({
+      [`${WORKSPACE}/src/card.cssx`]: '@setup { map-inherit: "no"; }\n.card { color: blue; }\n',
+    });
+    const results = await compileProject(["src/card.cssx"], host, { projectRoot: WORKSPACE });
+    const card = results["src/card.cssx"];
+    if (card === undefined) throw new Error("missing invalid map-inherit result");
+    expect(diagnosticCodes(card.diagnostics)).toEqual(["CHIKX1001"]);
+    expect(card.diagnostics[0]?.message).toContain("map-inherit");
+    expect(card.diagnostics[0]?.span.start).toBeGreaterThanOrEqual(0);
+    expect(card.diagnostics[0]?.span.end).toBeLessThanOrEqual(
+      '@setup { map-inherit: "no"; }\n.card { color: blue; }\n'.length,
     );
   });
 });

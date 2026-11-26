@@ -10,16 +10,21 @@ lists language features in more detail.
 |---|---|---|
 | Editor formatting | Format Document (⌥⇧F) and `chikx.editor.formatOnSave` run the compiler's canonical whole-document formatter; parse errors leave the document unchanged. Range formatting and format-on-type are not available because `format` is a document-level parse→print pass. | Document-level only |
 | Editor CSS intelligence | The extension does not project Chikx onto `vscode-css-languageservice`. Hover and completion documentation come from a built-in one-sentence table for the 107 supported properties; property/value completions are curated lists, not a full CSS database. | Projection deferred |
-| Cross-module rename (tokens, classes) | `$token` rename stays single-file; namespace members and classes are refused, and class rename across JSX does not exist. Group and keyframe rename are the exception and span the current document's visible modules (§5). | Partial |
+| Cross-module rename (tokens, classes, ids) | `$token`, class and id rename stay single-file: a class rename rewrites every non-global occurrence of the same authored name in the current `.cssx`, and an id rename rewrites every occurrence of the id name in that document. Namespace members are refused, and class/id rename across files or JSX does not exist. Group and keyframe rename are the exception and span the current document's visible modules (§5). | Partial |
 | LSP server | Only the VS Code extension is provided; there is no language server for other editors. | Deferred |
 
 ## 2. Release and packaging gaps
 
 | Gap | Detail |
 |---|---|
-| CLI `bin` | `@chikx/cli` declares `"bin": { "chikx": "src/index.ts" }`. That entry relies on Bun's TypeScript loader. Node users must invoke `node dist/index.js`. A published package should point `bin` at a Node-compatible `dist` entry. |
-| Extension packaging payload | The VSIX currently includes `src/`, `test/` and `tsconfig.json` beside `dist/` and `out/`. It works, but a `.vscodeignore` would trim the payload before a store submission. |
-| Generated maps and plain Node ESM | With the default `import-css: true` a generated class map starts with `import "…/<name>.css";`, which plain Node refuses to load (`ERR_UNKNOWN_FILE_EXTENSION: Unknown file extension ".css"`). Node consumers need a bundler or a CSS-loader hook (e.g. `module.registerHooks` stubbing `.css`); `import-css: false` emits a dependency-free map that Node imports directly. Bun imports both. See `.ai/reports/CSSX-TT5.md` (F1) and `tests/stress/consumer/esm-consumer.test.ts:187`. |
+| Generated maps and style loading | Class maps contain only named exports; they never import the stylesheet, so plain Node imports them directly. The page must load the generated CSS itself (`<link rel="stylesheet">` for static sites, or an explicit `import "./x.css"` in a bundler entry). See `tests/stress/consumer/esm-consumer.test.ts`. |
+
+The v0.1 packaging blockers are closed. `@chikx/cli`'s `bin` points at the built `dist/index.js`
+(Node-compatible ESM, no TypeScript loader), and the source and build carry the
+`#!/usr/bin/env node` shebang, so a symlinked `bin` runs on a Node-only machine and Bun executes the
+same file. `.vscodeignore` keeps `src/`, `test/` and `tsconfig.json` out of the VSIX, which now
+carries the runtime payload — `out/`, `dist/`, `syntaxes/`, `media/`, `language-configuration.json`,
+`LICENSE` and `README.md` — at 18 files / 138.35 KB instead of 84 files / 309.78 KB.
 
 Package versions (`0.1.0`), package-level `README.md`/`LICENSE` copies and the unscoped extension name
 (`chikx`) were resolved for v0.1; `bun run release:check` asserts all three.
@@ -63,7 +68,7 @@ is no legacy extension alias, dual registration or migration path in v0.1.
 | One media expression per alias | Comma lists and some `not`/`only` combinations are rejected rather than emitted. Native media lists pass through. |
 | Runtime tokens per entrypoint | Imported runtime tokens are emitted in each consuming entrypoint. Within one build, duplicate custom-property names resolve in merge order (entry last; later module wins) with no diagnostic (ADR-0016). Collision handling across separate outputs/entrypoints is not implemented yet. |
 | Simple `:global` only | `:global(.class)` is supported; complex global selectors are not. |
-| Export collisions are fatal | `foo-bar` and `fooBar` cannot both be exported from one file (`CHIKX4001`). |
+| Export identifier collisions are warnings | `foo-bar` and `fooBar` both map to `fooBar`; the first keeps it, the later one becomes `fooBar_2`, and one `CHIKX4001` **warning** names both. No class is dropped and the build does not fail (CSSX-A52). |
 | Keyframe references need a rule-merge import | `$keyframes.<name>` sees the file's own top-level keyframes plus those of `@use "…" styles` modules. A token-only import's keyframes are not referenceable (`CHIKX2001`) because that module's CSS is not emitted; the `@variables { spin: spin; }` fallback still works. Two merged modules may define the same name — both blocks are emitted and native cascade order decides (ADR-0015, [ADR-0018](decisions/ADR-0018-keyframes-visibility-and-exclusions.md)). |
 | String-named and conditional keyframes | `@keyframes "fade"` is rejected (names are identifiers) and a `@keyframes` block nested in a rule or another at-rule block is not collected; both stay native-only and cannot be referenced as `$keyframes.<name>`. There is no plan to change this in v0.1 (ADR-0018). |
 | Native CSS coverage is tested, not complete | Supported at-rules and selectors are listed in [compatibility.md](compatibility.md); exotic combinations may be rejected or pass through untested. |
@@ -74,8 +79,8 @@ is no legacy extension alias, dual registration or migration path in v0.1.
 | Limitation | Detail |
 |---|---|
 | Preview URIs keyed by basename | Two same-named files can share one `chikx-preview:` document; reopening refreshes content. |
-| Diagnostics for imports | Problems in imported modules are logged rather than published at the current document's offsets. |
-| Rename scope | Group and keyframe rename span the current document's visible module set: its own top-level definitions plus the transitive `@use "…" styles;` closure. Modules that import the current document from above are never rewritten, and token-only imports expose nothing. Keyframe rename rewrites exact `animation-name: <name>` values only — the `animation:` shorthand and multi-name values are left alone — lists duplicate visible definitions in completion, and refuses until the reference is unambiguous. |
+| Diagnostics for imports | Importers re-analyze when an imported `.cssx` module changes or is saved, so a renamed or removed member is reported at the importer's own `$ns.member` offset. Problems whose spans belong to the imported module itself are still logged in the `Chikx` output channel rather than published at the current document's offsets. |
+| Rename scope | Group and keyframe rename span the current document's visible module set: its own top-level definitions plus the transitive `@use "…" styles;` closure. Modules that import the current document from above are never rewritten, and token-only imports expose nothing. Find All References is bidirectional for `$token`/`@runtime` tokens across direct importers and resolution-aware (namespaced aliases and unqualified/style imports included; local shadows and ambiguous unqualified imports excluded), while cross-file rename remains deferred. Class rename is single-file: it rewrites every non-global occurrence of the same authored name in the current `.cssx` document (`:global(...)` excluded) and never touches JSX, the generated map or `.d.ts` — those follow the next build, so literal `className="…"` strings are not caught by TypeScript. Id rename is single-file too: it rewrites every occurrence of the id name (leading `#` kept, `:global(#x)` included because ids have no local/global split), but JSX/HTML `id="…"` anchors and inbound links are not updated, and ids are not in the generated map. Keyframe rename rewrites exact `animation-name: <name>` values only — the `animation:` shorthand and multi-name values are left alone — lists duplicate visible definitions in completion, and refuses until the reference is unambiguous. |
 | Property docs are a built-in table | Hover and completion use one-sentence built-in descriptions for the 107 supported properties; the full `vscode-css-languageservice` data (all properties, MDN links) is intentionally not embedded. |
 | Restricted Mode | Analysis and preview work; writing commands are blocked. |
 

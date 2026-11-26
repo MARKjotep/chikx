@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted (2026-11-25) — project owner decision, normative for v0.1.
+Accepted (2026-11-25) — project owner decision, normative for v0.1. **Amended by CSSX-A52
+(2026-11-26):** identifier collisions are `CHIKX4001` warnings resolved with `_N` suffixes, and the
+generated map no longer imports CSS (the `import-css` setting was removed). The rule-merge decision
+itself is unchanged.
 
 Related: SPECIFICATION.md §3.2, §6.1, §6.3, §7.2, §8, §9; ADR-0007, ADR-0010;
 `.ai/reports/CSSX-A16.md`
@@ -32,13 +35,13 @@ rule-bearing as well as token-bearing.
    matching a native `@import` chain at the top of the consuming stylesheet.
 3. **One merged class table.** The importing build's JS map and `.d.ts` cover the entry's classes
    plus every style-imported module's classes. The same original class name may resolve to the
-   same emitted name in several modules (it unifies); different emitted names, or a camelCase
-   named-export alias collision, are **CHIKX4001 errors**. The first result wins as documented
-   recovery so output stays deterministic, but the build fails.
+   same emitted name in several modules (it unifies); different emitted names are **CHIKX4001
+   errors**, while a camelCase named-export alias collision is one `CHIKX4001` **warning** and a
+   deterministic `_2`/`_3` suffix. The build does not fail for an alias collision.
 4. **No forced artifacts.** Style-imported modules do not emit artifacts in the importing build.
    A module that should never emit anything on its own marks itself with
-   `@setup { module: true; }`: its own build suppresses `emit-css`, `emit-map`, `emit-types` and
-   `import-css` unless those keys are authored explicitly. The file layer wins over the marker;
+   `@setup { module: true; }`: its own build suppresses `emit-css`, `emit-map` and `emit-types`
+   unless those keys are authored explicitly. The file layer wins over the marker;
    explicit API/CLI overrides stay highest (SPECIFICATION.md §9.1).
 5. **Tokens are unchanged.** Compile-time substitution and runtime custom-property emission follow
    §6.1/§6.2: an imported value resolves in its defining module, and runtime tokens of merged

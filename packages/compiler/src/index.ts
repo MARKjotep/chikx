@@ -16,7 +16,8 @@ import { tokenize } from "./lexer/index.js";
 import type { TokenizeResult } from "./lexer/index.js";
 import { expandGroupUseSites, groupRuns, lower } from "./lowering/index.js";
 import { generateClassMap, mergeClassTables, renameClasses } from "./naming/index.js";
-import type { ClassTableSource } from "./naming/index.js";
+import type { ClassMapOptions, ClassTableSource } from "./naming/index.js";
+import { stylesheetImportSpecifier } from "./output/import-path.js";
 import { planOutputs } from "./output/index.js";
 import type { OutputPlannerContext, OutputPlannerHost } from "./output/index.js";
 import {
@@ -31,14 +32,15 @@ import { defaultSetupFor } from "./output/resolve.js";
 import { parseTokens } from "./parser/index.js";
 import { buildModuleGraph, styleModuleOrder } from "./resolver/index.js";
 import type { GroupResolution, ModuleGraph } from "./resolver/index.js";
-import { decodeCssString } from "./resolver/paths.js";
 import { flattenIr } from "./selectors/index.js";
+import { decodeSetupList, decodeSetupScalar } from "./setup-list.js";
 import type { Setting, Stylesheet } from "./types/ast.js";
 import type { Diagnostic } from "./types/diagnostics.js";
 import { error } from "./types/diagnostics.js";
 import type {
   CompileOptions,
   CompileProjectOptions,
+  MediaGroupingMode,
   ModuleHost,
   OutputOptions,
   ParseOptions,
@@ -118,6 +120,10 @@ export { createNodeHost };
 export type { OutputPlannerContext, OutputPlannerHost };
 /** Validate and return a complete output plan without writing. */
 export { planOutputs };
+/** Decode a comma-separated `@setup` value list and its per-item diagnostics. */
+export { decodeSetupList, decodeSetupScalar } from "./setup-list.js";
+/** One decoded list item and the decoder result (ADR-0019). */
+export type { SetupListEntry, SetupListResult } from "./setup-list.js";
 /** Canonical source formatting (pure parse→print; errors return the input). */
 export { format } from "./formatter/index.js";
 /** Result of {@link format}: canonical text plus parse diagnostics. */
@@ -132,20 +138,25 @@ const SETUP_KEYS: ReadonlySet<string> = new Set([
   "map-name",
   "emit-css",
   "emit-map",
+  "map-types",
   "emit-types",
   "source-map",
-  "import-css",
   "minify",
   "module",
+  "map-inherit",
+  "import-css",
+  "media-grouping",
 ]);
 
 const BOOLEAN_SETUP_KEYS: ReadonlySet<string> = new Set([
   "emit-css",
   "emit-map",
+  "map-types",
   "emit-types",
   "source-map",
-  "import-css",
   "minify",
+  "map-inherit",
+  "import-css",
 ]);
 
 interface DecodedSetup {
@@ -157,6 +168,8 @@ interface DecodedSetup {
    * those keys explicitly.
    */
   readonly moduleOnly: boolean;
+  /** File-level `media-grouping` override (ADR-0024), when authored validly. */
+  readonly mediaGrouping?: MediaGroupingMode;
   /** CHIKX1001 diagnostics for unknown keys, duplicates and invalid values. */
   readonly diagnostics: readonly Diagnostic[];
 }
@@ -194,7 +207,12 @@ export function parse(source: string, options: ParseOptions): ParseResult {
  * → `emitCss` → `planOutputs` → `generateClassMap`.
  * Rule-bearing `styles` imports (ADR-0014) contribute their rules first, in
  * depth-first `@use` order, each renamed with the module's own `@setup` prefix;
- * the importing build then has one merged class map and declaration file.
+ * the importing build then has one merged class map and declaration file. A
+ * module that authors `@setup { map-inherit: false; }` (ADR-0020) still merges
+ * its rules but keeps its bindings out of the importer's map and declarations.
+ * A file that authors `@setup { import-css: true; }` (ADR-0021) gets one
+ * side-effect import of its planned stylesheet at the top of the JS map; without
+ * it (the default) the map stays import-free for plain Node.
  * File `@setup` values are decoded here, then explicit `CompileOptions` output
  * fields override them (API/CLI precedence). Prefix precedence is
  * `options.prefix` → `options.naming.prefix` → file `@setup prefix` → `""`;
@@ -259,11 +277,13 @@ export async function compile(source: string, options: CompileOptions): Promise<
     setup,
     prefix: setup.prefix,
     options: passOptions,
+    mediaGrouping: decoded.mediaGrouping ?? options.mediaGrouping ?? "safe",
     workspaceRoot,
     host: nodeHost,
     sourceTexts,
     baseDiagnostics,
     setupDiagnostics: decoded.diagnostics,
+    ...(options.mapInherit === undefined ? {} : { moduleMapInherit: options.mapInherit }),
   });
 }
 
@@ -330,11 +350,15 @@ export async function compileProject(
       ...(projectConfig === undefined ? {} : { projectConfig }),
       prefix: setup.prefix,
       options: passOptions,
+      mediaGrouping: decoded.mediaGrouping ?? options.mediaGrouping ?? "safe",
       workspaceRoot,
       host: projectHost,
       sourceTexts: recorded.sources,
       baseDiagnostics: diagnosticsForEntry(graph, canonical),
       setupDiagnostics: decoded.diagnostics,
+      ...(options.output?.mapInherit === undefined
+        ? {}
+        : { moduleMapInherit: options.output.mapInherit }),
     });
   }
 
@@ -353,12 +377,20 @@ interface CompileEntryInput {
   readonly projectConfig?: ProjectConfig;
   /** Effective class/runtime prefix after API and file precedence. */
   readonly prefix: string;
+  /** Effective media grouping mode: file `@setup` > project/API > `safe` (ADR-0024). */
+  readonly mediaGrouping: MediaGroupingMode;
   readonly options: CompileOptions;
   readonly workspaceRoot: string;
   readonly host: ModuleHost;
   /** Authored source text keyed by normalized module path, for source maps. */
   readonly sourceTexts: ReadonlyMap<string, string>;
   readonly baseDiagnostics: readonly Diagnostic[];
+  /**
+   * Base map-inheritance value for style-merged modules (ADR-0020). Comes from
+   * the API/project output layer; each module's own `@setup map-inherit` wins.
+   * Omitted means `true`, preserving ADR-0014 output byte-for-byte.
+   */
+  readonly moduleMapInherit?: boolean;
   readonly setupDiagnostics: readonly Diagnostic[];
 }
 
@@ -396,6 +428,7 @@ function compileEntry(input: CompileEntryInput): CompileResult {
     tables.push({
       table: renamed.classes,
       label: sourcePathFor(file, input.workspaceRoot, file),
+      mapInherit: decoded.values.mapInherit ?? input.moduleMapInherit ?? true,
     });
   }
 
@@ -418,7 +451,7 @@ function compileEntry(input: CompileEntryInput): CompileResult {
     ...(input.options.media === undefined ? {} : { media: input.options.media }),
     ...(styleModules.length === 0 ? {} : { ruleModules: styleModules }),
   });
-  const grouped = groupRuns(runtime.ir, input.options.mediaGrouping ?? "safe");
+  const grouped = groupRuns(runtime.ir, input.mediaGrouping);
   const flattened = flattenIr(grouped);
 
   const planInput: PlanOutputsInput = {
@@ -446,11 +479,21 @@ function compileEntry(input: CompileEntryInput): CompileResult {
       : {}),
   });
 
-  const cssImport = plan.plan.outputs.find((output) => output.kind === "js")?.importSpecifier;
   const map =
-    input.setup.emitMap === true
-      ? generateClassMap(merged.table, cssImport === undefined ? {} : { cssImport })
-      : undefined;
+    input.setup.emitMap === true ? generateClassMap(merged.table, classMapOptions()) : undefined;
+
+  /** Opt-in CSS side-effect import for the class map (ADR-0021). */
+  function classMapOptions(): ClassMapOptions {
+    if (input.setup.importCss !== true) return {};
+    const jsOutput = plan.plan.outputs.find((output) => output.kind === "js");
+    // Authored destinations keep their order, so the first `css` plan entry is
+    // the canonical artifact for a `css-dir` list (ADR-0019, ADR-0021).
+    const cssOutput = plan.plan.outputs.find((output) => output.kind === "css");
+    if (jsOutput === undefined || cssOutput === undefined) return {};
+    return {
+      cssImport: stylesheetImportSpecifier(jsOutput.absolutePath, cssOutput.absolutePath),
+    };
+  }
 
   const diagnostics = mergeDiagnostics(
     input.setupDiagnostics,
@@ -487,6 +530,11 @@ function decodeSetup(ast: Stylesheet): DecodedSetup {
   const diagnostics: Diagnostic[] = [];
   const seen = new Set<string>();
   let moduleOnly = false;
+  let mediaGrouping: MediaGroupingMode | undefined;
+  // `map-types` is the canonical declaration flag; `emit-types` is its legacy
+  // alias. Resolve them together so the canonical key wins regardless of order.
+  let mapTypes: boolean | undefined;
+  let emitTypes: boolean | undefined;
 
   for (const item of ast.items) {
     if (item.kind !== "setup") continue;
@@ -521,6 +569,21 @@ function decodeSetup(ast: Stylesheet): DecodedSetup {
         moduleOnly = moduleValue;
         continue;
       }
+      if (setting.key === "media-grouping") {
+        const value = decodeSetupScalar(setting.value);
+        if (value === "merge" || value === "safe" || value === "none") {
+          mediaGrouping = value;
+        } else {
+          diagnostics.push(
+            error(
+              "CHIKX1001",
+              `@setup setting "media-grouping" expects "merge", "safe" or "none", not ${setting.value.trim()}.`,
+              setting.valueSpan,
+            ),
+          );
+        }
+        continue;
+      }
       if (BOOLEAN_SETUP_KEYS.has(setting.key)) {
         const value = decodeBoolean(setting);
         if (value === undefined) {
@@ -533,26 +596,40 @@ function decodeSetup(ast: Stylesheet): DecodedSetup {
           );
           continue;
         }
+        if (setting.key === "map-types") {
+          mapTypes = value;
+          continue;
+        }
+        if (setting.key === "emit-types") {
+          emitTypes = value;
+          continue;
+        }
         assignBooleanSetting(values, setting.key, value);
+      } else if (setting.key === "css-dir") {
+        const decoded = decodeSetupList(setting.value, setting.valueSpan);
+        diagnostics.push(...decoded.diagnostics);
+        if (decoded.diagnostics.length > 0) continue;
+        const first = decoded.entries[0];
+        if (first === undefined) continue;
+        values.cssDir = first.value;
+        if (decoded.entries.length > 1) {
+          values.cssDirs = decoded.entries.map((entry) => entry.value);
+        }
       } else {
         assignStringSetting(values, setting.key, decodeSetupScalar(setting.value));
       }
     }
   }
 
-  return { values, moduleOnly, diagnostics };
-}
+  const types = mapTypes ?? emitTypes;
+  if (types !== undefined) values.emitTypes = types;
 
-function decodeSetupScalar(raw: string): string {
-  const trimmed = raw.trim();
-  if (trimmed.length >= 2) {
-    const first = trimmed.charAt(0);
-    const last = trimmed.charAt(trimmed.length - 1);
-    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-      return decodeCssString(trimmed.slice(1, -1));
-    }
-  }
-  return trimmed;
+  return {
+    values,
+    moduleOnly,
+    ...(mediaGrouping === undefined ? {} : { mediaGrouping }),
+    diagnostics,
+  };
 }
 
 function decodeBoolean(setting: Setting): boolean | undefined {
@@ -566,9 +643,6 @@ function assignStringSetting(target: Partial<MutableSetup>, key: string, value: 
   switch (key) {
     case "prefix":
       target.prefix = value;
-      break;
-    case "css-dir":
-      target.cssDir = value;
       break;
     case "css-name":
       target.cssName = value;
@@ -592,17 +666,21 @@ function assignBooleanSetting(target: Partial<MutableSetup>, key: string, value:
     case "emit-map":
       target.emitMap = value;
       break;
+    case "map-types":
     case "emit-types":
       target.emitTypes = value;
       break;
     case "source-map":
       target.sourceMap = value;
       break;
-    case "import-css":
-      target.importCss = value;
-      break;
     case "minify":
       target.minify = value;
+      break;
+    case "map-inherit":
+      target.mapInherit = value;
+      break;
+    case "import-css":
+      target.importCss = value;
       break;
     default:
       break;
@@ -618,10 +696,12 @@ function definedOutput(options: OutputOptions | undefined): Partial<MutableSetup
   if (options.mapName !== undefined) values.mapName = options.mapName;
   if (options.emitCss !== undefined) values.emitCss = options.emitCss;
   if (options.emitMap !== undefined) values.emitMap = options.emitMap;
-  if (options.emitTypes !== undefined) values.emitTypes = options.emitTypes;
+  const types = options.mapTypes ?? options.emitTypes;
+  if (types !== undefined) values.emitTypes = types;
   if (options.sourceMap !== undefined) values.sourceMap = options.sourceMap;
-  if (options.importCss !== undefined) values.importCss = options.importCss;
   if (options.minify !== undefined) values.minify = options.minify;
+  if (options.mapInherit !== undefined) values.mapInherit = options.mapInherit;
+  if (options.importCss !== undefined) values.importCss = options.importCss;
   return values;
 }
 
@@ -638,6 +718,9 @@ function buildCompileSetup(
     ...definedOutput(options),
     prefix: "",
   };
+  // An explicit API/CLI `cssDir` is a single destination and replaces a file
+  // list (ADR-0019); only the file layer can author a list.
+  if (options.cssDir !== undefined) merged.cssDirs = undefined;
   return {
     ...merged,
     prefix: resolveCompilePrefix(options, decoded),
@@ -657,6 +740,7 @@ function buildProjectSetup(
     ...decoded.values,
     prefix: "",
   };
+  if (options.output?.cssDir !== undefined) merged.cssDirs = undefined;
   return {
     ...merged,
     prefix: resolveProjectPrefix(options, decoded),
@@ -667,13 +751,13 @@ function buildProjectSetup(
  * Output defaults removed by `@setup { module: true }` (ADR-0014).
  *
  * A module-only file writes no artifacts of its own, so CSS, map and types are
- * suppressed and `import-css` follows CSS. The suppression sits above built-in
- * defaults and project configuration but below the file's own explicit `emit-*`
- * keys and explicit API/CLI overrides, so authoring a key restores it.
+ * suppressed. The suppression sits above built-in defaults and project
+ * configuration but below the file's own explicit `emit-*` keys and explicit
+ * API/CLI overrides, so authoring a key restores it.
  */
 function moduleSuppression(moduleOnly: boolean): Partial<MutableSetup> {
   if (!moduleOnly) return {};
-  return { emitCss: false, emitMap: false, emitTypes: false, importCss: false };
+  return { emitCss: false, emitMap: false, emitTypes: false };
 }
 
 function resolveCompilePrefix(options: CompileOptions, decoded: DecodedSetup): string {

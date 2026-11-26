@@ -129,6 +129,31 @@ describe("naming: rewrite safety", () => {
     ]);
   });
 
+  test("an attribute value equal to the class name is never rewritten", () => {
+    const source =
+      '.card[data-x=".card"] { color: red; } ' +
+      '[data-y=".card"] { color: blue; } ' +
+      '.card[class~=".card"] { color: green; }';
+    const result = renameClasses(irFor(source), { prefix: "ui" });
+    expect(selectors(result.ir)).toEqual([
+      '.ui-card[data-x=".card"]',
+      '[data-y=".card"]',
+      '.ui-card[class~=".card"]',
+    ]);
+    // Only the real class token enters the table; bracketed contents do not.
+    expect(result.classes.entries.map((entry) => [entry.name, entry.emitted])).toEqual([
+      ["card", "ui-card"],
+    ]);
+  });
+
+  test("the class scanner treats bracketed attribute contents as opaque", () => {
+    expect(scanSelectorClasses('.a[data-x=".b"]').classes.map((token) => token.name)).toEqual([
+      "a",
+    ]);
+    expect(scanSelectorClasses(".a[data-x=.b]").classes.map((token) => token.name)).toEqual(["a"]);
+    expect(scanSelectorClasses("[data-x=.b]").classes).toEqual([]);
+  });
+
   test("class tokens inside functional pseudos are class selectors and are renamed", () => {
     const result = renameClasses(irFor(".wrap:is(.a, .b):not(.c) { color: red; }"), {
       prefix: "ui",

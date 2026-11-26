@@ -27,7 +27,6 @@ import type {
   PlannedOutput,
 } from "../types/result.js";
 import type { Span } from "../types/span.js";
-import { importSpecifierFor } from "./importPath.js";
 import { buildManifest } from "./manifest.js";
 import { isAbsolutePath, joinPath, normalizePath, relativePath } from "./paths.js";
 import {
@@ -108,16 +107,6 @@ export function planOutputs(
 
   const settings = resolveOutputSettings(input, source, workspaceRoot);
 
-  if (!settings.emitCss && settings.importCss) {
-    diagnostics.push(
-      error(
-        "CHIKX5001",
-        "emit-css: false requires import-css: false: the JS map cannot import a stylesheet that is not written.",
-        span,
-      ),
-    );
-  }
-
   let emitTypes = settings.emitTypes;
   if (!settings.emitMap && settings.emitTypes) {
     diagnostics.push(suppressedTypesWarning(span));
@@ -138,29 +127,26 @@ export function planOutputs(
   }
 
   const candidates: OutputCandidate[] = [];
-  const cssAbsolute = joinPath(settings.cssDir, settings.cssName);
   const mapAbsolute = joinPath(settings.mapDir, settings.mapName);
 
   if (settings.emitCss) {
-    candidates.push(toCandidate("css", cssAbsolute, source.relative, workspaceRoot));
+    for (const directory of settings.cssDirs) {
+      const cssAbsolute = joinPath(directory, settings.cssName);
+      candidates.push(toCandidate("css", cssAbsolute, source.relative, workspaceRoot));
+    }
   }
   if (settings.emitMap) {
-    const importSpecifier =
-      settings.importCss && settings.emitCss
-        ? importSpecifierFor(mapAbsolute, cssAbsolute)
-        : undefined;
-    candidates.push({
-      ...toCandidate("js", mapAbsolute, source.relative, workspaceRoot),
-      ...(importSpecifier === undefined ? {} : { importSpecifier }),
-    });
+    candidates.push(toCandidate("js", mapAbsolute, source.relative, workspaceRoot));
     if (emitTypes) {
       const declarationsAbsolute = joinPath(settings.mapDir, declarationNameFor(settings.mapName));
       candidates.push(toCandidate("types", declarationsAbsolute, source.relative, workspaceRoot));
     }
   }
   if (settings.emitCss && settings.sourceMap) {
-    const mapFileAbsolute = joinPath(settings.cssDir, sourceMapNameFor(settings.cssName));
-    candidates.push(toCandidate("cssSourceMap", mapFileAbsolute, source.relative, workspaceRoot));
+    for (const directory of settings.cssDirs) {
+      const mapFileAbsolute = joinPath(directory, sourceMapNameFor(settings.cssName));
+      candidates.push(toCandidate("cssSourceMap", mapFileAbsolute, source.relative, workspaceRoot));
+    }
   }
 
   for (const candidate of candidates) {
@@ -188,9 +174,6 @@ export function planOutputs(
         kind: candidate.kind,
         absolutePath: candidate.absolutePath,
         workspacePath: candidate.workspacePath,
-        ...(candidate.importSpecifier === undefined
-          ? {}
-          : { importSpecifier: candidate.importSpecifier }),
         sourceFile: candidate.sourceFile,
       }),
     ),

@@ -4,6 +4,7 @@
   css-name: "theme.css";
   map-dir: "../generated/maps";
   map-name: "classes.js";
+  map-types: true;
   source-map: true;
 }
 @variables {

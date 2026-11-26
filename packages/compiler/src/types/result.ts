@@ -53,8 +53,6 @@ export interface PlannedOutput {
   readonly absolutePath: string;
   /** Workspace-relative POSIX destination used for manifests and reporting. */
   readonly workspacePath: string;
-  /** Relative CSS import specifier to place in the JS map, when this artifact requires one. */
-  readonly importSpecifier?: string;
   /** Workspace-relative POSIX path of the source that produced the artifact. */
   readonly sourceFile: string;
 }

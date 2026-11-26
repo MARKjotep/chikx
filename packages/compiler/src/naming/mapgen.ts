@@ -1,78 +1,90 @@
 import type { Diagnostic } from "../types/diagnostics.js";
-import { error, warning } from "../types/diagnostics.js";
-import type { ClassEntry, ClassMapOptions, ClassMapResult, ClassTable } from "./types.js";
+import { warning } from "../types/diagnostics.js";
+import type { ClassEntry, ClassMapResult, ClassTable } from "./types.js";
 
 /**
  * JavaScript class-map and TypeScript declaration generation
- * (SPECIFICATION.md §8, masterplan §3.6, ADR-0010).
+ * (SPECIFICATION.md §8, masterplan §3.6, ADR-0010, CSSX-A52).
  *
  * Output contract, fixed here and covered by goldens:
  *
- * - **ESM**, no runtime helper. When `cssImport` is a string, the first line is
- *   `import "<path>";`; the path itself belongs to A10's output planner. `null`
- *   or omitted emits no import, for hosts that load CSS separately.
- * - **Named exports** use the camelCase alias (`card-header` → `cardHeader`) only
- *   when the alias is a valid, non-reserved JavaScript identifier and no other
- *   class claims the same alias. Export order is the class table's
- *   first-appearance order, so output is deterministic.
- * - **Default export** is a plain object whose keys are the original class
- *   names. A class with a usable alias uses the canonical §2 forms: shorthand
- *   when the original name equals its alias (`button`), quoted original plus the
- *   alias when they differ (`"card-header": cardHeader, cardHeader`). A class
- *   without a named export keeps the original key with a literal emitted value;
- *   a valid IdentifierName key is written bare (`fooBar`, `default`) because it
- *   is already the original name spelled safely, and anything else is quoted
- *   (`"foo-bar"`, `"2col"`). `__proto__` is always a computed key. Values are
- *   literal emitted names, so the map is complete.
- * - **Collisions are a hard error (CHIKX4001, ADR-0010).** If `foo-bar` and
- *   `fooBar` both camelCase to `fooBar`, the named exports for **both** are
- *   omitted and the default map keeps only the original keys. Recovery is
- *   explicit, not a silent merge or a partial API.
- * - **Reserved or invalid identifiers** (`default`, `delete`, `2col`) stay
- *   reachable through their original key; their named export is omitted with a
- *   CHIKX4001 **warning** (§8).
- * - **`__proto__` safety:** an original key named `__proto__` is emitted with a
- *   computed key (`["__proto__"]: ...`) in the default object. A computed key is
- *   a normal own data property, so it neither invokes the `Object.prototype`
- *   prototype setter nor changes the object's prototype. Computed keys are
- *   preferred over a null-prototype construct because the emitted module stays a
- *   plain object literal (no helper, no `Object.create`), which keeps the map
- *   compatible with plain `import` consumers.
- * - **Declarations** mirror the JS exactly: literal string types, `readonly`
- *   map properties, the same named exports and the same omission rules, and no
- *   `any`. Global classes never reach either file (§8).
+ * - **Named exports only.** The map is one `export const <identifier> = "<emitted>";`
+ *   line per local class, in the class table's first-appearance order. There is
+ *   no default export and no object literal: the map's single purpose is to
+ *   provide the DOM `class` value as an importable JavaScript binding, so
+ *   consumers write `import { contactPanel } from "./x.map.js"` and
+ *   `class={contactPanel}`. Export order is deterministic.
+ * - **Identifier shape.** Each class name is split on `-` and `_` and camelCased
+ *   (`card-header` → `cardHeader`, `panel_head` → `panelHead`); leading and
+ *   trailing `_` runs are kept (`__proto__` → `__proto__`). Three adjustments
+ *   keep every class reachable, because there is no object fallback:
+ *   - characters outside the JavaScript identifier set become `_`
+ *     (`foo.bar` → `foo_bar`);
+ *   - an alias that would start with a digit, or that sanitizes to nothing, is
+ *     prefixed with `_` (`2col` → `_2col`, `-` → `_`);
+ *   - a reserved word is prefixed with `_` (`default` → `_default`).
+ * - **Collisions are resolved, not dropped.** If two classes resolve to the same
+ *   identifier, the first-authored class keeps it and later ones get `_2`, `_3`
+ *   (… first free suffix) in first-appearance order. Suffixes are allocated
+ *   against the identifiers already emitted, so if an earlier export already
+ *   uses `fooBar_2`, the next collision becomes `fooBar_3`.
+ * - **Diagnostics.** Each adjusted identifier (shape or collision) reports one
+ *   CHIKX4001 **warning** naming the authored class and the exported binding.
+ *   Warnings never fail a build; the output is already complete and unambiguous.
+ * - **Declarations mirror the JS exactly** when enabled: one
+ *   `export declare const <identifier>: "<emitted>";` line per class in the same
+ *   order, with literal string types and no `any`. The declarations are opt-in
+ *   (`map-types` / `emit-types`, default off) and never contain a `map` object or
+ *   a default export.
+ * - `__proto__` needs no special handling: as a `const` binding it is an ordinary
+ *   identifier and there is no object literal to poison.
+ * - Global classes never reach either file (§8).
  *
- * Formatting is fixed so generated files are stable and compatible with the
- * repository formatter: a default object whose line fits in 100 columns stays
- * inline with a trailing comma only in the multiline form, and the declaration
- * map type is inline without a trailing property semicolon when it fits, or one
- * `readonly` property per line otherwise. This never changes keys, values or
- * ordering.
+ * Formatting is fixed so generated files are stable: one line per binding and
+ * one trailing newline. By default the map has no CSS side-effect import;
+ * loading the stylesheet is the consumer's responsibility (`<link>` or an
+ * explicit `import "./x.css"`). A consumer that wants the map to carry the
+ * stylesheet through its bundler opts in with `import-css: true` /
+ * `output.importCss` (ADR-0021): exactly one `import "<specifier>";` line is
+ * prepended and `.d.ts` declarations stay pure. An empty table yields an empty
+ * file unless that import was requested.
  */
 
-/** `true` when `name` can be a bare JavaScript IdentifierName (property key). */
-function isValidJsPropertyName(name: string): boolean {
+/** Options for {@link generateClassMap}. */
+export interface ClassMapOptions {
+  /**
+   * Relative specifier of the emitted stylesheet (ADR-0021). Present only when
+   * `import-css` is enabled and the build emits CSS; the caller computes it
+   * from the planned artifacts with {@link stylesheetImportSpecifier}.
+   */
+  readonly cssImport?: string;
+}
+
+/** `true` when `name` can be declared as a bare JavaScript binding. */
+function isValidJsIdentifier(name: string): boolean {
   return /^[$_\p{ID_Start}][$_\p{ID_Continue}]*$/u.test(name);
 }
 
-/** The formatter's fixed line width for generated objects and type literals. */
-const LINE_WIDTH = 100;
-
-/** camelCase separators that join a class name into a JS alias. */
+/**
+ * Naive camelCase alias before identifier adjustments.
+ *
+ * Leading and trailing `_` runs are preserved (they carry meaning for names such
+ * as `__proto__`), while interior `-`/`_` runs are separators and the following
+ * letter is capitalized. A name made only of separators keeps its underscores.
+ */
 function camelCaseAlias(name: string): string {
-  const parts = name.split("-").filter((part) => part.length > 0);
+  const leading = /^_+/u.exec(name)?.[0] ?? "";
+  const rest = name.slice(leading.length);
+  const trailing = /_+$/u.exec(rest)?.[0] ?? "";
+  const core = rest.slice(0, rest.length - trailing.length);
+  const parts = core.split(/[-_]+/u).filter((part) => part.length > 0);
   const first = parts[0] ?? "";
   let alias = first;
   for (let index = 1; index < parts.length; index += 1) {
     const part = parts[index] ?? "";
     alias += part.charAt(0).toUpperCase() + part.slice(1);
   }
-  return alias;
-}
-
-/** `true` when `alias` can be declared as a bare JavaScript binding. */
-function isValidJsIdentifier(alias: string): boolean {
-  return /^[$_\p{ID_Start}][$_\p{ID_Continue}]*$/u.test(alias);
+  return `${leading}${alias}${trailing}`;
 }
 
 /**
@@ -131,16 +143,10 @@ const RESERVED_IDENTIFIERS: ReadonlySet<string> = new Set([
   "yield",
 ]);
 
-/** One exportable class plus its prepared alias decision. */
+/** One exportable class plus its final, unique binding identifier. */
 interface PreparedEntry {
   readonly entry: ClassEntry;
-  readonly alias: string;
-  /** Alias is a valid non-reserved binding name. */
-  readonly aliasValid: boolean;
-  /** Another exportable class claims the same alias. */
-  readonly collision: boolean;
-  /** A named export is emitted for this class. */
-  readonly named: boolean;
+  readonly identifier: string;
 }
 
 /** Quote a string as a JS/TS double-quoted literal. */
@@ -148,120 +154,76 @@ function quote(text: string): string {
   return JSON.stringify(text);
 }
 
-/** Original-key expression for the default object / type literal. */
-function namedOriginalKey(name: string): string {
-  return name === "__proto__" ? '["__proto__"]' : quote(name);
-}
-
-/**
- * Key for a class without a named export.
- *
- * The original name is preserved as the property key. A bare identifier is the
- * safest shortest spelling (and the only one the repository formatter accepts
- * for a valid IdentifierName); names that are not valid identifiers are quoted,
- * and `__proto__` is computed.
- */
-function quotedOriginalKey(name: string): string {
-  if (name === "__proto__") return '["__proto__"]';
-  return isValidJsPropertyName(name) ? name : quote(name);
-}
-
-/** Render one default-object entry as one or more property snippets. */
-function defaultEntry(prepared: PreparedEntry): readonly string[] {
-  const { entry, alias, named } = prepared;
-  if (!named) {
-    return [`${quotedOriginalKey(entry.name)}: ${quote(entry.emitted)}`];
+/** Base identifier for one class, before uniqueness suffixing. */
+function baseIdentifier(name: string): {
+  readonly alias: string;
+  readonly base: string;
+  readonly adjusted: boolean;
+} {
+  const alias = camelCaseAlias(name);
+  let base = alias.replace(/[^\p{ID_Continue}$]/gu, "_");
+  let adjusted = base !== alias;
+  if (base === "") {
+    return { alias, base: "_", adjusted: true };
   }
-  if (entry.name === alias) {
-    return entry.name === "__proto__" ? [`["__proto__"]: ${alias}`] : [alias];
+  if (!isValidJsIdentifier(base) || RESERVED_IDENTIFIERS.has(base)) {
+    base = `_${base}`;
+    adjusted = true;
   }
-  return [`${namedOriginalKey(entry.name)}: ${alias}`, alias];
+  return { alias, base, adjusted };
 }
 
-/** Render one readonly map-type property snippet (no trailing semicolon). */
-function typeProperties(prepared: PreparedEntry): readonly string[] {
-  const { entry, alias, named } = prepared;
-  const value = quote(entry.emitted);
-  if (!named) {
-    return [`readonly ${quotedOriginalKey(entry.name)}: ${value}`];
-  }
-  if (entry.name === alias) return [`readonly ${entry.name}: ${value}`];
-  return [`readonly ${quote(entry.name)}: ${value}`, `readonly ${alias}: ${value}`];
-}
-
-/** Prepare export decisions and collect CHIKX4001 diagnostics. */
+/** Prepare export identifiers and collect CHIKX4001 warnings. */
 function prepare(table: ClassTable, diagnostics: Diagnostic[]): readonly PreparedEntry[] {
   const exportable = table.entries.filter((entry) => !entry.global);
-
-  const candidates = exportable.map((entry) => {
-    const alias = camelCaseAlias(entry.name);
-    const aliasValid = isValidJsIdentifier(alias) && !RESERVED_IDENTIFIERS.has(alias);
-    return { entry, alias, aliasValid };
-  });
-
-  const groups = new Map<string, typeof candidates>();
-  for (const candidate of candidates) {
-    if (!candidate.aliasValid) continue;
-    const group = groups.get(candidate.alias);
-    if (group === undefined) {
-      groups.set(candidate.alias, [candidate]);
-    } else {
-      group.push(candidate);
-    }
-  }
-
+  const owners = new Map<string, string>();
   const prepared: PreparedEntry[] = [];
-  const reportedCollisions = new Set<string>();
 
-  for (const candidate of candidates) {
-    const group = candidate.aliasValid ? groups.get(candidate.alias) : undefined;
-    const collision = group !== undefined && group.length > 1;
+  for (const entry of exportable) {
+    const { alias, base, adjusted } = baseIdentifier(entry.name);
+    let identifier = base;
+    let suffix = 1;
+    while (owners.has(identifier)) {
+      suffix += 1;
+      identifier = `${base}_${suffix}`;
+    }
+    const owner = owners.get(base);
+    owners.set(identifier, entry.name);
 
-    if (!candidate.aliasValid) {
+    if (owner === undefined && adjusted) {
       diagnostics.push(
         warning(
           "CHIKX4001",
-          `Class "${candidate.entry.name}" maps to the reserved or invalid JavaScript identifier "${candidate.alias}"; its named export was omitted (SPECIFICATION.md §8) and the original key remains in the default map.`,
-          candidate.entry.span,
+          `Class "${entry.name}" maps to "${alias}", which is not a usable JavaScript export binding (reserved word or invalid identifier); it is exported as "${identifier}" (SPECIFICATION.md §8).`,
+          entry.span,
         ),
       );
-    } else if (collision && group !== undefined) {
-      const first = group[0];
-      if (first !== undefined && first === candidate && !reportedCollisions.has(candidate.alias)) {
-        reportedCollisions.add(candidate.alias);
-        const names = group.map((member) => `"${member.entry.name}"`).join(", ");
-        diagnostics.push(
-          error(
-            "CHIKX4001",
-            `Class exports ${names} all map to the camelCase alias "${candidate.alias}" (SPECIFICATION.md §8, ADR-0010); named exports for these classes were omitted and the default map keeps their original keys.`,
-            candidate.entry.span,
-          ),
-        );
-      }
+    } else if (owner !== undefined) {
+      diagnostics.push(
+        warning(
+          "CHIKX4001",
+          `Class "${entry.name}" maps to the camelCase identifier "${alias}", which class "${owner}" already exports; it is exported as "${identifier}" (SPECIFICATION.md §8).`,
+          entry.span,
+        ),
+      );
     }
 
-    prepared.push({
-      entry: candidate.entry,
-      alias: candidate.alias,
-      aliasValid: candidate.aliasValid,
-      collision,
-      named: candidate.aliasValid && !collision,
-    });
+    prepared.push({ entry, identifier });
   }
 
   return prepared;
 }
 
 /**
- * Generate the ESM class map and matching `.d.ts` for one class table.
+ * Generate the ESM class map and matching `.d.ts` text for one class table.
  *
  * Pure and deterministic: the same table and options always produce
- * byte-identical text. Global classes are excluded, collisions and reserved
- * identifiers follow the documented strict policy, and `__proto__` is emitted
- * with a computed key so a hostile class name cannot poison the object.
+ * byte-identical text. Global classes are excluded; reserved identifiers and
+ * digit-leading names are prefixed with `_` and identifier collisions get a
+ * numeric suffix, each with one CHIKX4001 warning.
  *
  * @param classes Class table produced by `renameClasses`.
- * @param options Optional CSS side-effect import specifier.
+ * @param options Optional stylesheet import (ADR-0021).
  */
 export function generateClassMap(
   classes: ClassTable,
@@ -271,52 +233,20 @@ export function generateClassMap(
   const prepared = prepare(classes, diagnostics);
 
   const jsLines: string[] = [];
-  const importSpecifier = options.cssImport;
-  if (typeof importSpecifier === "string") {
-    jsLines.push(`import ${quote(importSpecifier)};`);
+  if (options.cssImport !== undefined && options.cssImport !== "") {
+    jsLines.push(`import ${quote(options.cssImport)};`);
+  }
+  for (const entry of prepared) {
+    jsLines.push(`export const ${entry.identifier} = ${quote(entry.entry.emitted)};`);
   }
 
-  const named = prepared.filter((entry) => entry.named);
-  for (const entry of named) {
-    jsLines.push(`export const ${entry.alias} = ${quote(entry.entry.emitted)};`);
-  }
-
-  if (prepared.length === 0) {
-    jsLines.push("export default {};");
-  } else {
-    const properties = prepared.flatMap(defaultEntry);
-    const inline = `export default { ${properties.join(", ")} };`;
-    if (inline.length <= LINE_WIDTH) {
-      jsLines.push(inline);
-    } else {
-      jsLines.push("export default {");
-      for (const property of properties) jsLines.push(`  ${property},`);
-      jsLines.push("};");
-    }
-  }
-
-  const typeLines: string[] = [];
-  for (const entry of named) {
-    typeLines.push(`export declare const ${entry.alias}: ${quote(entry.entry.emitted)};`);
-  }
-  if (prepared.length === 0) {
-    typeLines.push("declare const map: Record<string, never>;");
-  } else {
-    const properties = prepared.flatMap(typeProperties);
-    const inline = `declare const map: { ${properties.join("; ")} };`;
-    if (inline.length <= LINE_WIDTH) {
-      typeLines.push(inline);
-    } else {
-      typeLines.push("declare const map: {");
-      for (const property of properties) typeLines.push(`  ${property};`);
-      typeLines.push("};");
-    }
-  }
-  typeLines.push("export default map;");
+  const typeLines = prepared.map(
+    (entry) => `export declare const ${entry.identifier}: ${quote(entry.entry.emitted)};`,
+  );
 
   return {
-    js: `${jsLines.join("\n")}\n`,
-    types: `${typeLines.join("\n")}\n`,
+    js: jsLines.length === 0 ? "" : `${jsLines.join("\n")}\n`,
+    types: typeLines.length === 0 ? "" : `${typeLines.join("\n")}\n`,
     diagnostics,
   };
 }

@@ -76,7 +76,7 @@ describe("single-file duplicate @variables keys (CSSX-U04)", () => {
     expect(diagnostic?.span.end).toBeLessThanOrEqual(source.length);
 
     // First definition still wins and the emission is unchanged.
-    expect(result.css).toBe(".card {\n  padding: 8px;\n}\n");
+    expect(result.css).toBe(".card{padding:8px;}");
   });
 
   test("the single-file diagnostic is identical to buildModuleGraph()'s", async () => {
@@ -111,8 +111,8 @@ describe("single-file duplicate @variables keys (CSSX-U04)", () => {
       file: ENTRY,
     });
     // The first runtime value still wins.
-    expect(result.css).toContain("--primary: red;");
-    expect(result.css).toContain("color: var(--primary);");
+    expect(result.css).toContain("--primary:red;");
+    expect(result.css).toContain("color:var(--primary);");
   });
 
   test("a compile-time/runtime collision is reported once at the later declaration", async () => {
@@ -159,7 +159,7 @@ describe("module-graph duplicate keys stay single-reporting (CSSX-U04)", () => {
       );
       expect(duplicates).toHaveLength(1);
       expect(result.diagnostics).toHaveLength(1);
-      expect(result.css).toBe(".card {\n  padding: 8px 4px;\n}\n");
+      expect(result.css).toBe(".card{padding:8px 4px;}");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -173,7 +173,10 @@ describe("module-graph duplicate keys stay single-reporting (CSSX-U04)", () => {
 
     expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["CHIKX2001"]);
     expect(result.css).toBe(
-      readFileSync(join(repoRoot, "tests/fixtures/variables/duplicate-local/expected/css"), "utf8"),
+      readFileSync(
+        join(repoRoot, "tests/fixtures/variables/duplicate-local/expected/minified"),
+        "utf8",
+      ),
     );
   });
 });

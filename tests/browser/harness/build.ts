@@ -12,9 +12,11 @@
  *   tests/browser/dist/css/<scenario>.css             pretty, safe grouping
  *   tests/browser/dist/css/<scenario>.min.css         minified, safe grouping
  *   tests/browser/dist/css/<scenario>.nogroup.css     pretty, mediaGrouping: "none"
+ *   tests/browser/dist/css/<scenario>.merge.css       pretty, mediaGrouping: "merge"
  *   tests/browser/dist/pages/<scenario>.html          page linking the pretty CSS
  *   tests/browser/dist/pages/<scenario>.min.html      page linking the minified CSS
  *   tests/browser/dist/pages/<scenario>.nogroup.html  page linking the ungrouped CSS
+ *   tests/browser/dist/pages/<scenario>.merge.html    page linking the merged CSS
  *   tests/browser/dist/manifest.json                  scenario/artifact manifest
  *
  * The build fails on any compiler diagnostic or empty artifact. It never
@@ -150,15 +152,22 @@ async function build(): Promise<void> {
       workspaceRoot: repoRoot,
       mediaGrouping: "none",
     });
+    const merge = await compile(scenario.source, {
+      file: sourceFile,
+      workspaceRoot: repoRoot,
+      mediaGrouping: "merge",
+    });
 
     const prettyCss = assertResult(scenario, "pretty", pretty);
     const minifiedCss = assertResult(scenario, "minified", minified);
     const nogroupCss = assertResult(scenario, "nogroup", nogroup);
+    const mergeCss = assertResult(scenario, "merge", merge);
     const classes: Record<string, string> = { ...pretty.classes };
 
     for (const [variant, result] of [
       ["minified", minified],
       ["nogroup", nogroup],
+      ["merge", merge],
     ] as const) {
       const variantClasses: Record<string, string> = { ...result.classes };
       if (JSON.stringify(classes) !== JSON.stringify(variantClasses)) {
@@ -174,6 +183,7 @@ async function build(): Promise<void> {
       pretty: writeArtifact(join(cssRoot, `${scenario.name}.css`), prettyCss),
       minified: writeArtifact(join(cssRoot, `${scenario.name}.min.css`), minifiedCss),
       nogroup: writeArtifact(join(cssRoot, `${scenario.name}.nogroup.css`), nogroupCss),
+      merge: writeArtifact(join(cssRoot, `${scenario.name}.merge.css`), mergeCss),
     } satisfies Record<PageVariant, ArtifactRecord>;
 
     const pageRecords = {
@@ -189,6 +199,10 @@ async function build(): Promise<void> {
         join(pagesRoot, `${scenario.name}.nogroup.html`),
         renderPage(scenario, "nogroup", `${scenario.name}.nogroup.css`, classes),
       ),
+      merge: writeArtifact(
+        join(pagesRoot, `${scenario.name}.merge.html`),
+        renderPage(scenario, "merge", `${scenario.name}.merge.css`, classes),
+      ),
     } satisfies Record<PageVariant, ArtifactRecord>;
 
     records.push({
@@ -201,7 +215,7 @@ async function build(): Promise<void> {
     });
 
     console.log(
-      `[browser-harness] ${scenario.name}: ${cssRecords.pretty.bytes}B pretty, ${cssRecords.minified.bytes}B minified, ${cssRecords.nogroup.bytes}B ungrouped`,
+      `[browser-harness] ${scenario.name}: ${cssRecords.pretty.bytes}B pretty, ${cssRecords.minified.bytes}B minified, ${cssRecords.nogroup.bytes}B ungrouped, ${cssRecords.merge.bytes}B merged`,
     );
   }
 
@@ -216,7 +230,7 @@ async function build(): Promise<void> {
   writeFileSync(join(distRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
   console.log(
-    `[browser-harness] compiled ${records.length} scenarios (${records.length * 3} CSS files, ${records.length * 3} pages) into ${relative(repoRoot, distRoot)}`,
+    `[browser-harness] compiled ${records.length} scenarios (${records.length * 4} CSS files, ${records.length * 4} pages) into ${relative(repoRoot, distRoot)}`,
   );
 }
 

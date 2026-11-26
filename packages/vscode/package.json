@@ -9,11 +9,11 @@
   "icon": "media/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/chikx/chikx.git"
+    "url": "https://github.com/MARKjotep/chikx.git"
   },
-  "homepage": "https://github.com/chikx/chikx#readme",
+  "homepage": "https://github.com/MARKjotep/chikx#readme",
   "bugs": {
-    "url": "https://github.com/chikx/chikx/issues"
+    "url": "https://github.com/MARKjotep/chikx/issues"
   },
   "engines": {
     "vscode": "^1.85.0"

@@ -42,27 +42,35 @@ diagnostics keep the Chikx name ([ADR-0013](docs/decisions/ADR-0013-cssx-file-ex
 }
 ```
 
-With `theme.primary = #2563eb`, `src/button.cssx` compiles to `generated/styles/button.css`,
-`generated/maps/button.map.js` and `generated/maps/button.map.d.ts`. The CSS contains `.ui-button`,
-`.ui-button > .ui-icon`, ordinary media queries and flattened pseudo-selectors:
+With `theme.primary = #2563eb`, `src/button.cssx` compiles to `generated/styles/button.css` and
+`generated/maps/button.map.js`. The CSS contains `.ui-button`, `.ui-button > .ui-icon`, ordinary
+media queries and flattened pseudo-selectors. The map exports the emitted class names as camelCase
+bindings — one `export const` per class, no default export:
 
 ```js
 // generated/maps/button.map.js
-import "../styles/button.css";
 export const button = "ui-button";
 export const icon = "ui-icon";
-export default { button, icon };
 ```
+
+The map holds only bindings and never imports CSS. Load `generated/styles/button.css` yourself:
+`<link rel="stylesheet">` on a static page, or an explicit `import "./button.css"` in a bundler
+entry.
 
 ```tsx
 // app code
-import styles from "../generated/maps/button.map.js";
+import { button } from "../generated/maps/button.map.js";
 export function Button() {
-  return <button className={styles.button}>Continue</button>;
+  return <button className={button}>Continue</button>;
 }
 ```
 
-The complete, committed output is in [`examples/basic/`](examples/basic/).
+Add `map-types: true` (or `output.mapTypes` in `chikx.config.json`) to also write
+`generated/maps/button.map.d.ts` with the same bindings as literal types. Declarations are opt-in
+(CSSX-A52).
+
+The complete, committed output is in [`examples/basic/`](examples/basic/). For the full language
+tour, CLI/editor reference and theming recipes, read the **[full usage guide](docs/usage.md)**.
 
 ## Install
 
@@ -71,27 +79,31 @@ bun add @chikx/compiler        # programmatic compiler API
 bun add -d @chikx/cli          # the chikx CLI (build, check, watch, clean)
 ```
 
-Requires Node.js ≥ 20 or Bun. The compiler is ESM and has no runtime dependencies; the CLI is ESM and
-is run with `bunx chikx` (Bun) or `node <path>/dist/index.js` (the package `bin` entry currently
-relies on Bun's TypeScript loader — see [known limitations](docs/known-limitations.md#2-release-and-packaging-gaps)).
+Requires Node.js ≥ 20 or Bun. The compiler is ESM and has no runtime dependencies; the CLI is ESM,
+ships built `dist` output, and its `bin` entry points at `dist/index.js` — run `bunx chikx` with Bun,
+or `node <path>/dist/index.js` with Node.
 
 ## Quick start
 
-1. **Write** `src/button.cssx` using the example above.
-2. **Configure the project** with `chikx.config.json` (optional for a single file):
+1. **Write** `src/button.cssx` using the example above. Mark token-only or component files that are
+   only imported with `@setup { module: true; }` so they self-suppress their own artifacts.
+2. **Optionally configure the project.** No configuration is required: `chikx build` discovers
+   `**/*.cssx` under the nearest `package.json` workspace root. Add `chikx.config.json` only to
+   change a default or scope discovery:
 
    ```json
    {
      "include": ["src/**/*.cssx"],
-     "exclude": ["src/theme.cssx", "node_modules", "dist", "generated"],
-     "compiler": { "strict": true, "mediaGrouping": "safe" }
+     "classes": { "strategy": "prefix", "prefix": "ui" }
    }
    ```
+
+   `exclude` is not needed for imported modules when they declare `module: true`.
 
 3. **Build**:
 
    ```sh
-   bunx chikx build            # project build from include globs
+   bunx chikx build            # project build from include globs (config or default)
    bunx chikx build src/button.cssx
    bunx chikx watch            # rebuild changed entries until interrupted
    bunx chikx check            # diagnostics only; never writes
@@ -99,9 +111,9 @@ relies on Bun's TypeScript loader — see [known limitations](docs/known-limitat
    bunx chikx clean            # delete only compiler-owned, unmodified outputs
    ```
 
-4. **Use the map in JSX** by importing the generated module as shown above. The `.d.ts` next to it
-   gives literal types such as `"ui-button"`; the runtime value is a plain string, so no helper or
-   client runtime is involved.
+4. **Use the map in JSX** by importing the generated bindings as shown above. With `map-types`
+   enabled, the `.d.ts` next to it gives literal types such as `"ui-button"`; the runtime value is a
+   plain string, so no helper or client runtime is involved.
 
 To build from a source checkout instead of the published packages:
 
@@ -109,13 +121,14 @@ To build from a source checkout instead of the published packages:
 bun install
 bun run --cwd packages/compiler build
 bun run --cwd packages/cli build
-node packages/cli/dist/index.js build --config examples/basic/chikx.config.json
+(cd examples/basic && node ../../packages/cli/dist/index.js build)
 ```
 
 ## Output configuration
 
-File-level `@setup` controls one stylesheet. Project-level `chikx.config.json` sets defaults and
-entry globs. Precedence is **defaults < project config < file `@setup` < explicit CLI flags**.
+File-level `@setup` controls one stylesheet. Project-level `chikx.config.json` is optional: it only
+changes a default or scopes discovery. Precedence is **defaults < project config < file `@setup` <
+explicit CLI flags**.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -123,13 +136,16 @@ entry globs. Precedence is **defaults < project config < file `@setup` < explici
 | `css-dir` / `output.cssDir` | source directory | CSS output directory. |
 | `css-name` / `output.cssName` | `<stem>.css` | CSS basename. |
 | `map-dir` / `output.mapDir` | source directory | Class-map directory. |
-| `map-name` / `output.mapName` | `<stem>.map.js` | Class-map basename (`classes.js` → `classes.d.ts`). |
+| `map-name` / `output.mapName` | `<stem>.map.js` | Class-map basename; opt-in declarations become `classes.d.ts`. |
 | `emit-css` / `output.emitCss` | `true` | Write the stylesheet. |
 | `emit-map` / `output.emitMap` | `true` | Write the JS class map. |
-| `emit-types` / `output.emitTypes` | `true` | Write `.d.ts` beside the map. |
+| `map-types` / `output.mapTypes` | `false` | Write `.d.ts` beside the map (opt-in). `emit-types` / `output.emitTypes` remains a deprecated alias. |
 | `source-map` / `output.sourceMap` | `false` | Write a CSS v3 source map beside the stylesheet. |
-| `import-css` / `output.importCss` | `true` | Add a relative CSS import to the map; must be `false` when CSS is disabled. |
-| `minify` / `output.minify` | `false` | Compact generated whitespace, preserving tokens and order. |
+| `minify` / `output.minify` | `true` | Compact generated whitespace, preserving tokens and order. Set `false` or pass `--no-minify` for readable CSS. |
+| `include` (config only) | `["**/*.cssx"]` | Entry globs; omit it for the default. A missing config uses the same globs. |
+| `exclude` (config only) | `[]` | Extra discovery exclusions; imported modules self-declare with `module: true` instead. |
+| `compiler.strict` (config only) | `true` | Unknown configuration keys exit 2; `"strict": false` downgrades them to warnings. |
+| `compiler.mediaGrouping` (config only) | `"safe"` | `safe` merges only adjacent compatible runs without reordering; `merge` is the opt-in disjoint-family optimizer; `none` emits as authored. `@setup { media-grouping: …; }` overrides it per file. |
 
 `@setup` directories resolve relative to the source file and are exact. Project directories resolve
 relative to the workspace root and mirror the source path. Full details, safety rules and examples:
@@ -139,7 +155,7 @@ relative to the workspace root and mirror the source path. Full details, safety 
 
 | Command | Behaviour |
 |---|---|
-| `chikx build [file]` | Project build from config include globs, or one file. Writes artifacts + manifest. |
+| `chikx build [file]` | Project build from include globs (configured or default), or one file. Writes artifacts + manifest. |
 | `chikx check [file]` | Same compilation and diagnostics, **never writes**. |
 | `chikx watch [file]` | Initial build, then incremental rebuilds (including sources in newly created directories) until SIGINT/SIGTERM. |
 | `chikx clean` | Deletes only manifest-owned files whose hash still matches. |
@@ -155,7 +171,7 @@ Flags: `--config <path>`, `--json`, `--dry-run`, `--minify`, `--no-minify` (last
 |---|---|
 | `0` | Success (warnings allowed; `check` with no errors). |
 | `1` | Compile/validation/formatting error, write or manifest failure, or `format --check` found changes. |
-| `2` | Invocation or configuration error: unknown flag/command, missing config, invalid schema, a value flag without a value, or include globs that match no `.cssx` sources. |
+| `2` | Invocation or configuration error: unknown flag/command, invalid config/schema, a value flag without a value, an explicitly empty `include`, or include globs that match no `.cssx` sources. |
 
 ## VS Code extension
 
@@ -171,8 +187,9 @@ TextMate grammar, language configuration and a chick file icon in light and dark
   a 35-entry hex palette after `#` on color properties, 27 units after numbers, clickable swatches
   and the native color picker;
 - semantic token colors for compile-time, runtime and namespaced `$token` references, `--custom`
-  properties and `$keyframes` members — styled by the active theme with no configuration, and
-  pinnable with the literal palette documented in
+  properties and `$keyframes` members, plus a distinct orange/red marker for media variants
+  (`@md`, `@dark`, `@xl+dark`) — styled by the active theme with no configuration, and pinnable
+  with the literal palette documented in
   [`packages/vscode/README.md`](packages/vscode/README.md#token-colors);
 - hover for resolved tokens, media conditions, generated class names and CSS function usage;
   definition, references, single-file token rename, colors and outline; accepting a property leaves
@@ -197,10 +214,11 @@ bun run test:browser  # Playwright computed-style cascade gate (Chromium require
 bun run benchmark     # masterplan §9 measurements -> docs/performance.md
 ```
 
-`bun run verify` currently passes with 892 pass / 0 fail across 45 files, including a real VS Code
-extension-host smoke suite (192 extension tests across 10 files). Browser coverage: 75/75 Playwright
-tests recorded on Chromium, Firefox and WebKit, checking viewport boundaries, light/dark, reduced
-motion, hover/focus/disabled, specificity, safe grouping and pretty-vs-minified parity.
+`bun run verify` currently passes with **1323 pass / 2 skip / 0 fail** across 98 files, including the
+VS Code extension-host smoke suite **14 scenarios / 880 assertions**. Browser coverage: 96/96
+Playwright tests recorded on Chromium, Firefox and WebKit, checking viewport boundaries, light/dark,
+reduced motion, hover/focus/disabled, specificity, safe/none/merge grouping parity and
+pretty-vs-minified parity.
 
 ## Repository layout
 
@@ -208,8 +226,8 @@ motion, hover/focus/disabled, specificity, safe grouping and pretty-vs-minified 
 chikx/
   README.md / SPECIFICATION.md / CHANGELOG.md / LICENSE
   docs/                  grammar, cascade, configuration, compatibility, performance, ADRs
-  examples/              basic, responsive, variables, jsx, custom-output, overrides
-                         (built output committed)
+  examples/              basic, responsive, variables, jsx, custom-output, overrides,
+                         groups, portfolio, modules (built output committed)
   packages/
     compiler/            lexer, parser, resolver, transformer, generators (zero runtime deps)
     cli/                 build, check, watch, clean, config, output planner writer
@@ -225,6 +243,7 @@ pure and filesystem-independent through an injected host.
 ## Documentation
 
 - [SPECIFICATION.md](SPECIFICATION.md) — normative language and compiler specification.
+- [docs/usage.md](docs/usage.md) — the full usage guide (getting started, language tour, outputs, CLI, editor). Its terminology note in §2.3–2.4 explains why `@variables` are build-time and `@runtime` tokens are CSS custom properties.
 - [docs/grammar.md](docs/grammar.md) — grammar, lexical rules, D1–D3.
 - [docs/cascade.md](docs/cascade.md) — the cascade contract with worked examples and browser evidence.
 - [docs/configuration.md](docs/configuration.md) — every `@setup` and `chikx.config.json` key.
@@ -232,7 +251,7 @@ pure and filesystem-independent through an injected host.
 - [docs/performance.md](docs/performance.md) — measured benchmark numbers and machine context.
 - [docs/known-limitations.md](docs/known-limitations.md) — operational gaps and release blockers.
 - [docs/decisions/](docs/decisions/) — ADRs.
-- [examples/](examples/) — six working examples with committed output.
+- [examples/](examples/) — nine working examples with committed output.
 
 ## License
 

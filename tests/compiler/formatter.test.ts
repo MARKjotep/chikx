@@ -750,8 +750,8 @@ describe("@group formatting (ADR-0017)", () => {
     const before = await compile(groupSource, { file });
     const after = await compile(formatted.formatted, { file });
     expect(after.css).toBe(before.css);
-    expect(after.css).toContain("padding: 12px;");
-    expect(after.css).toContain("color: navy;");
+    expect(after.css).toContain("padding:12px;");
+    expect(after.css).toContain("color:navy;");
     expect(after.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(
       before.diagnostics.map((diagnostic) => diagnostic.code),
     );

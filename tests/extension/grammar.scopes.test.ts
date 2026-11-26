@@ -49,15 +49,15 @@ function expectNeverScoped(tokens: ScopedToken[], text: string, scope: string): 
 }
 
 scopeSuite("rendered scopes — canonical fixture", () => {
-  test("@setup is a directive and @md/@xl are theme-yellow media aliases", () => {
+  test("@setup is a directive and @md/@xl are markup.deleted variant markers", () => {
     const tokens = tokenize(fixture("canonical/button/input.cssx"));
     expectScoped(tokens, "@setup", "keyword.control.directive.chikx");
-    expectNeverScoped(tokens, "@setup", "entity.name.function.chikx");
+    expectNeverScoped(tokens, "@setup", "markup.deleted.chikx");
 
-    expectScoped(tokens, "@md", "entity.name.function.chikx");
+    expectScoped(tokens, "@md", "markup.deleted.chikx");
     expectScoped(tokens, "@md", "meta.variant.chikx");
-    expectScoped(tokens, "@xl", "entity.name.function.chikx");
-    expectScoped(tokens, "@dark", "entity.name.function.chikx");
+    expectScoped(tokens, "@xl", "markup.deleted.chikx");
+    expectScoped(tokens, "@dark", "markup.deleted.chikx");
     expectNeverScoped(tokens, "@dark", "keyword.control.at-rule.css");
   });
 
@@ -77,21 +77,21 @@ scopeSuite("rendered scopes — canonical fixture", () => {
   test("string contents stay inert (no alias or variable scopes)", () => {
     const tokens = tokenize(fixture("canonical/button/input.cssx"));
     expectScoped(tokens, "./theme.cssx", "string.quoted.double.css");
-    expectNeverScoped(tokens, "./theme.cssx", "entity.name.function.chikx");
+    expectNeverScoped(tokens, "./theme.cssx", "markup.deleted.chikx");
     expectNeverScoped(tokens, "./theme.cssx", "variable.other.chikx");
     expectNeverScoped(tokens, "./theme.cssx", "keyword.control.directive.chikx");
   });
 });
 
 scopeSuite("rendered scopes — media, nesting and global fixtures", () => {
-  test("combined and custom aliases are yellow while directives stay magenta", () => {
+  test("combined, inline and declaration aliases use the variant marker scope", () => {
     const tokens = tokenize(fixture("media/inline-variants/input.cssx"));
     expectScoped(tokens, "@media-types", "keyword.control.directive.chikx");
-    expectNeverScoped(tokens, "@media-types", "entity.name.function.chikx");
-    expectScoped(tokens, "@xl+dark", "entity.name.function.chikx");
-    expectScoped(tokens, "@compact", "entity.name.function.chikx");
-    expectScoped(tokens, "@xl", "entity.name.function.chikx");
-    expectScoped(tokens, "compact", "entity.name.function.chikx");
+    expectNeverScoped(tokens, "@media-types", "markup.deleted.chikx");
+    expectScoped(tokens, "@xl+dark", "markup.deleted.chikx");
+    expectScoped(tokens, "@compact", "markup.deleted.chikx");
+    expectScoped(tokens, "@xl", "markup.deleted.chikx");
+    expectScoped(tokens, "compact", "markup.deleted.chikx");
   });
 
   test("parent references, combinators, pseudo-classes and pseudo-elements are distinct", () => {
@@ -133,11 +133,11 @@ scopeSuite("rendered scopes — synthetic coverage", () => {
     );
     expectScoped(tokens, "@media", "keyword.control.at-rule.css");
     expectScoped(tokens, "@media", "meta.at-rule.media.css");
-    expectNeverScoped(tokens, "@media", "entity.name.function.chikx");
+    expectNeverScoped(tokens, "@media", "markup.deleted.chikx");
     expectScoped(tokens, "min-width", "support.type.property-name.css");
     expectScoped(tokens, "768", "constant.numeric.css");
     expectScoped(tokens, "dark", "support.constant.property-value.css");
-    expectNeverScoped(tokens, "dark", "entity.name.function.chikx");
+    expectNeverScoped(tokens, "dark", "markup.deleted.chikx");
   });
 
   test("!important, calc() and units keep their standard css scopes", () => {
@@ -153,7 +153,7 @@ scopeSuite("rendered scopes — synthetic coverage", () => {
       ["/* @md $x { } */", '.a { content: "@md $x { }"; }', "// @xl"].join("\n"),
     );
     expectScoped(tokens, "@md $x { }", "string.quoted.double.css");
-    expectNeverScoped(tokens, "@md $x { }", "entity.name.function.chikx");
+    expectNeverScoped(tokens, "@md $x { }", "markup.deleted.chikx");
     expectNeverScoped(tokens, "@md $x { }", "variable.other.chikx");
     expectScoped(tokens, " @md $x { } ", "comment.block.chikx");
     expectScoped(tokens, "// @xl", "comment.line.double-slash.chikx");
@@ -173,10 +173,10 @@ scopeSuite("rendered scopes — @group definitions, use sites and members", () =
     expectScoped(definition, "@group", "meta.directive.group.chikx");
     expectScoped(definition, "@group", "keyword.control.directive.chikx");
     expectNeverScoped(definition, "@group", "meta.group.use.chikx");
-    expectNeverScoped(definition, "@group", "entity.name.function.chikx");
+    expectNeverScoped(definition, "@group", "markup.deleted.chikx");
     expectNeverScoped(definition, "@group", "keyword.control.at-rule.css");
     expectScoped(definition, "card", "entity.name.type.group.chikx");
-    expectNeverScoped(definition, "card", "entity.name.function.chikx");
+    expectNeverScoped(definition, "card", "markup.deleted.chikx");
     expectNeverScoped(definition, "card", "variable.other.member.chikx");
     expectScoped(definition, "padding", "support.type.property-name.css");
 
@@ -184,7 +184,7 @@ scopeSuite("rendered scopes — @group definitions, use sites and members", () =
     expectScoped(useSite, "@group", "meta.group.use.chikx");
     expectScoped(useSite, "@group", "keyword.control.directive.chikx");
     expectNeverScoped(useSite, "@group", "meta.directive.group.chikx");
-    expectNeverScoped(useSite, "@group", "entity.name.function.chikx");
+    expectNeverScoped(useSite, "@group", "markup.deleted.chikx");
     expectNeverScoped(useSite, "@group", "variable.other.member.chikx");
     expectScoped(useSite, "card", "entity.name.type.group.chikx");
     expectScoped(useSite, "navy", "support.constant.property-value.css");
@@ -221,12 +221,12 @@ scopeSuite("rendered scopes — @group definitions, use sites and members", () =
         "}",
       ].join("\n"),
     );
-    expectScoped(tokens, "@md", "entity.name.function.chikx");
+    expectScoped(tokens, "@md", "markup.deleted.chikx");
     expectScoped(tokens, "@md", "meta.variant.chikx");
     expectNeverScoped(tokens, "@md", "keyword.control.directive.chikx");
     expectScoped(tokens, "@setup", "keyword.control.directive.chikx");
-    expectNeverScoped(tokens, "@setup", "entity.name.function.chikx");
-    expectNeverScoped(tokens, "@group", "entity.name.function.chikx");
+    expectNeverScoped(tokens, "@setup", "markup.deleted.chikx");
+    expectNeverScoped(tokens, "@group", "markup.deleted.chikx");
     expectNeverScoped(tokens, "@group", "meta.variant.chikx");
   });
 
@@ -249,7 +249,7 @@ scopeSuite("rendered scopes — @group definitions, use sites and members", () =
     expectScoped(tokens, "@group", "keyword.control.directive.chikx");
     expectNeverScoped(tokens, "@group", "meta.directive.group.chikx");
     expectNeverScoped(tokens, "@group", "meta.group.use.chikx");
-    expectNeverScoped(tokens, "@group", "entity.name.function.chikx");
+    expectNeverScoped(tokens, "@group", "markup.deleted.chikx");
     expectScoped(tokens, ".after", "entity.other.attribute-name.class.css");
     expectScoped(tokens, ".panel", "entity.other.attribute-name.class.css");
     expectScoped(tokens, ".tail", "entity.other.attribute-name.class.css");

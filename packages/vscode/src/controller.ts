@@ -180,15 +180,22 @@ export class ChikxController {
       vscode.commands.registerCommand(COMMANDS.checkProject, () => this.buildProject(true)),
       vscode.workspace.onDidOpenTextDocument((document) => this.onDocumentOpened(document)),
       vscode.workspace.onDidChangeTextDocument((event) => {
-        if (event.document.languageId === "chikx" && event.document.uri.scheme === "file") {
-          this.diagnostics.schedule(event.document);
-        }
+        if (!this.isCssxDocument(event.document)) return;
+        // Any open document may import the edited one: drop every cached
+        // analysis (there is no reverse-import index in 0.1.0) and re-run the
+        // open document set on the shared debounce.
+        this.service.invalidateAll();
+        this.scheduleOpenCssxDocuments();
       }),
       vscode.workspace.onDidSaveTextDocument((document) => void this.onDocumentSaved(document)),
       vscode.workspace.onWillSaveTextDocument((event) => this.onWillSaveTextDocument(event)),
       vscode.workspace.onDidCloseTextDocument((document) => {
+        if (!this.isCssxDocument(document)) return;
         this.diagnostics.clear(document.uri);
-        this.service.forget(toPosix(document.uri.fsPath));
+        // Closing a dirty module falls back to its on-disk text, so importers
+        // must re-analyze even though no file event fires.
+        this.service.invalidateAll();
+        this.scheduleOpenCssxDocuments();
       }),
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.index.invalidate()),
       vscode.workspace.onDidGrantWorkspaceTrust(() => {
@@ -230,8 +237,27 @@ export class ChikxController {
   }
 
   private onDocumentOpened(document: vscode.TextDocument): void {
-    if (document.languageId !== "chikx" || document.uri.scheme !== "file") return;
+    if (!this.isCssxDocument(document)) return;
     this.diagnostics.schedule(document);
+  }
+
+  /** A real `.cssx` file document (not the read-only preview virtual document). */
+  private isCssxDocument(document: vscode.TextDocument): boolean {
+    return document.languageId === "chikx" && document.uri.scheme === "file";
+  }
+
+  /**
+   * Re-schedule the debounced analysis for every open `.cssx` document.
+   *
+   * `except` skips a document the caller has just analyzed immediately (the
+   * save path), avoiding a duplicate compile of the same version. Closed
+   * documents are skipped: their diagnostics are gone.
+   */
+  private scheduleOpenCssxDocuments(except?: vscode.TextDocument): void {
+    for (const open of vscode.workspace.textDocuments) {
+      if (open === except || open.isClosed || !this.isCssxDocument(open)) continue;
+      this.diagnostics.schedule(open);
+    }
   }
 
   /**
@@ -256,13 +282,17 @@ export class ChikxController {
   }
 
   private async onDocumentSaved(document: vscode.TextDocument): Promise<void> {
-    if (document.languageId !== "chikx" || document.uri.scheme !== "file") return;
+    if (!this.isCssxDocument(document)) return;
+    // The compiler and the synchronous module reader both see the saved file,
+    // so every open importer may now have different diagnostics. Invalidate
+    // the whole cache, refresh the saved document immediately, and debounce
+    // the other open documents (no reverse-import index in 0.1.0).
+    this.service.invalidateAll();
     await this.diagnostics.refresh(document);
+    this.scheduleOpenCssxDocuments(document);
     if (basenamePath(toPosix(document.uri.fsPath)) === "chikx.config.json") {
       this.index.invalidate();
-      for (const open of vscode.workspace.textDocuments) {
-        if (open.languageId === "chikx") this.diagnostics.schedule(open);
-      }
+      this.scheduleOpenCssxDocuments();
       return;
     }
     const configuration = vscode.workspace.getConfiguration("chikx", document.uri);
@@ -303,6 +333,9 @@ export class ChikxController {
       ...(config?.classes?.strategy === undefined
         ? {}
         : { namingStrategy: config.classes.strategy }),
+      ...(config?.compiler?.mediaGrouping === undefined
+        ? {}
+        : { mediaGrouping: config.compiler.mediaGrouping }),
       workspaceRoot: this.index.rootFor(uri),
       readModule: readModuleSync,
       compile: true,
@@ -388,7 +421,6 @@ export class ChikxController {
       emitMap: setup.emitMap,
       emitTypes: setup.emitTypes,
       sourceMap: setup.sourceMap,
-      importCss: setup.importCss,
       minify: setup.minify,
     };
     for (const artifact of plan.plan.outputs) {

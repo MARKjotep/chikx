@@ -85,7 +85,7 @@ describe("path shapes", () => {
       [...expected].sort(),
     );
     for (const path of expected) {
-      expect(await readProjectFile(root, path)).toContain("color: red");
+      expect(await readProjectFile(root, path)).toContain("color:red");
     }
 
     // A second build is byte-identical: exotic names do not destabilize output.

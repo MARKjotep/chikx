@@ -14,7 +14,7 @@
       "name": "@chikx/cli",
       "version": "0.1.0",
       "bin": {
-        "chikx": "src/index.ts",
+        "chikx": "./dist/index.js",
       },
       "dependencies": {
         "@chikx/compiler": "workspace:*",

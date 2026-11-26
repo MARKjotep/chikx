@@ -5,6 +5,7 @@
 */
 @setup {
   prefix: "ui";
+  module: true;
 }
 
 @runtime {

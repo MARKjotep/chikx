@@ -21,7 +21,8 @@ chick file icon in both light and dark themes ([ADR-0013](../../docs/decisions/A
   rather than shown at the wrong offsets.
 - **Completions** — property names, common values, `@` media aliases (built-in, project config and
   file `@media-types`), `$` tokens and namespace members, `@setup` keys, `@use "` import paths,
-  nested selectors and pseudo-classes.
+  nested selectors, pseudo-classes and the document's own id selectors after `#` (ids are
+  document-global and are never renamed or mapped).
 - **Navigation and insight** — hover for resolved token values, media conditions and generated class
   names; definition and references for tokens; single-file `$token` rename; color provider; outline.
 - **Commands** (all under the `Chikx` category) — Compile File, Build Project, Preview Compiled CSS,
@@ -42,11 +43,21 @@ references get the kind's colour — with no configuration needed:
 | `runtimeVariable` | `$name` declared in `@runtime`, and runtime namespace members | `keyword.control` | `#C586C0` | `#C586C0` | `#AF00DB` |
 | `customProperty` | `--var` references, including inside `var()` | `keyword.control` | `#C586C0` | `#C586C0` | `#AF00DB` |
 | `keyframe` | a resolved `$keyframes.<name>` member | `entity.name.function` | `#D2A8FF` | `#DCDCAA` | `#795E26` |
+| media variant | `@md`, `@xl+dark`, `@dark {` and `@media-types` captions | `markup.deleted` | `#FFA198` | `#CE9178` | `#A31515` |
 
-`contributes.semanticTokenScopes` maps each kind to a common TextMate scope, so the active colour
-theme paints it. Colours therefore follow the active theme; the values above are what the built-in
-themes resolve, and other themes may differ. Text the classifier cannot resolve (before analysis
-finishes, or after a parse error) uses the same scope fallback.
+The first five rows are semantic token kinds mapped by `contributes.semanticTokenScopes`; the media
+variant row is the TextMate scope used by the grammar's three variant rules (inline value variants,
+block variant headers and `@media-types` captions), so it is painted even before analysis completes.
+The `markup.deleted` family was chosen empirically: it is distinct from `constant.numeric` (pale
+green), `variable.language` (blue), `entity.name.type` (teal), `keyword.control` (magenta) and the
+`entity.name.function` keyframe colour in all three shipped themes (minimum ΔE 35), with contrast
+9.6:1 / 6.3:1 / 7.9:1 on the 2026 Dark, Dark+ and Light+ backgrounds. Tradeoff: Dark+ and Light+ use
+the same hex for strings, so quoted values and variant markers share a hue there; they remain
+different constructs and all five mapped kinds stay distinct.
+
+Colours follow the active theme; the values above are what the built-in themes resolve, and other
+themes may differ. Text the classifier cannot resolve (before analysis finishes, or after a parse
+error) uses the same scope fallback.
 
 To pin exact colours regardless of theme, add the rules to your user or workspace `settings.json`.
 These rules outrank the scope fallback:
@@ -112,7 +123,7 @@ does not handle that rename, so the orchestrator resolves the executable itself 
 
 | Construct | Scope |
 |---|---|
-| Media alias (`@md`, `@2xl`, `@xl+dark`) | `entity.name.function.chikx` (inside `meta.variant.chikx`) |
+| Media alias (`@md`, `@2xl`, `@xl+dark`) | `markup.deleted.chikx` (inside `meta.variant.chikx`) |
 | Directive (`@setup`, `@use`, `@variables`, `@runtime`, `@media-types`) | `keyword.control.directive.chikx` |
 | `as` in `@use` | `keyword.other.chikx` |
 | Class / id / tag / pseudo-class / pseudo-element | `entity.other.attribute-name.class.css`, `.id.css`, `entity.name.tag.css`, `.pseudo-class.css`, `.pseudo-element.css` |
@@ -126,9 +137,10 @@ does not handle that rename, so the orchestrator resolves the executable itself 
 
 ## Known gaps
 
-- No document formatting provider yet (`chikx format` works in the CLI).
-- No CSS language-service projection: property hover is empty and value/property completions are
-  curated lists.
+- Formatting is whole-document only: **Format Document** and `chikx.editor.formatOnSave` run the
+  compiler formatter; there is no range formatting or format-on-type.
+- No CSS language-service projection: property hover and value/property completions use the built-in
+  one-sentence property table and curated value lists, not the full `vscode-css-languageservice` data.
 - Preview documents are keyed by basename, so two same-named files share one preview URI (reopening
   refreshes it).
 - Cross-module rename is refused with guidance; class rename across JSX is future work.

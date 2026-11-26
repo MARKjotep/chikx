@@ -606,8 +606,9 @@ export const GENERATED_PREFIX = "ui";
 
 /** Two-file project used by the ESM-consumer and type-inference cases. */
 export function generatedProject(options: {
-  readonly importCss: boolean;
   readonly sourceMap: boolean;
+  /** Opt in to `.d.ts` declarations (`map-types`, default off since CSSX-A52). */
+  readonly mapTypes?: boolean;
 }): GeneratedProject {
   const config = {
     include: ["src/**/*.cssx"],
@@ -617,9 +618,8 @@ export function generatedProject(options: {
       mapDir: "dist/maps",
       emitCss: true,
       emitMap: true,
-      emitTypes: true,
+      mapTypes: options.mapTypes ?? false,
       sourceMap: options.sourceMap,
-      importCss: options.importCss,
       minify: false,
     },
     classes: { strategy: "prefix", prefix: GENERATED_PREFIX },

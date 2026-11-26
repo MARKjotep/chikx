@@ -18,7 +18,7 @@ export const COLOR_SCHEMES = ["light", "dark"] as const;
 export type ColorScheme = (typeof COLOR_SCHEMES)[number];
 
 /** Browser page variant produced by the harness. */
-export type PageVariant = "pretty" | "minified" | "nogroup";
+export type PageVariant = "pretty" | "minified" | "nogroup" | "merge";
 
 /**
  * Computed properties compared between the pretty and minified pages.
@@ -100,7 +100,8 @@ export const SCENARIOS: readonly BrowserScenario[] = [
   },
   {
     name: "block-conditions",
-    description: "Rule-scoped @md block plus a file-level compact alias.",
+    description:
+      "Rule-scoped @md block plus a file-level compact alias, with an opt-in merge opportunity.",
     source: `@media-types { compact: (max-width: 500px); }
 .card {
   display: block;
@@ -113,11 +114,19 @@ export const SCENARIOS: readonly BrowserScenario[] = [
     display: flex;
     padding: 4px;
   }
+  margin-top: 2px;
+  @md {
+    color: rgb(10, 20, 30);
+  }
+  border-left: 1px solid rgb(0, 0, 0);
+  @md {
+    border-radius: 4px;
+  }
 }
 `,
     html: `<div class="{{card}}" data-testid="card">block conditions</div>`,
     testIds: ["card"],
-    compareProperties: BASE_COMPARE_PROPERTIES,
+    compareProperties: [...BASE_COMPARE_PROPERTIES, "border-radius"],
   },
   {
     name: "specificity",
@@ -159,7 +168,7 @@ export const SCENARIOS: readonly BrowserScenario[] = [
   },
   {
     name: "states",
-    description: "Hover, focus and disabled pseudo-state opacity rules.",
+    description: "Hover, focus, disabled and attribute-driven state rules.",
     source: `.card {
   opacity: 1;
   cursor: pointer;
@@ -173,9 +182,12 @@ export const SCENARIOS: readonly BrowserScenario[] = [
     opacity: 0.5;
     cursor: not-allowed;
   }
+  &[data-state="open"] {
+    background-color: rgb(10, 20, 30);
+  }
 }
 `,
-    html: `<button class="{{card}}" data-testid="state-base" type="button">base</button>
+    html: `<button class="{{card}}" data-testid="state-base" data-state="open" type="button">base</button>
 <button class="{{card}}" data-testid="state-hover" type="button">hover</button>
 <button class="{{card}}" data-testid="state-focus" type="button">focus</button>
 <button class="{{card}}" data-testid="state-disabled" type="button">disabled</button>`,

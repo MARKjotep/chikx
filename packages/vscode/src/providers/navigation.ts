@@ -1,26 +1,31 @@
 /**
  * Chikx navigation providers: definition, references and rename for `$tokens`,
- * `@group.<name>` declarations/use sites and `@keyframes <name>` /
- * `$keyframes.<name>` constructs. All ranges come from parser AST spans, so
- * strings, comments, selectors (including `:global(...)` classes) and import
- * paths are untouched. Group and keyframe renames return edits for every visible
- * module; the other token edits stay single-file.
+ * `@group.<name>` declarations/use sites, `@keyframes <name>` /
+ * `$keyframes.<name>` constructs, selector classes and selector ids. Token,
+ * class, id and keyframe-name ranges come from parser AST spans, so strings,
+ * comments, import paths and attribute values are untouched. Class rename edits
+ * every non-global occurrence of the same name in the current document; id
+ * rename edits every occurrence (ids have no local/global split); group and
+ * keyframe renames return edits for every visible module.
  */
 
 import * as vscode from "vscode";
 import { sourceTextOf, toEditorRange, toLocation } from "../adapter.js";
-import type { DocumentState } from "../analysis.js";
+import type { DocumentState, Range } from "../analysis.js";
 import { tokenNameConflict } from "../analysis.js";
 import {
   type RenamePlan,
+  classAt,
   definitionsAt,
   groupAt,
+  idAt,
   keyframeAt,
-  referencesAt,
+  referencesToToken,
   renameAt,
   tokenAt,
+  tokenDefinitionAt,
 } from "../intelligence.js";
-import { normalizePath } from "../paths.js";
+import { dirnamePath, normalizePath, toPosix } from "../paths.js";
 import type { AnalysisService } from "../service.js";
 
 async function stateOf(
@@ -49,7 +54,26 @@ export class ChikxDefinitionProvider implements vscode.DefinitionProvider {
   }
 }
 
-/** Find-all-references for `$tokens` in the current document. */
+/**
+ * Maximum `.cssx` candidates one references request analyzes.
+ *
+ * The scan is on demand and cache-free outside the analysis service, so a
+ * pathological workspace can otherwise turn Find All References into a project
+ * build. Two hundred covers a normal package while keeping the extension host
+ * suite fast; the target module is always admitted first.
+ */
+const REFERENCE_SCAN_LIMIT = 200;
+
+/** Directories never scanned for references (generated or dependency trees). */
+const REFERENCE_SCAN_EXCLUDE = "**/{node_modules,dist,generated}/**";
+
+/** Whether `path` is `root` or inside it (both normalized POSIX paths). */
+function isInside(path: string, root: string): boolean {
+  const normalizedRoot = normalizePath(root).replace(/\/+$/, "");
+  return path === normalizedRoot || path.startsWith(`${normalizedRoot}/`);
+}
+
+/** Find-all-references for `$tokens`, resolution-based in both directions. */
 export class ChikxReferenceProvider implements vscode.ReferenceProvider {
   constructor(private readonly service: AnalysisService) {}
 
@@ -62,15 +86,140 @@ export class ChikxReferenceProvider implements vscode.ReferenceProvider {
     const source = sourceTextOf(document);
     const state = await stateOf(this.service, document);
     if (token.isCancellationRequested) return [];
-    const targets = referencesAt(source.text, document.offsetAt(position), {
-      analysis: state.analysis,
+    const target = tokenDefinitionAt(source.text, document.offsetAt(position), state.analysis);
+    if (target === undefined) return [];
+
+    const currentPath = normalizePath(state.analysis.path);
+    const locations: vscode.Location[] = [];
+    const seen = new Set<string>();
+    const add = (file: string, range: Range): void => {
+      const absolute = normalizePath(file);
+      const uri = absolute === currentPath ? document.uri : vscode.Uri.file(absolute);
+      const editorRange = toEditorRange(range);
+      const key = [
+        uri.toString(),
+        editorRange.start.line,
+        editorRange.start.character,
+        editorRange.end.line,
+        editorRange.end.character,
+      ].join(":");
+      if (seen.has(key)) return;
+      seen.add(key);
+      locations.push(new vscode.Location(uri, editorRange));
+    };
+
+    // The open document is already analyzed, so its own occurrences (including
+    // the declaration when the cursor is on the definition) need no rescan.
+    for (const occurrence of referencesToToken(source.text, state.analysis, target, {
+      includeDeclaration: context.includeDeclaration,
+    })) {
+      add(occurrence.file, occurrence.range);
+    }
+
+    const candidates = await this.referenceCandidates(currentPath, target.file, token);
+    for (const candidate of candidates) {
+      if (token.isCancellationRequested) break;
+      const open = this.openCandidate(candidate);
+      const text = await this.readCandidateText(candidate, open);
+      if (text === undefined || !text.includes(target.name)) continue;
+      const candidateState = await this.service.analyzeNow({
+        text,
+        path: candidate,
+        version: open?.version ?? 0,
+      });
+      if (token.isCancellationRequested) break;
+      for (const occurrence of referencesToToken(text, candidateState.analysis, target, {
+        includeDeclaration: context.includeDeclaration,
+      })) {
+        add(occurrence.file, occurrence.range);
+      }
+    }
+
+    locations.sort((left, right) => {
+      const byFile = left.uri.toString().localeCompare(right.uri.toString());
+      if (byFile !== 0) return byFile;
+      const byLine = left.range.start.line - right.range.start.line;
+      return byLine !== 0 ? byLine : left.range.start.character - right.range.start.character;
     });
-    const selected = context.includeDeclaration ? targets : targets.slice(1);
-    return selected.map((target) => toLocation(target, document, state.analysis.file));
+    return locations;
+  }
+
+  /**
+   * Candidate module paths for one references request.
+   *
+   * Every workspace folder is searched for `**\/*.cssx` with the dependency and
+   * generated-output exclude; the target module is always admitted. A document
+   * outside every folder (a standalone file in the host suite, for example)
+   * additionally scans its own directory non-recursively. The result is bounded
+   * by {@link REFERENCE_SCAN_LIMIT} and always excludes the open document.
+   */
+  private async referenceCandidates(
+    currentPath: string,
+    targetFile: string,
+    token: vscode.CancellationToken,
+  ): Promise<readonly string[]> {
+    const selected = new Set<string>();
+    const targetPath = normalizePath(targetFile);
+    if (targetPath !== currentPath) selected.add(targetPath);
+
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const roots = folders.map((folder) => normalizePath(toPosix(folder.uri.fsPath)));
+    const admit = (uri: vscode.Uri): void => {
+      if (selected.size >= REFERENCE_SCAN_LIMIT) return;
+      const path = normalizePath(toPosix(uri.fsPath));
+      if (path !== currentPath) selected.add(path);
+    };
+
+    for (const folder of folders) {
+      if (token.isCancellationRequested || selected.size >= REFERENCE_SCAN_LIMIT) break;
+      const found = await vscode.workspace.findFiles(
+        new vscode.RelativePattern(folder, "**/*.cssx"),
+        REFERENCE_SCAN_EXCLUDE,
+        REFERENCE_SCAN_LIMIT,
+      );
+      for (const uri of found) admit(uri);
+    }
+
+    if (
+      !token.isCancellationRequested &&
+      selected.size < REFERENCE_SCAN_LIMIT &&
+      !roots.some((root) => isInside(currentPath, root))
+    ) {
+      const directory = vscode.Uri.file(dirnamePath(currentPath));
+      const found = await vscode.workspace.findFiles(
+        new vscode.RelativePattern(directory, "*.cssx"),
+        REFERENCE_SCAN_EXCLUDE,
+        REFERENCE_SCAN_LIMIT,
+      );
+      for (const uri of found) admit(uri);
+    }
+
+    return [...selected];
+  }
+
+  /** Open `.cssx` document backing `path`, so unsaved text wins over disk. */
+  private openCandidate(path: string): vscode.TextDocument | undefined {
+    const normalized = normalizePath(path);
+    return vscode.workspace.textDocuments.find(
+      (open) =>
+        open.languageId === "chikx" && normalizePath(toPosix(open.uri.fsPath)) === normalized,
+    );
+  }
+
+  private async readCandidateText(
+    path: string,
+    open: vscode.TextDocument | undefined,
+  ): Promise<string | undefined> {
+    if (open !== undefined) return open.getText();
+    try {
+      return new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.file(path)));
+    } catch {
+      return undefined;
+    }
   }
 }
 
-/** Rename for local `$tokens` and groups; multi-file group edits span modules. */
+/** Rename for local `$tokens`, selector classes/ids and groups; group and keyframe edits span modules. */
 export class ChikxRenameProvider implements vscode.RenameProvider {
   constructor(private readonly service: AnalysisService) {}
 
@@ -98,10 +247,28 @@ export class ChikxRenameProvider implements vscode.RenameProvider {
       };
     }
     const keyframe = keyframeAt(source.text, offset, state.analysis);
-    if (keyframe === undefined) return undefined;
+    if (keyframe !== undefined) {
+      return {
+        range: toEditorRange(keyframe.nameRange),
+        placeholder: keyframe.name,
+      };
+    }
+    // A class token prepares on the name bytes after the dot, so the rename box
+    // is prefilled with `card` rather than `.card` and the dot always survives.
+    const occurrence = classAt(state.analysis, offset);
+    if (occurrence !== undefined) {
+      return {
+        range: toEditorRange(occurrence.range),
+        placeholder: occurrence.name,
+      };
+    }
+    // An id token prepares on the name bytes after the `#` for the same reason:
+    // the rename box is prefilled with `panel`, never `#panel`.
+    const id = idAt(state.analysis, offset);
+    if (id === undefined) return undefined;
     return {
-      range: toEditorRange(keyframe.nameRange),
-      placeholder: keyframe.name,
+      range: toEditorRange(id.range),
+      placeholder: id.name,
     };
   }
 
@@ -121,8 +288,9 @@ export class ChikxRenameProvider implements vscode.RenameProvider {
     if (!plan.ok) throw new Error(plan.reason);
     // Refuse a token name that already exists before any edit is built
     // (CSSX-U04): an applied duplicate would only surface as CHIKX2001 after
-    // the original name is already lost. Group and keyframe renames enforce the
-    // same rule inside `renameAt`; `tokenAt` finds nothing for their headers.
+    // the original name is already lost. Group, keyframe and class renames
+    // enforce the same rule inside `renameAt`; `tokenAt` finds nothing for their
+    // headers/selectors.
     const tokenAtCursor = tokenAt(source.text, offset, state.analysis);
     if (tokenAtCursor !== undefined && tokenAtCursor.symbol.namespace === undefined) {
       const conflict = tokenNameConflict(state.analysis, newName, tokenAtCursor.symbol);

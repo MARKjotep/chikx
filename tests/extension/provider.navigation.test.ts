@@ -19,10 +19,16 @@ import {
   tokenNameConflict,
 } from "../../packages/vscode/src/analysis.ts";
 import {
+  classAt,
+  collectIdOccurrences,
+  collectIdSelectors,
   definitionsAt,
+  idAt,
   referencesAt,
+  referencesToToken,
   renameAt,
   tokenAt,
+  tokenDefinitionAt,
 } from "../../packages/vscode/src/intelligence.ts";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
@@ -112,6 +118,244 @@ describe("definition and references", () => {
     expect(tokenAt(TOKEN_DOCUMENT, classOffset, state.analysis)).toBeUndefined();
     const stringOffset = TOKEN_DOCUMENT.indexOf('"$gap"') + 2;
     expect(tokenAt(TOKEN_DOCUMENT, stringOffset, state.analysis)).toBeUndefined();
+  });
+});
+
+const REFERENCE_ROOT = "/virtual-chikx";
+const REFERENCE_FILES: Readonly<Record<string, string>> = Object.freeze({
+  [`${REFERENCE_ROOT}/refs-tokens.cssx`]: [
+    "@variables {",
+    "  brand: #2563eb;",
+    "}",
+    "@runtime {",
+    "  surface: #ffffff;",
+    "}",
+  ].join("\n"),
+  [`${REFERENCE_ROOT}/refs-alias.cssx`]: [
+    '@use "./refs-tokens.cssx" as t;',
+    ".alias {",
+    "  color: $t.brand;",
+    "  background: $t.surface;",
+    "}",
+  ].join("\n"),
+  [`${REFERENCE_ROOT}/refs-plain.cssx`]: [
+    '@use "./refs-tokens.cssx";',
+    ".plain {",
+    "  color: $brand;",
+    "  background: $surface;",
+    "}",
+  ].join("\n"),
+  [`${REFERENCE_ROOT}/refs-shadow.cssx`]: [
+    '@use "./refs-tokens.cssx";',
+    "@variables {",
+    "  brand: #111111;",
+    "}",
+    ".shadow {",
+    "  color: $brand;",
+    "}",
+  ].join("\n"),
+  [`${REFERENCE_ROOT}/refs-other.cssx`]: "@variables { brand: #222222; }",
+  [`${REFERENCE_ROOT}/refs-ambiguous.cssx`]: [
+    '@use "./refs-tokens.cssx";',
+    '@use "./refs-other.cssx";',
+    ".clash {",
+    "  color: $brand;",
+    "}",
+  ].join("\n"),
+});
+
+interface ReferenceAnalysis {
+  readonly name: string;
+  readonly path: string;
+  readonly text: string;
+  readonly analysis: AnalyzeResult;
+}
+
+function readReferenceModule(path: string): string | undefined {
+  return REFERENCE_FILES[path];
+}
+
+async function referenceAnalyses(): Promise<readonly ReferenceAnalysis[]> {
+  const files: ReferenceAnalysis[] = [];
+  for (const [path, text] of Object.entries(REFERENCE_FILES)) {
+    const source: SourceText = { text, path, version: 1 };
+    const state = await analyzeDocument(source, {
+      workspaceRoot: REFERENCE_ROOT,
+      readModule: readReferenceModule,
+      compile: false,
+    });
+    files.push({
+      name: path.slice(path.lastIndexOf("/") + 1),
+      path,
+      text,
+      analysis: state.analysis,
+    });
+  }
+  return files;
+}
+
+function referenceOffset(text: string, needle: string, delta = 0): number {
+  const index = text.indexOf(needle);
+  if (index < 0) throw new Error(`missing ${JSON.stringify(needle)}`);
+  return index + delta;
+}
+
+function occurrenceShapes(
+  occurrences: readonly { file: string; range: Range }[],
+  analyses: readonly ReferenceAnalysis[],
+): readonly { file: string; start: number; end: number }[] {
+  const byPath = new Map(analyses.map((entry) => [entry.path, entry]));
+  return occurrences
+    .map((occurrence) => {
+      const entry = byPath.get(occurrence.file);
+      if (entry === undefined) throw new Error(`unknown occurrence file ${occurrence.file}`);
+      const offsets = rangeToOffsets(entry.analysis, occurrence.range);
+      return { file: entry.name, start: offsets.start, end: offsets.end };
+    })
+    .sort((left, right) =>
+      left.file === right.file ? left.start - right.start : left.file.localeCompare(right.file),
+    );
+}
+
+describe("reverse references", () => {
+  test("a definition finds every resolving use across direct importers", async () => {
+    const files = await referenceAnalyses();
+    const tokens = files.find((entry) => entry.name === "refs-tokens.cssx");
+    if (tokens === undefined) throw new Error("missing tokens analysis");
+    const target = tokenDefinitionAt(
+      tokens.text,
+      referenceOffset(tokens.text, "brand:") + 2,
+      tokens.analysis,
+    );
+    expect(target).toEqual({
+      file: `${REFERENCE_ROOT}/refs-tokens.cssx`,
+      name: "brand",
+      kind: "compile",
+    });
+    if (target === undefined) throw new Error("expected a token definition");
+
+    const occurrences = files.flatMap((entry) =>
+      referencesToToken(entry.text, entry.analysis, target),
+    );
+    const alias = files.find((entry) => entry.name === "refs-alias.cssx");
+    const plain = files.find((entry) => entry.name === "refs-plain.cssx");
+    if (alias === undefined || plain === undefined) throw new Error("missing importer analysis");
+    expect(occurrenceShapes(occurrences, files)).toEqual(
+      [
+        {
+          file: "refs-tokens.cssx",
+          start: referenceOffset(tokens.text, "brand:"),
+          end: referenceOffset(tokens.text, "brand:") + "brand".length,
+        },
+        {
+          file: "refs-alias.cssx",
+          start: referenceOffset(alias.text, "$t.brand"),
+          end: referenceOffset(alias.text, "$t.brand") + "$t.brand".length,
+        },
+        {
+          file: "refs-plain.cssx",
+          start: referenceOffset(plain.text, "$brand"),
+          end: referenceOffset(plain.text, "$brand") + "$brand".length,
+        },
+      ].sort((left, right) =>
+        left.file === right.file ? left.start - right.start : left.file.localeCompare(right.file),
+      ),
+    );
+    expect(occurrences.some((occurrence) => occurrence.file.endsWith("refs-shadow.cssx"))).toBe(
+      false,
+    );
+    expect(occurrences.some((occurrence) => occurrence.file.endsWith("refs-ambiguous.cssx"))).toBe(
+      false,
+    );
+  });
+
+  test("an importer resolves the same definition, including unqualified and runtime tokens", async () => {
+    const files = await referenceAnalyses();
+    const tokens = files.find((entry) => entry.name === "refs-tokens.cssx");
+    const alias = files.find((entry) => entry.name === "refs-alias.cssx");
+    const plain = files.find((entry) => entry.name === "refs-plain.cssx");
+    const shadow = files.find((entry) => entry.name === "refs-shadow.cssx");
+    const ambiguous = files.find((entry) => entry.name === "refs-ambiguous.cssx");
+    if (
+      tokens === undefined ||
+      alias === undefined ||
+      plain === undefined ||
+      shadow === undefined ||
+      ambiguous === undefined
+    ) {
+      throw new Error("missing reference analysis");
+    }
+    const brandTarget = tokenDefinitionAt(
+      tokens.text,
+      referenceOffset(tokens.text, "brand:") + 2,
+      tokens.analysis,
+    );
+    if (brandTarget === undefined) throw new Error("expected brand definition");
+
+    expect(
+      tokenDefinitionAt(alias.text, referenceOffset(alias.text, "$t.brand") + 1, alias.analysis),
+    ).toEqual(brandTarget);
+    expect(
+      tokenDefinitionAt(plain.text, referenceOffset(plain.text, "$brand") + 1, plain.analysis),
+    ).toEqual(brandTarget);
+
+    // A local definition shadows the unqualified import, so the same spelling
+    // resolves to the shadowing module and never joins the imported set.
+    const shadowTarget = tokenDefinitionAt(
+      shadow.text,
+      referenceOffset(shadow.text, "$brand") + 1,
+      shadow.analysis,
+    );
+    expect(shadowTarget?.file).toBe(`${REFERENCE_ROOT}/refs-shadow.cssx`);
+    expect(shadowTarget?.name).toBe("brand");
+
+    // Two distinct unqualified providers are CHIKX2001 and resolve to nothing.
+    expect(
+      tokenDefinitionAt(
+        ambiguous.text,
+        referenceOffset(ambiguous.text, "$brand") + 1,
+        ambiguous.analysis,
+      ),
+    ).toBeUndefined();
+
+    const surfaceTarget = tokenDefinitionAt(
+      tokens.text,
+      referenceOffset(tokens.text, "surface:") + 2,
+      tokens.analysis,
+    );
+    if (surfaceTarget === undefined) throw new Error("expected surface definition");
+    expect(surfaceTarget.kind).toBe("runtime");
+    expect(
+      tokenDefinitionAt(plain.text, referenceOffset(plain.text, "$surface") + 1, plain.analysis),
+    ).toEqual(surfaceTarget);
+    const surfaceOccurrences = files.flatMap((entry) =>
+      referencesToToken(entry.text, entry.analysis, surfaceTarget),
+    );
+    expect(surfaceOccurrences).toHaveLength(3);
+  });
+
+  test("includeDeclaration false drops only the definition", async () => {
+    const files = await referenceAnalyses();
+    const tokens = files.find((entry) => entry.name === "refs-tokens.cssx");
+    if (tokens === undefined) throw new Error("missing tokens analysis");
+    const target = tokenDefinitionAt(
+      tokens.text,
+      referenceOffset(tokens.text, "brand:") + 2,
+      tokens.analysis,
+    );
+    if (target === undefined) throw new Error("expected brand definition");
+    const withoutDeclaration = files.flatMap((entry) =>
+      referencesToToken(entry.text, entry.analysis, target, { includeDeclaration: false }),
+    );
+    expect(withoutDeclaration).toHaveLength(2);
+    expect(
+      withoutDeclaration.some(
+        (occurrence) =>
+          occurrence.file === target.file &&
+          occurrence.range.start.line === 1 &&
+          occurrence.range.start.character === 2,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -248,6 +492,320 @@ describe("token rename", () => {
       .map((edit) => text.slice(edit.start, edit.end))
       .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
     expect(editedSlices).toEqual(["$gap", "$gap", "$gap", "gap"]);
+  });
+});
+
+const CLASS_DOCUMENT = [
+  '@setup { prefix: "ui"; }',
+  "@variables { card: 1px; }",
+  ".card {",
+  "  padding: $card;",
+  "  &:hover { color: red; }",
+  "  &.card-active, .card:not(.card) { color: blue; }",
+  "  :is(.card, .cardinal) { color: green; }",
+  "  &:global(.card) { color: black; }",
+  '  content: ".card";',
+  "}",
+  ".card { margin: 0; }",
+  ".cardinal { margin: 1px; }",
+  "#panel { color: gray; }",
+].join("\n");
+
+function applyRename(
+  text: string,
+  analysis: AnalyzeResult,
+  edits: readonly { range: Range; newText: string }[],
+): string {
+  const ordered = edits
+    .map((edit) => ({ ...rangeToOffsets(analysis, edit.range), newText: edit.newText }))
+    .sort((left, right) => right.start - left.start);
+  let result = text;
+  for (const edit of ordered) {
+    result = result.slice(0, edit.start) + edit.newText + result.slice(edit.end);
+  }
+  return result;
+}
+
+describe("class rename", () => {
+  test("renames every non-global occurrence in the current document and nothing else", async () => {
+    const { state } = await analyze(CLASS_DOCUMENT);
+    const plan = renameAt(CLASS_DOCUMENT, CLASS_DOCUMENT.indexOf(".card {") + 1, "panel", {
+      analysis: state.analysis,
+    });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.placeholder).toBe("card");
+    const edits = plan.edits.map((edit) => ({
+      ...rangeToOffsets(state.analysis, edit.range),
+      newText: edit.newText,
+    }));
+    // Base, comma/`:not()` pair, `:is()` argument and the second base rule.
+    // The `:global(.card)` occurrence, the `$card` token, the `"card"` string
+    // and the longer `card-active`/`cardinal` names are never part of the set.
+    expect(edits).toHaveLength(5);
+    expect(edits.map((edit) => edit.newText)).toEqual([
+      "panel",
+      "panel",
+      "panel",
+      "panel",
+      "panel",
+    ]);
+    expect(edits.map((edit) => CLASS_DOCUMENT.slice(edit.start, edit.end))).toEqual([
+      "card",
+      "card",
+      "card",
+      "card",
+      "card",
+    ]);
+    expect(applyRename(CLASS_DOCUMENT, state.analysis, plan.edits)).toBe(
+      [
+        '@setup { prefix: "ui"; }',
+        "@variables { card: 1px; }",
+        ".panel {",
+        "  padding: $card;",
+        "  &:hover { color: red; }",
+        "  &.card-active, .panel:not(.panel) { color: blue; }",
+        "  :is(.panel, .cardinal) { color: green; }",
+        "  &:global(.card) { color: black; }",
+        '  content: ".card";',
+        "}",
+        ".panel { margin: 0; }",
+        ".cardinal { margin: 1px; }",
+        "#panel { color: gray; }",
+      ].join("\n"),
+    );
+  });
+
+  test("attribute selector names, operators and values are never renamed", async () => {
+    const text = [
+      '.card[data-x=".card"] { color: red; }',
+      '[data-y=".card"], .card[class~=".card"] { color: blue; }',
+      ".card[data-z=card] { color: green; }",
+    ].join("\n");
+    const { state } = await analyze(text);
+    const plan = renameAt(text, text.indexOf(".card[") + 1, "panel", { analysis: state.analysis });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+
+    const edits = plan.edits.map((edit) => ({
+      ...rangeToOffsets(state.analysis, edit.range),
+      newText: edit.newText,
+    }));
+    // One edit per real class token, none for the bracketed values.
+    expect(edits.map((edit) => text.slice(edit.start, edit.end))).toEqual(["card", "card", "card"]);
+    expect(applyRename(text, state.analysis, plan.edits)).toBe(
+      [
+        '.panel[data-x=".card"] { color: red; }',
+        '[data-y=".card"], .panel[class~=".card"] { color: blue; }',
+        ".panel[data-z=card] { color: green; }",
+      ].join("\n"),
+    );
+
+    // A cursor inside an attribute value is not a class occurrence.
+    const valuePlan = renameAt(text, text.indexOf('".card"') + 2, "panel", {
+      analysis: state.analysis,
+    });
+    expect(valuePlan.ok).toBe(false);
+    if (!valuePlan.ok) expect(valuePlan.reason).toContain("Place the cursor on a Chikx token");
+  });
+
+  test("the class-name range excludes the dot and global selection is refused", async () => {
+    const { state } = await analyze(CLASS_DOCUMENT);
+    const occurrence = classAt(
+      state.analysis,
+      CLASS_DOCUMENT.indexOf(":is(.card") + ":is(.".length,
+    );
+    expect(occurrence?.name).toBe("card");
+    if (occurrence === undefined) return;
+    const offsets = rangeToOffsets(state.analysis, occurrence.range);
+    expect(CLASS_DOCUMENT.slice(offsets.start, offsets.end)).toBe("card");
+    expect(CLASS_DOCUMENT[offsets.start - 1]).toBe(".");
+
+    const globalAt = CLASS_DOCUMENT.indexOf(":global(.card)") + ":global(.".length;
+    const globalPlan = renameAt(CLASS_DOCUMENT, globalAt, "other", { analysis: state.analysis });
+    expect(globalPlan.ok).toBe(false);
+    if (globalPlan.ok) return;
+    expect(globalPlan.reason).toContain("Global classes");
+  });
+
+  test("invalid, existing and non-class rename targets are refused", async () => {
+    const { state } = await analyze(CLASS_DOCUMENT);
+    const cardAt = CLASS_DOCUMENT.indexOf(".card {") + 1;
+
+    const invalid = renameAt(CLASS_DOCUMENT, cardAt, "1bad", { analysis: state.analysis });
+    expect(invalid.ok).toBe(false);
+    if (!invalid.ok) expect(invalid.reason).toContain("Class names must start");
+
+    const existing = renameAt(CLASS_DOCUMENT, cardAt, "cardinal", { analysis: state.analysis });
+    expect(existing.ok).toBe(false);
+    if (!existing.ok) {
+      expect(existing.reason).toContain('A class named ".cardinal" already exists');
+    }
+
+    // Non-class tokens keep their own paths: an id dispatches to the id rename
+    // (feature 28), not to the class rename, and a pseudo name still falls
+    // through to the generic refusal.
+    const idPlan = renameAt(CLASS_DOCUMENT, CLASS_DOCUMENT.indexOf("#panel") + 1, "other", {
+      analysis: state.analysis,
+    });
+    expect(idPlan.ok).toBe(true);
+    if (idPlan.ok) expect(idPlan.placeholder).toBe("panel");
+
+    const pseudoPlan = renameAt(CLASS_DOCUMENT, CLASS_DOCUMENT.indexOf(":hover") + 1, "other", {
+      analysis: state.analysis,
+    });
+    expect(pseudoPlan.ok).toBe(false);
+  });
+
+  test("renaming to the identical name is a pinned no-op edit set", async () => {
+    const { state } = await analyze(CLASS_DOCUMENT);
+    const plan = renameAt(CLASS_DOCUMENT, CLASS_DOCUMENT.indexOf(".card {") + 1, "card", {
+      analysis: state.analysis,
+    });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.edits).toHaveLength(5);
+    expect(plan.edits.every((edit) => edit.newText === "card")).toBe(true);
+    expect(applyRename(CLASS_DOCUMENT, state.analysis, plan.edits)).toBe(CLASS_DOCUMENT);
+  });
+});
+
+const ID_DOCUMENT = [
+  '@setup { prefix: "ui"; }',
+  "#panel { color: red; }",
+  "#panel, .panel #inner { color: blue; }",
+  ".card {",
+  "  &#panel:hover { color: green; }",
+  "  &:is(#panel, #panel-header) { color: teal; }",
+  "  &:not(#panel) { color: gray; }",
+  "  &:has(> #panel) { color: black; }",
+  '  content: "#panel";',
+  '  &[data-id="#panel"] { color: white; }',
+  "}",
+  ":global(#panel) .x { color: purple; }",
+].join("\n");
+
+describe("id rename (feature 28)", () => {
+  test("renames every occurrence in the current document and nothing else", async () => {
+    const { state } = await analyze(ID_DOCUMENT);
+    const occurrences = collectIdOccurrences(state.analysis).filter(
+      (entry) => entry.name === "panel",
+    );
+    expect(occurrences).toHaveLength(7);
+
+    const plan = renameAt(ID_DOCUMENT, ID_DOCUMENT.indexOf("#panel {") + 1, "main", {
+      analysis: state.analysis,
+    });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.placeholder).toBe("panel");
+    const edits = plan.edits.map((edit) => ({
+      ...rangeToOffsets(state.analysis, edit.range),
+      newText: edit.newText,
+    }));
+    // Base, comma list, `&` nesting and `:is()`/`:not()`/`:has()` arguments,
+    // plus the `:global(#panel)` occurrence — ids have no local/global split.
+    // The longer `#panel-header`, the `.panel` class with the same name, the
+    // `"#panel"` string and the `[data-id="#panel"]` attribute value stay out.
+    expect(edits).toHaveLength(7);
+    expect(edits.map((edit) => edit.newText)).toEqual([
+      "main",
+      "main",
+      "main",
+      "main",
+      "main",
+      "main",
+      "main",
+    ]);
+    expect(edits.map((edit) => ID_DOCUMENT.slice(edit.start, edit.end))).toEqual([
+      "panel",
+      "panel",
+      "panel",
+      "panel",
+      "panel",
+      "panel",
+      "panel",
+    ]);
+    for (const edit of edits) {
+      expect(ID_DOCUMENT[edit.start - 1]).toBe("#");
+    }
+    expect(applyRename(ID_DOCUMENT, state.analysis, plan.edits)).toBe(
+      [
+        '@setup { prefix: "ui"; }',
+        "#main { color: red; }",
+        "#main, .panel #inner { color: blue; }",
+        ".card {",
+        "  &#main:hover { color: green; }",
+        "  &:is(#main, #panel-header) { color: teal; }",
+        "  &:not(#main) { color: gray; }",
+        "  &:has(> #main) { color: black; }",
+        '  content: "#panel";',
+        '  &[data-id="#panel"] { color: white; }',
+        "}",
+        ":global(#main) .x { color: purple; }",
+      ].join("\n"),
+    );
+  });
+
+  test("the id-name range excludes the hash and id completion is unchanged", async () => {
+    const { state } = await analyze(ID_DOCUMENT);
+    const occurrence = idAt(state.analysis, ID_DOCUMENT.indexOf(":is(#panel") + ":is(#".length);
+    expect(occurrence?.name).toBe("panel");
+    if (occurrence === undefined) return;
+    const offsets = rangeToOffsets(state.analysis, occurrence.range);
+    expect(ID_DOCUMENT.slice(offsets.start, offsets.end)).toBe("panel");
+    expect(ID_DOCUMENT[offsets.start - 1]).toBe("#");
+
+    // The completion collector still reports one entry per distinct name in
+    // first-appearance order; rename does not change that surface.
+    expect(collectIdSelectors(state.analysis).map((entry) => entry.name)).toEqual([
+      "panel",
+      "inner",
+      "panel-header",
+    ]);
+  });
+
+  test("invalid, existing and non-id rename targets are refused", async () => {
+    const { state } = await analyze(ID_DOCUMENT);
+    const panelAt = ID_DOCUMENT.indexOf("#panel {") + 1;
+
+    const invalid = renameAt(ID_DOCUMENT, panelAt, "1bad", { analysis: state.analysis });
+    expect(invalid.ok).toBe(false);
+    if (!invalid.ok) expect(invalid.reason).toContain("Id names must start");
+
+    const existing = renameAt(ID_DOCUMENT, panelAt, "panel-header", {
+      analysis: state.analysis,
+    });
+    expect(existing.ok).toBe(false);
+    if (!existing.ok) {
+      expect(existing.reason).toContain('An id named "#panel-header" already exists');
+    }
+
+    // A cursor inside an authored string or attribute value is not an id.
+    const stringAt = ID_DOCUMENT.indexOf('"#panel"') + 1;
+    const stringPlan = renameAt(ID_DOCUMENT, stringAt, "main", { analysis: state.analysis });
+    expect(stringPlan.ok).toBe(false);
+    if (!stringPlan.ok) {
+      expect(stringPlan.reason).toContain("Place the cursor on a Chikx token");
+    }
+
+    const attributeAt = ID_DOCUMENT.indexOf('[data-id="#panel"]') + '[data-id="#'.length;
+    const attributePlan = renameAt(ID_DOCUMENT, attributeAt, "main", {
+      analysis: state.analysis,
+    });
+    expect(attributePlan.ok).toBe(false);
+  });
+
+  test("renaming to the identical name is a pinned no-op edit set", async () => {
+    const { state } = await analyze(ID_DOCUMENT);
+    const plan = renameAt(ID_DOCUMENT, ID_DOCUMENT.indexOf("#panel {") + 1, "panel", {
+      analysis: state.analysis,
+    });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.edits).toHaveLength(7);
+    expect(plan.edits.every((edit) => edit.newText === "panel")).toBe(true);
+    expect(applyRename(ID_DOCUMENT, state.analysis, plan.edits)).toBe(ID_DOCUMENT);
   });
 });
 

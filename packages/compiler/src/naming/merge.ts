@@ -19,6 +19,10 @@
  *   single-module rewrite does, and globals still never reach the map.
  * - camelCase named-export alias uniqueness across the merged table is enforced
  *   afterwards by `generateClassMap`, which sees the merged table as one table.
+ * - A module that authors `@setup { map-inherit: false; }` is skipped entirely:
+ *   its CSS still merges in cascade order, but none of its bindings reach the
+ *   map or `.d.ts`, and it can never raise CHIKX4001 (ADR-0020, the documented
+ *   exception to the §3 one-table lockstep).
  *
  * The pass is pure, deterministic and never mutates its inputs.
  */
@@ -36,6 +40,12 @@ export interface ClassTableSource {
    * POSIX source path. Omitted for synthetic tables.
    */
   readonly label?: string;
+  /**
+   * Whether this table's bindings join the merged build (ADR-0020). Omitted
+   * means `true` (the ADR-0014 default); `false` excludes a style-merged
+   * module's bindings while leaving its CSS in the imported-first IR.
+   */
+  readonly mapInherit?: boolean;
 }
 
 /** Result of {@link mergeClassTables}. */
@@ -60,6 +70,9 @@ export function mergeClassTables(sources: readonly ClassTableSource[]): MergedCl
   const diagnostics: Diagnostic[] = [];
 
   for (const source of sources) {
+    // An opted-out module (ADR-0020) contributes rules to the stylesheet but no
+    // bindings to the merged table, so it cannot collide either.
+    if (source.mapInherit === false) continue;
     const label = source.label ?? "an unnamed source";
     for (const entry of source.table.entries) {
       const existingIndex = indexes.get(entry.name);

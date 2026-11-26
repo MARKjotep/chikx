@@ -34,26 +34,35 @@ export interface NamingOptions {
 }
 
 /**
- * Media grouping modes, the only accepted v0.1 values.
+ * Media grouping modes accepted by v0.1.
  *
- * `safe` (the default) merges only adjacent compatible rules and media
+ * `safe` (the public default) merges only adjacent compatible rules and media
  * contexts without changing declaration order, specificity, layer or scope;
- * `none` emits rules as authored and performs no merging. Global grouping at
- * the bottom is never safe. Future modes such as ordered-media grouping
- * (masterplan §3.3) are deliberately absent from this union and must be
- * rejected as an invalid configuration value with a clear message.
+ * `none` emits rules as authored and performs no merging. `merge` is an opt-in
+ * optimization (ADR-0024): it keeps the safe adjacent pass and additionally
+ * moves same-selector/same-condition conditional runs across declarations whose
+ * property families are provably disjoint (`all` and `var()` values are
+ * barriers). It never merges unconditional runs, different selectors,
+ * different conditions or different native contexts. Future modes such as
+ * ordered-media grouping (masterplan §3.3) remain deliberately absent and must
+ * be rejected as invalid configuration values.
  */
-export type MediaGroupingMode = "safe" | "none";
+export type MediaGroupingMode = "safe" | "none" | "merge";
 
 /**
  * Output settings shared by file-level setup, project configuration and CLI
  * overrides (SPECIFICATION.md §9).
  *
  * Defaults: `cssDir`/`mapDir` = the source directory; `cssName` =
- * `<stem>.css`; `mapName` = `<stem>.map.js`; `emitCss`, `emitMap`,
- * `emitTypes` and `importCss` = `true`; `sourceMap` = `false`; `minify` =
- * `false`. `minify` is opt-in only: it compacts generated structural
- * whitespace while preserving authored CSS tokens and declaration order.
+ * `<stem>.css`; `mapName` = `<stem>.map.js`; `emitCss` and `emitMap` = `true`;
+ * `mapTypes` = `false`; `sourceMap` = `false`; `minify` = `true`;
+ * `importCss` = `false`. `minify` defaults on (ADR-0022) and compacts generated
+ * structural whitespace while preserving authored CSS tokens and declaration
+ * order; `minify: false` / `--no-minify` opts out.
+ * `mapTypes` is opt-in only: the JS class map is the normal artifact and the
+ * `.d.ts` beside it is generated only when requested (CSSX-A52). `importCss`
+ * is opt-in only: the map carries no CSS import unless a bundler-driven
+ * consumer asks for one (ADR-0021).
  */
 export interface OutputOptions {
   /**
@@ -71,8 +80,8 @@ export interface OutputOptions {
   /** Directory for the JS class map, resolved like {@link OutputOptions.cssDir}. */
   readonly mapDir?: string;
   /**
-   * Optional JS map basename, for example `classes.js`. The declaration file
-   * becomes `classes.d.ts`.
+   * Optional JS map basename, for example `classes.js`. The opt-in declaration
+   * file becomes `classes.d.ts`.
    */
   readonly mapName?: string;
   /** Write the stylesheet. Default `true`. */
@@ -80,24 +89,45 @@ export interface OutputOptions {
   /** Write the JS class map. Default `true`. */
   readonly emitMap?: boolean;
   /**
-   * Write `.d.ts` beside the JS map. Default `true`; automatically suppressed
-   * with a documented warning when map emission is off and types were not
-   * explicitly disabled (SPECIFICATION.md §8).
+   * Write a `.d.ts` beside the JS map with one literal `export declare const`
+   * per class. Default `false` (opt-in, CSSX-A52); automatically suppressed with
+   * a documented warning when map emission is on but types were requested
+   * without a map (SPECIFICATION.md §8).
+   */
+  readonly mapTypes?: boolean;
+  /**
+   * Deprecated alias for {@link OutputOptions.mapTypes}, kept for existing
+   * configurations. `map-types` wins when both are authored in one layer.
    */
   readonly emitTypes?: boolean;
   /** Write a CSS debugging source map. Default `false`; never written when CSS is disabled. */
   readonly sourceMap?: boolean;
   /**
-   * Include a relative CSS side-effect import in the JS map. Default `true`;
-   * must be `false` when CSS emission is disabled.
-   */
-  readonly importCss?: boolean;
-  /**
-   * Opt-in compact CSS output. Default `false`. Compacts generated structural
+   * Compact CSS output. Default `true` (ADR-0022). Compacts generated structural
    * whitespace only and preserves authored CSS tokens, quoted strings, `calc()`
-   * spacing and declaration order.
+   * spacing and declaration order. Set `false` (or pass `--no-minify`) for
+   * readable output.
    */
   readonly minify?: boolean;
+  /**
+   * Whether a style-merged module's class bindings join the importing build's
+   * class map and declarations. Default `true` (the ADR-0014 one-table rule).
+   * A module opts out with `@setup { map-inherit: false; }` (ADR-0020): its
+   * rules still merge into the importing stylesheet, but its bindings stay out
+   * of the importer's `map.js`, `.d.ts` and `CompileResult.classes`. The
+   * module's own entry map is never affected.
+   */
+  readonly mapInherit?: boolean;
+  /**
+   * Opt-in CSS side-effect import in the generated class map. Default `false`,
+   * so the map stays importable by plain Node without a loader (CSSX-A52).
+   * With `@setup { import-css: true; }` (ADR-0021) the map starts with one
+   * `import "<relative stylesheet>";` naming the emitted CSS artifact, which
+   * bundlers that carry CSS through imports (Vite, Rspack, Next-style loaders)
+   * then process. Omitted when the build emits no stylesheet; `.d.ts` output
+   * never carries the import.
+   */
+  readonly importCss?: boolean;
 }
 
 /** Options for compiling one source string with `compile`. */
@@ -114,10 +144,10 @@ export interface CompileOptions extends ParseOptions, OutputOptions {
   readonly media?: Readonly<Record<string, string>>;
   /**
    * Enable strict validation, including rejection of unknown configuration
-   * keys. Default `false`.
+   * keys. Default `true` (ADR-0023); pass `false` to keep the warning path.
    */
   readonly strict?: boolean;
-  /** Media grouping mode. Default `safe`. */
+  /** Media grouping mode. Default `safe`; `merge` is the opt-in optimizer (ADR-0024). */
   readonly mediaGrouping?: MediaGroupingMode;
   /**
    * Absolute POSIX workspace root used for containment checks. When omitted,
@@ -128,7 +158,10 @@ export interface CompileOptions extends ParseOptions, OutputOptions {
 
 /** Compiler behaviour settings as they appear in `chikx.config.json` (`compiler`). */
 export interface CompilerConfig {
-  /** Reject unknown configuration keys and other lenient recoveries. Default `false`. */
+  /**
+   * Reject unknown configuration keys and other lenient recoveries. Default
+   * `true` (ADR-0023); `false` keeps the warning path.
+   */
   readonly strict?: boolean;
   /** Media grouping mode. Default `safe`. */
   readonly mediaGrouping?: MediaGroupingMode;
@@ -185,11 +218,37 @@ export interface CompileProjectOptions {
  * Every setting has a value, but directory fields are still authored strings:
  * `planOutputs` resolves them against the documented base (source file for
  * file-level settings, workspace root for project-level settings) and
- * validates the result before any write.
+ * validates the result before any write. The authored `mapTypes` alias is not
+ * carried here: it resolves into {@link ResolvedSetup.emitTypes}, the single
+ * flag the planner reads.
  */
-export interface ResolvedSetup extends Required<OutputOptions> {
+export interface ResolvedSetup
+  extends Required<Omit<OutputOptions, "mapTypes" | "mapInherit" | "importCss">> {
   /** Effective class prefix after naming precedence is applied. */
   readonly prefix: string;
+  /**
+   * Effective module map-inheritance flag (ADR-0020). Defaults to `true` in
+   * `defaultSetupFor`; optional so hosts that only consume destination planning
+   * can omit it, and the compile pipeline treats an absent value as `true`.
+   */
+  readonly mapInherit?: boolean;
+  /**
+   * Effective class-map CSS import flag (ADR-0021). Defaults to `false` in
+   * `defaultSetupFor`; optional for the same host-compatibility reason as
+   * {@link ResolvedSetup.mapInherit}, and an absent value means `false`.
+   */
+  readonly importCss?: boolean;
+  /**
+   * File-level `@setup { css-dir: "a", "b"; }` list ([ADR-0019]).
+   *
+   * Present only when a file authored more than one CSS destination. Every
+   * entry resolves exactly relative to the source file, like the single
+   * {@link OutputOptions.cssDir}, and replaces any project/CLI single directory
+   * for the CSS artifact. `cssDir` keeps the first entry for consumers that
+   * still read the single value. Project configuration and CLI overrides cannot
+   * author a list in v0.1.
+   */
+  readonly cssDirs?: readonly string[];
 }
 
 /** Explicit CLI overrides; partial by design and never flatten multiple outputs silently. */

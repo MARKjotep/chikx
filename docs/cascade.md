@@ -281,6 +281,40 @@ With `"none"` the first two rules stay separate:
 The computed styles are identical in both modes; only the emitted text differs. Grouping never
 crosses the intervening `@media print` rule.
 
+### Opt-in merge grouping
+
+`mediaGrouping: "merge"` (or `@setup { media-grouping: merge; }`) is disabled by default. It keeps
+the safe adjacent pass and adds one cross-run rule ([ADR-0024](decisions/ADR-0024-media-merge-grouping.md)):
+
+```chikx
+.card { @md { color: red; } }
+.card { margin: 0; }
+.card { @md { color: blue; } }
+```
+
+`safe` emits two separate `@md` blocks around the `margin` rule. `merge` moves the first run into
+the second because the only crossed declaration (`margin`) is a disjoint property family; the
+color declarations keep their relative order:
+
+```css
+.ui-card {
+  margin: 0;
+}
+
+@media (min-width: 768px) {
+  .ui-card {
+    color: red;
+    color: blue;
+  }
+}
+```
+
+The proof is per-property: a cascade winner for `color` is never affected by a crossed `margin`
+declaration, and moving the run *before* the destination preserves source order, specificity,
+conditions and `@layer` order. `all` and any value containing `var(` are wildcards; a run containing
+one never merges, and nothing crosses one. The family approximation is conservative (`font-size`
+and `font-family` share `font`), so a missed merge is possible; a changed cascade is not.
+
 ### What is *not* done
 
 - **No reordering promises.** The compiler never promises that a different declaration order would
@@ -342,11 +376,11 @@ Specs live in [`tests/browser/specs/`](../tests/browser/specs/):
 | `interactions.pw.ts` | Reduced motion, hover, focus and disabled states. |
 | `specificity.pw.ts` | `.card.card` beats `.card`; later duplicate declarations win. |
 | `parity.pw.ts` | Pretty vs minified output produce identical computed styles. |
-| `grouping.pw.ts` | Safe grouping vs `mediaGrouping: "none"` produce identical computed styles. |
+| `grouping.pw.ts` | `safe`, `none` and opt-in `merge` produce identical computed styles (ADR-0024). |
 
 The harness compiles every scenario through the public `compile()` API and serves generated CSS to
-the browser; no stylesheet is hand-written. Current recorded result (CSSX-BROWSER-01): **75 passed**
-— 25 tests on each of Chromium, Firefox and WebKit, with no console errors, page errors, failed
+the browser; no stylesheet is hand-written. Current recorded result (CSSX-BROWSER-01): **96 passed**
+— 32 tests on each of Chromium, Firefox and WebKit, with no console errors, page errors, failed
 requests or HTTP ≥ 400 responses. See [`tests/browser/README.md`](../tests/browser/README.md) for
 engine setup and harness details.
 

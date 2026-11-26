@@ -13,7 +13,7 @@ const { rm } = require("node:fs/promises");
 const vscode = require("vscode");
 const host = require("./host.js");
 
-const ENTRY = '@setup { prefix: "app"; }\n.button { color: red; }\n';
+const ENTRY = '@setup { prefix: "app"; map-types: true; }\n.button { color: red; }\n';
 const SECOND = '@setup { prefix: "app"; }\n.card { padding: 4px; }\n';
 const BROKEN = '@setup {\n  prefix: "app";\n}\n.card {\n  color: red\n  padding: 4px;\n}\n';
 
@@ -37,7 +37,7 @@ async function run(t) {
     t.ok(afterCompile.includes("entry.map.d.ts"), "compileFile wrote no types");
     t.equal(afterCompile.includes("second.css"), false, "compileFile built an unrelated entry");
     const compiledCss = await workspace.read("entry.css");
-    t.match(compiledCss, /\.app-button \{/, "the compiled CSS carries the @setup prefix");
+    t.match(compiledCss, /\.app-button\{/, "the compiled CSS carries the @setup prefix");
     t.match(await workspace.read("entry.map.js"), /app-button/, "the class map carries the prefix");
 
     // Build Project: every discovered entry in the active document's project.
@@ -71,7 +71,7 @@ async function run(t) {
     const preview = vscode.window.activeTextEditor;
     t.ok(preview, "preview command did not open an editor");
     t.equal(preview.document.uri.scheme, "chikx-preview", "preview is not a virtual document");
-    t.match(preview.document.getText(), /\.app-button \{/, "preview lacks the compiled CSS");
+    t.match(preview.document.getText(), /\.app-button\{/, "preview lacks the compiled CSS");
     t.equal(
       (await workspace.entries()).includes("entry.css"),
       false,

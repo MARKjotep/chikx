@@ -36,7 +36,6 @@ function shape(result: PlanOutputsResult) {
     kind: output.kind,
     absolutePath: output.absolutePath,
     workspacePath: output.workspacePath,
-    ...(output.importSpecifier === undefined ? {} : { importSpecifier: output.importSpecifier }),
     sourceFile: output.sourceFile,
   }));
 }
@@ -52,7 +51,7 @@ function errorCodes(result: PlanOutputsResult): string[] {
 }
 
 describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
-  test("no setup places artifacts beside the source and imports them relatively", () => {
+  test("no setup places artifacts beside the source", () => {
     const result = run();
     expect(shape(result)).toEqual([
       {
@@ -65,20 +64,12 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
         kind: "js",
         absolutePath: "/ws/src/button.map.js",
         workspacePath: "src/button.map.js",
-        importSpecifier: "./button.css",
-        sourceFile: "src/button.cssx",
-      },
-      {
-        kind: "types",
-        absolutePath: "/ws/src/button.map.d.ts",
-        workspacePath: "src/button.map.d.ts",
         sourceFile: "src/button.cssx",
       },
     ]);
     expect(result.plan.manifest).toEqual([
       { kind: "css", workspacePath: "src/button.css", sourceFile: "src/button.cssx" },
       { kind: "js", workspacePath: "src/button.map.js", sourceFile: "src/button.cssx" },
-      { kind: "types", workspacePath: "src/button.map.d.ts", sourceFile: "src/button.cssx" },
     ]);
     expect(result.diagnostics).toEqual([]);
   });
@@ -96,13 +87,6 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
         kind: "js",
         absolutePath: "/ws/src/button.map.js",
         workspacePath: "src/button.map.js",
-        importSpecifier: "../out/styles/button.css",
-        sourceFile: "src/button.cssx",
-      },
-      {
-        kind: "types",
-        absolutePath: "/ws/src/button.map.d.ts",
-        workspacePath: "src/button.map.d.ts",
         sourceFile: "src/button.cssx",
       },
     ]);
@@ -110,12 +94,7 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
 
   test("only map directory keeps the CSS directory at its default", () => {
     const result = run({ setup: setupFor("src/button.cssx", { mapDir: "../out/maps" }) });
-    expect(outputsOf(result)).toEqual([
-      "css:src/button.css",
-      "js:out/maps/button.map.js",
-      "types:out/maps/button.map.d.ts",
-    ]);
-    expect(result.plan.outputs[1]?.importSpecifier).toBe("../../src/button.css");
+    expect(outputsOf(result)).toEqual(["css:src/button.css", "js:out/maps/button.map.js"]);
   });
 
   test("only names retain the effective directories and derive declarations", () => {
@@ -125,12 +104,7 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
         mapName: "classes.js",
       }),
     });
-    expect(outputsOf(result)).toEqual([
-      "css:src/theme.css",
-      "js:src/classes.js",
-      "types:src/classes.d.ts",
-    ]);
-    expect(result.plan.outputs[1]?.importSpecifier).toBe("./theme.css");
+    expect(outputsOf(result)).toEqual(["css:src/theme.css", "js:src/classes.js"]);
   });
 
   test("both directories and both names resolve independently", () => {
@@ -145,9 +119,7 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
     expect(outputsOf(result)).toEqual([
       "css:generated/styles/theme.css",
       "js:generated/maps/classes.js",
-      "types:generated/maps/classes.d.ts",
     ]);
-    expect(result.plan.outputs[1]?.importSpecifier).toBe("../styles/theme.css");
   });
 
   test("nested source preserves its subdirectory by default", () => {
@@ -156,9 +128,7 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
     expect(outputsOf(result)).toEqual([
       "css:src/pages/dashboard.css",
       "js:src/pages/dashboard.map.js",
-      "types:src/pages/dashboard.map.d.ts",
     ]);
-    expect(result.plan.outputs[1]?.importSpecifier).toBe("./dashboard.css");
   });
 
   test("project-level directories mirror the source-relative subdirectory", () => {
@@ -174,12 +144,10 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
     expect(outputsOf(result)).toEqual([
       "css:dist/styles/pages/dashboard.css",
       "js:dist/maps/pages/dashboard.map.js",
-      "types:dist/maps/pages/dashboard.map.d.ts",
     ]);
-    expect(result.plan.outputs[1]?.importSpecifier).toBe("../../styles/pages/dashboard.css");
   });
 
-  test("paths with spaces keep working directories and import specifiers", () => {
+  test("paths with spaces keep working directories", () => {
     const sourceFile = "src/my pages/button.cssx";
     const result = run({
       sourceFile,
@@ -188,9 +156,7 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
     expect(outputsOf(result)).toEqual([
       "css:out/styles here/button.css",
       "js:src/my pages/button.map.js",
-      "types:src/my pages/button.map.d.ts",
     ]);
-    expect(result.plan.outputs[1]?.importSpecifier).toBe("../../out/styles here/button.css");
   });
 
   test("Windows separators and a drive-letter workspace resolve OS-independently", () => {
@@ -211,13 +177,6 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
         kind: "js",
         absolutePath: "C:/project/src/button.map.js",
         workspacePath: "src/button.map.js",
-        importSpecifier: "../out/styles/button.css",
-        sourceFile: "src/button.cssx",
-      },
-      {
-        kind: "types",
-        absolutePath: "C:/project/src/button.map.d.ts",
-        workspacePath: "src/button.map.d.ts",
         sourceFile: "src/button.cssx",
       },
     ]);
@@ -294,8 +253,10 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
     );
   });
 
-  test("disabled map suppresses types with a warning", () => {
-    const result = run({ setup: setupFor("src/button.cssx", { emitMap: false }) });
+  test("disabled map suppresses requested types with a warning", () => {
+    const result = run({
+      setup: setupFor("src/button.cssx", { emitMap: false, emitTypes: true }),
+    });
     expect(outputsOf(result)).toEqual(["css:src/button.css"]);
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]?.code).toBe("CHIKX5001");
@@ -303,23 +264,17 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
     expect(result.diagnostics[0]?.message).toContain("suppressed");
   });
 
-  test("disabled CSS with import-css enabled is CHIKX5001", () => {
-    const result = run({ setup: setupFor("src/button.cssx", { emitCss: false }) });
-    expect(errorCodes(result)).toEqual(["CHIKX5001"]);
-    expect(result.plan.outputs).toEqual([]);
-    expect(result.diagnostics[0]?.message).toContain("import-css");
+  test("disabled map with default-off types is silent", () => {
+    const result = run({ setup: setupFor("src/button.cssx", { emitMap: false }) });
+    expect(outputsOf(result)).toEqual(["css:src/button.css"]);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  test("disabled CSS with import-css false writes no CSS or source map", () => {
+  test("disabled CSS writes only the map and no source map", () => {
     const result = run({
-      setup: setupFor("src/button.cssx", {
-        emitCss: false,
-        importCss: false,
-        sourceMap: true,
-      }),
+      setup: setupFor("src/button.cssx", { emitCss: false, sourceMap: true }),
     });
-    expect(outputsOf(result)).toEqual(["js:src/button.map.js", "types:src/button.map.d.ts"]);
-    expect(result.plan.outputs[0]?.importSpecifier).toBeUndefined();
+    expect(outputsOf(result)).toEqual(["js:src/button.map.js"]);
     expect(result.diagnostics).toEqual([]);
   });
 
@@ -334,12 +289,7 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
   test("renamed source reflects its new stem in every default name", () => {
     const sourceFile = "src/renamed.cssx";
     const result = run({ sourceFile, setup: setupFor(sourceFile) });
-    expect(outputsOf(result)).toEqual([
-      "css:src/renamed.css",
-      "js:src/renamed.map.js",
-      "types:src/renamed.map.d.ts",
-    ]);
-    expect(result.plan.outputs[1]?.importSpecifier).toBe("./renamed.css");
+    expect(outputsOf(result)).toEqual(["css:src/renamed.css", "js:src/renamed.map.js"]);
   });
 
   test("custom source map URL naming is reserved from the CSS basename", () => {
@@ -349,25 +299,18 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
     expect(outputsOf(result)).toEqual([
       "css:src/theme.css",
       "js:src/button.map.js",
-      "types:src/button.map.d.ts",
       "cssSourceMap:src/theme.css.map",
     ]);
-    expect(result.plan.outputs[1]?.importSpecifier).toBe("./theme.css");
   });
 
-  test("relative import across sibling directories uses ../", () => {
+  test("sibling directories resolve independently", () => {
     const result = run({
       setup: setupFor("src/button.cssx", {
         cssDir: "../styles",
         mapDir: "../modules",
       }),
     });
-    expect(outputsOf(result)).toEqual([
-      "css:styles/button.css",
-      "js:modules/button.map.js",
-      "types:modules/button.map.d.ts",
-    ]);
-    expect(result.plan.outputs[1]?.importSpecifier).toBe("../styles/button.css");
+    expect(outputsOf(result)).toEqual(["css:styles/button.css", "js:modules/button.map.js"]);
   });
 
   test("only-name with only CSS directory keeps the effective directory", () => {
@@ -377,12 +320,7 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
         cssName: "theme.css",
       }),
     });
-    expect(outputsOf(result)).toEqual([
-      "css:out/styles/theme.css",
-      "js:src/button.map.js",
-      "types:src/button.map.d.ts",
-    ]);
-    expect(result.plan.outputs[1]?.importSpecifier).toBe("../out/styles/theme.css");
+    expect(outputsOf(result)).toEqual(["css:out/styles/theme.css", "js:src/button.map.js"]);
   });
 
   test("CLI override wins over file setup (single-entry path overrides)", () => {
@@ -390,24 +328,17 @@ describe("SPECIFICATION.md §9.3 output planner acceptance cases", () => {
       setup: setupFor("src/button.cssx", { cssDir: "../file-out", cssName: "file.css" }),
       cliOverrides: { cssDir: "/ws/cli-out", cssName: "cli.css" },
     });
+    expect(outputsOf(result)).toEqual(["css:cli-out/cli.css", "js:src/button.map.js"]);
+  });
+
+  test("map-types opts the declaration file back in beside the JS map", () => {
+    const result = run({ setup: setupFor("src/button.cssx", { emitTypes: true }) });
     expect(outputsOf(result)).toEqual([
-      "css:cli-out/cli.css",
+      "css:src/button.css",
       "js:src/button.map.js",
       "types:src/button.map.d.ts",
     ]);
-    expect(result.plan.outputs[1]?.importSpecifier).toBe("../cli-out/cli.css");
-  });
-
-  test("import-css false omits the side-effect specifier", () => {
-    const result = run({ setup: setupFor("src/button.cssx", { importCss: false }) });
-    expect(result.plan.outputs[0]?.kind).toBe("css");
-    expect(result.plan.outputs[1]?.kind).toBe("js");
-    expect(result.plan.outputs[1]?.importSpecifier).toBeUndefined();
-  });
-
-  test("quotes in a destination are escaped for the JS import literal", () => {
-    const result = run({ setup: setupFor("src/button.cssx", { cssName: 'the"me.css' }) });
-    expect(result.plan.outputs[1]?.importSpecifier).toBe('./the\\"me.css');
+    expect(result.diagnostics).toEqual([]);
   });
 
   test("input/output overlap is rejected when an artifact would overwrite its source", () => {
