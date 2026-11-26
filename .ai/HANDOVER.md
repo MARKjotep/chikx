@@ -313,6 +313,10 @@ Retracted: the earlier suggestion to deprecate `@chikx/compiler@0.0.0-stage` is 
 - **`bunx chikx` at the repo root** cannot resolve the workspace bin (no root install link;
   pre-existing). For local runs use the built entry (`node packages/cli/dist/index.js`); the
   published package is unaffected.
+- **Local workspace `npx @chikx/cli` needs the built entry**: `tsc` wrote `dist/index.js` as `644`,
+  so the linked `node_modules/.bin/chikx` failed with `Permission denied`. The CLI build now chmods
+  the entry to `755` (fixed 2026-11-26), so run `bun run --cwd packages/cli build` once after a
+  fresh install. Registry installs were never affected — npm sets bin modes from the tarball.
 - **`var(--x)` / custom-property values are preserved, not validated** (SPECIFICATION §3.1).
 - **Module-internal diagnostics** are logged rather than published at the importer's offsets.
   Importers refresh on dependency change/save; diagnostics are not re-based into the importer.

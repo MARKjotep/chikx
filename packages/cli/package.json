@@ -37,6 +37,6 @@
   "files": ["dist", "src"],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json"
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json && node -e \"const fs=require('node:fs');if(process.platform!=='win32')fs.chmodSync('dist/index.js',0o755)\""
   }
 }
